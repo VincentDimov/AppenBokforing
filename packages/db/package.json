@@ -1,0 +1,34 @@
+{
+  "name": "@ledgerapp/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "generate": "dotenv -e ../../.env -- prisma generate --schema prisma/schema.prisma",
+    "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev --schema prisma/schema.prisma",
+    "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy --schema prisma/schema.prisma",
+    "db:push": "dotenv -e ../../.env -- prisma db push --schema prisma/schema.prisma",
+    "seed": "dotenv -e ../../.env -- node prisma/seed.mjs",
+    "studio": "dotenv -e ../../.env -- prisma studio --schema prisma/schema.prisma",
+    "test": "dotenv -e ../../.env -- prisma validate --schema prisma/schema.prisma && node --test test/schema-contract.test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "6.17.1"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^8.0.0",
+    "prisma": "6.17.1",
+    "typescript": "^5.8.3"
+  }
+}

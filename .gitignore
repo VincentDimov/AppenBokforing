@@ -1,0 +1,26 @@
+# Dependencies and package-manager output
+node_modules/
+.pnpm-store/
+
+# Build and test output
+.next/
+.turbo/
+coverage/
+dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Local infrastructure data
+.docker/postgres/
+.docker/minio/
+
+# Logs and editor files
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

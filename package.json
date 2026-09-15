@@ -1,0 +1,42 @@
+{
+  "name": "ledgerapp",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.15.4"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:api": "corepack pnpm --filter @ledgerapp/db build && corepack pnpm --filter @ledgerapp/api dev",
+    "dev:web": "corepack pnpm --filter @ledgerapp/web dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "pnpm --filter @ledgerapp/db build && pnpm --filter @ledgerapp/api test:integration",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "db:generate": "corepack pnpm --filter @ledgerapp/db generate",
+    "db:migrate": "corepack pnpm --filter @ledgerapp/db migrate:dev",
+    "db:deploy": "corepack pnpm --filter @ledgerapp/db migrate:deploy",
+    "db:push": "corepack pnpm --filter @ledgerapp/db db:push",
+    "db:seed": "corepack pnpm --filter @ledgerapp/db seed",
+    "db:studio": "corepack pnpm --filter @ledgerapp/db studio",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@next/eslint-plugin-next": "15.5.4",
+    "@types/node": "^22.15.0",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.8",
+    "pnpm": "9.15.4",
+    "prettier": "^3.5.3",
+    "turbo": "^2.5.5",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.37.0"
+  }
+}

@@ -1,0 +1,622 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationMemberRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  MEMBER
+  READ_ONLY
+}
+
+enum SessionRevocationReason {
+  LOGOUT
+  ROTATED
+  REUSE_DETECTED
+  PASSWORD_CHANGED
+  ADMIN_REVOKED
+}
+
+enum FiscalYearStatus {
+  OPEN
+  CLOSED
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  LOCKED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum BalanceSide {
+  DEBIT
+  CREDIT
+}
+
+enum VatCodeType {
+  INPUT
+  OUTPUT
+  EXEMPT
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum JournalEntrySource {
+  MANUAL
+  POSTING_TEMPLATE
+  OPENING_BALANCE
+  SIE_IMPORT
+}
+
+enum AttachmentKind {
+  VOUCHER
+  SUPPORTING_DOCUMENT
+  SIE_IMPORT_FILE
+  SIE_EXPORT_FILE
+  OTHER
+}
+
+enum SieJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  POST
+  REVERSE
+  LOCK
+  UNLOCK
+  IMPORT
+  EXPORT
+}
+
+enum AuditEntityType {
+  USER
+  ORGANIZATION
+  ORGANIZATION_MEMBER
+  FISCAL_YEAR
+  ACCOUNTING_PERIOD
+  ACCOUNT
+  VAT_CODE
+  VOUCHER_SERIES
+  JOURNAL_ENTRY
+  JOURNAL_LINE
+  PROJECT
+  COST_CENTER
+  ATTACHMENT
+  POSTING_TEMPLATE
+  OPENING_BALANCE
+  SIE_IMPORT
+  SIE_EXPORT
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique @db.VarChar(320)
+  displayName  String    @map("display_name") @db.VarChar(160)
+  passwordHash String?   @map("password_hash") @db.VarChar(255)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions                Session[]
+  organizationMemberships OrganizationMember[]
+  closedFiscalYears       FiscalYear[]         @relation("FiscalYearClosedBy")
+  lockedAccountingPeriods AccountingPeriod[]   @relation("AccountingPeriodLockedBy")
+  createdJournalEntries   JournalEntry[]       @relation("JournalEntryCreatedBy")
+  postedJournalEntries    JournalEntry[]       @relation("JournalEntryPostedBy")
+  uploadedAttachments     Attachment[]         @relation("AttachmentUploadedBy")
+  createdPostingTemplates PostingTemplate[]    @relation("PostingTemplateCreatedBy")
+  createdOpeningBalances  OpeningBalance[]     @relation("OpeningBalanceCreatedBy")
+  auditEvents             AuditEvent[]         @relation("AuditEventActor")
+  initiatedSieImports     SieImport[]          @relation("SieImportInitiatedBy")
+  initiatedSieExports     SieExport[]          @relation("SieExportInitiatedBy")
+
+  @@map("users")
+}
+
+model Session {
+  id                String                   @id @default(uuid()) @db.Uuid
+  userId            String                   @map("user_id") @db.Uuid
+  familyId          String                   @default(uuid()) @map("family_id") @db.Uuid
+  refreshTokenHash  String                   @unique @map("token_hash") @db.VarChar(255)
+  expiresAt         DateTime                 @map("expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt DateTime                 @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt         DateTime?                @map("revoked_at") @db.Timestamptz(3)
+  revocationReason  SessionRevocationReason? @map("revocation_reason")
+  replacedById      String?                  @unique @map("replaced_by_id") @db.Uuid
+  lastSeenAt        DateTime?                @map("last_seen_at") @db.Timestamptz(3)
+  ipAddress         String?                  @map("ip_address") @db.VarChar(64)
+  userAgent         String?                  @map("user_agent") @db.VarChar(512)
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  replacedBy Session? @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  replaces   Session? @relation("SessionRotation")
+
+  @@index([userId, revokedAt])
+  @@index([familyId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Organization {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String   @db.VarChar(160)
+  slug               String   @unique @db.VarChar(80)
+  organizationNumber String?  @unique @map("organization_number") @db.VarChar(32)
+  defaultCurrency    String   @default("SEK") @map("default_currency") @db.VarChar(3)
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  members              OrganizationMember[]
+  fiscalYears          FiscalYear[]
+  accountingPeriods    AccountingPeriod[]
+  accounts             Account[]
+  vatCodes             VatCode[]
+  voucherSeries        VoucherSeries[]
+  journalEntries       JournalEntry[]
+  journalLines         JournalLine[]
+  projects             Project[]
+  costCenters          CostCenter[]
+  attachments          Attachment[]
+  postingTemplates     PostingTemplate[]
+  postingTemplateLines PostingTemplateLine[]
+  openingBalances      OpeningBalance[]
+  auditEvents          AuditEvent[]
+  sieImports           SieImport[]
+  sieExports           SieExport[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  userId         String                 @map("user_id") @db.Uuid
+  role           OrganizationMemberRole @default(MEMBER)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([organizationId, userId])
+  @@unique([id, organizationId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model FiscalYear {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  name           String           @db.VarChar(80)
+  startDate      DateTime         @map("start_date") @db.Date
+  endDate        DateTime         @map("end_date") @db.Date
+  status         FiscalYearStatus @default(OPEN)
+  closedAt       DateTime?        @map("closed_at") @db.Timestamptz(3)
+  closedById     String?          @map("closed_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  closedBy          User?              @relation("FiscalYearClosedBy", fields: [closedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  accountingPeriods AccountingPeriod[]
+  voucherSeries     VoucherSeries[]
+  journalEntries    JournalEntry[]
+  openingBalances   OpeningBalance[]
+  sieImports        SieImport[]
+  sieExports        SieExport[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, startDate])
+  @@unique([id, organizationId])
+  @@index([organizationId, startDate, endDate])
+  @@map("fiscal_years")
+}
+
+model AccountingPeriod {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  fiscalYearId   String                 @map("fiscal_year_id") @db.Uuid
+  periodNumber   Int                    @map("period_number")
+  startDate      DateTime               @map("start_date") @db.Date
+  endDate        DateTime               @map("end_date") @db.Date
+  status         AccountingPeriodStatus @default(OPEN)
+  lockedAt       DateTime?              @map("locked_at") @db.Timestamptz(3)
+  lockedById     String?                @map("locked_by_id") @db.Uuid
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fiscalYear     FiscalYear     @relation(fields: [fiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  lockedBy       User?          @relation("AccountingPeriodLockedBy", fields: [lockedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  journalEntries JournalEntry[]
+
+  @@unique([organizationId, fiscalYearId, periodNumber])
+  @@unique([id, organizationId, fiscalYearId])
+  @@index([organizationId, status])
+  @@index([organizationId, fiscalYearId, startDate, endDate])
+  @@map("accounting_periods")
+}
+
+model VatCode {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  code           String      @db.VarChar(32)
+  name           String      @db.VarChar(160)
+  rate           Decimal     @db.Decimal(5, 2)
+  type           VatCodeType
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  accounts             Account[]
+  journalLines         JournalLine[]
+  postingTemplateLines PostingTemplateLine[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, type, isActive])
+  @@map("vat_codes")
+}
+
+model Account {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  accountNumber  String      @map("account_number") @db.VarChar(16)
+  name           String      @db.VarChar(160)
+  description    String?     @db.VarChar(500)
+  type           AccountType
+  normalBalance  BalanceSide @map("normal_balance")
+  vatCodeId      String?     @map("vat_code_id") @db.Uuid
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  vatCode              VatCode?              @relation(fields: [vatCodeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  journalLines         JournalLine[]
+  postingTemplateLines PostingTemplateLine[]
+  openingBalances      OpeningBalance[]
+
+  @@unique([organizationId, accountNumber])
+  @@unique([id, organizationId])
+  @@index([organizationId, type, isActive])
+  @@index([organizationId, vatCodeId])
+  @@map("accounts")
+}
+
+model VoucherSeries {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  fiscalYearId      String   @map("fiscal_year_id") @db.Uuid
+  code              String   @db.VarChar(16)
+  name              String   @db.VarChar(160)
+  nextVoucherNumber Int      @default(1) @map("next_voucher_number")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fiscalYear     FiscalYear     @relation(fields: [fiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  journalEntries JournalEntry[]
+
+  @@unique([organizationId, fiscalYearId, code])
+  @@unique([id, organizationId, fiscalYearId])
+  @@index([organizationId, fiscalYearId, isActive])
+  @@map("voucher_series")
+}
+
+model Project {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String   @db.VarChar(32)
+  name           String   @db.VarChar(160)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  journalLines         JournalLine[]
+  postingTemplateLines PostingTemplateLine[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, isActive])
+  @@map("projects")
+}
+
+model CostCenter {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String   @db.VarChar(32)
+  name           String   @db.VarChar(160)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  journalLines         JournalLine[]
+  postingTemplateLines PostingTemplateLine[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, isActive])
+  @@map("cost_centers")
+}
+
+model SieImport {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  fiscalYearId       String?      @map("fiscal_year_id") @db.Uuid
+  sourceAttachmentId String       @map("source_attachment_id") @db.Uuid
+  status             SieJobStatus @default(PENDING)
+  sourceSystem       String?      @map("source_system") @db.VarChar(160)
+  importedById       String?      @map("imported_by_id") @db.Uuid
+  startedAt          DateTime?    @map("started_at") @db.Timestamptz(3)
+  completedAt        DateTime?    @map("completed_at") @db.Timestamptz(3)
+  importedEntryCount Int          @default(0) @map("imported_entry_count")
+  skippedEntryCount  Int          @default(0) @map("skipped_entry_count")
+  errorDetails       Json?        @map("error_details")
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fiscalYear       FiscalYear?    @relation(fields: [fiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  sourceAttachment Attachment     @relation("SieImportSourceAttachment", fields: [sourceAttachmentId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  importedBy       User?          @relation("SieImportInitiatedBy", fields: [importedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  journalEntries   JournalEntry[]
+
+  @@unique([organizationId, sourceAttachmentId])
+  @@unique([id, organizationId])
+  @@index([organizationId, status, createdAt])
+  @@map("sie_imports")
+}
+
+model JournalEntry {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @map("organization_id") @db.Uuid
+  fiscalYearId       String             @map("fiscal_year_id") @db.Uuid
+  accountingPeriodId String             @map("accounting_period_id") @db.Uuid
+  voucherSeriesId    String?            @map("voucher_series_id") @db.Uuid
+  voucherNumber      Int?               @map("voucher_number")
+  status             JournalEntryStatus @default(DRAFT)
+  source             JournalEntrySource @default(MANUAL)
+  entryDate          DateTime           @map("entry_date") @db.Date
+  description        String             @db.VarChar(500)
+  reference          String?            @db.VarChar(160)
+  createdById        String?            @map("created_by_id") @db.Uuid
+  postedById         String?            @map("posted_by_id") @db.Uuid
+  postedAt           DateTime?          @map("posted_at") @db.Timestamptz(3)
+  reversalOfEntryId  String?            @map("reversal_of_entry_id") @db.Uuid
+  sieImportId        String?            @map("sie_import_id") @db.Uuid
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fiscalYear       FiscalYear       @relation(fields: [fiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId, organizationId, fiscalYearId], references: [id, organizationId, fiscalYearId], onDelete: Restrict, onUpdate: Restrict)
+  voucherSeries    VoucherSeries?   @relation(fields: [voucherSeriesId, organizationId, fiscalYearId], references: [id, organizationId, fiscalYearId], onDelete: Restrict, onUpdate: Restrict)
+  createdBy        User?            @relation("JournalEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  postedBy         User?            @relation("JournalEntryPostedBy", fields: [postedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  reversalOf       JournalEntry?    @relation("JournalEntryReversal", fields: [reversalOfEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  reversalEntries  JournalEntry[]   @relation("JournalEntryReversal")
+  sieImport        SieImport?       @relation(fields: [sieImportId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  lines            JournalLine[]
+  attachments      Attachment[]
+
+  @@unique([organizationId, fiscalYearId, voucherSeriesId, voucherNumber])
+  @@unique([id, organizationId])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, fiscalYearId, entryDate])
+  @@index([organizationId, status, entryDate])
+  @@index([organizationId, accountingPeriodId])
+  @@index([organizationId, reversalOfEntryId])
+  @@index([organizationId, sieImportId])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  journalEntryId String   @map("journal_entry_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Uuid
+  vatCodeId      String?  @map("vat_code_id") @db.Uuid
+  projectId      String?  @map("project_id") @db.Uuid
+  costCenterId   String?  @map("cost_center_id") @db.Uuid
+  lineNumber     Int      @map("line_number")
+  description    String?  @db.VarChar(500)
+  debitAmount    Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount   Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  quantity       Decimal? @db.Decimal(18, 4)
+  unit           String?  @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  journalEntry JournalEntry @relation(fields: [journalEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  account      Account      @relation(fields: [accountId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  vatCode      VatCode?     @relation(fields: [vatCodeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  project      Project?     @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  costCenter   CostCenter?  @relation(fields: [costCenterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([organizationId, journalEntryId, lineNumber])
+  @@index([organizationId, accountId])
+  @@index([organizationId, vatCodeId])
+  @@index([organizationId, projectId])
+  @@index([organizationId, costCenterId])
+  @@map("journal_lines")
+}
+
+model Attachment {
+  id               String         @id @default(uuid()) @db.Uuid
+  organizationId   String         @map("organization_id") @db.Uuid
+  journalEntryId   String?        @map("journal_entry_id") @db.Uuid
+  storageKey       String         @unique @map("storage_key") @db.VarChar(512)
+  originalFileName String         @map("original_file_name") @db.VarChar(512)
+  safeFileName     String         @map("safe_file_name") @db.VarChar(512)
+  mimeType         String         @map("mime_type") @db.VarChar(160)
+  byteSize         BigInt         @map("byte_size") @db.BigInt
+  sha256           String?        @db.Char(64)
+  kind             AttachmentKind @default(SUPPORTING_DOCUMENT)
+  uploadedById     String?        @map("uploaded_by_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  journalEntry     JournalEntry? @relation(fields: [journalEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  uploadedBy       User?         @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  sourceForImports SieImport[]   @relation("SieImportSourceAttachment")
+  outputForExports SieExport[]   @relation("SieExportOutputAttachment")
+
+  @@unique([id, organizationId])
+  @@index([organizationId, journalEntryId])
+  @@index([organizationId, sha256])
+  @@map("attachments")
+}
+
+model PostingTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  code           String   @db.VarChar(40)
+  name           String   @db.VarChar(160)
+  description    String?  @db.VarChar(500)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy    User?                 @relation("PostingTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  lines        PostingTemplateLine[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, isActive])
+  @@map("posting_templates")
+}
+
+model PostingTemplateLine {
+  id                String      @id @default(uuid()) @db.Uuid
+  organizationId    String      @map("organization_id") @db.Uuid
+  postingTemplateId String      @map("posting_template_id") @db.Uuid
+  accountId         String      @map("account_id") @db.Uuid
+  vatCodeId         String?     @map("vat_code_id") @db.Uuid
+  projectId         String?     @map("project_id") @db.Uuid
+  costCenterId      String?     @map("cost_center_id") @db.Uuid
+  lineNumber        Int         @map("line_number")
+  side              BalanceSide
+  amount            Decimal?    @db.Decimal(18, 2)
+  description       String?     @db.VarChar(500)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  postingTemplate PostingTemplate @relation(fields: [postingTemplateId, organizationId], references: [id, organizationId], onDelete: Cascade, onUpdate: Restrict)
+  account         Account         @relation(fields: [accountId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  vatCode         VatCode?        @relation(fields: [vatCodeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  project         Project?        @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  costCenter      CostCenter?     @relation(fields: [costCenterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([organizationId, postingTemplateId, lineNumber])
+  @@index([organizationId, accountId])
+  @@map("posting_template_lines")
+}
+
+model OpeningBalance {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  fiscalYearId   String   @map("fiscal_year_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Uuid
+  debitAmount    Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount   Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fiscalYear   FiscalYear   @relation(fields: [fiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  account      Account      @relation(fields: [accountId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  createdBy    User?        @relation("OpeningBalanceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+
+  @@unique([organizationId, fiscalYearId, accountId])
+  @@unique([id, organizationId])
+  @@index([organizationId, fiscalYearId])
+  @@map("opening_balances")
+}
+
+model AuditEvent {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  actorUserId    String?         @map("actor_user_id") @db.Uuid
+  action         AuditAction
+  entityType     AuditEntityType @map("entity_type")
+  entityId       String?         @map("entity_id") @db.Uuid
+  beforeData     Json?           @map("before_data")
+  afterData      Json?           @map("after_data")
+  metadata       Json?
+  ipAddress      String?         @map("ip_address") @db.VarChar(64)
+  requestId      String?         @map("request_id") @db.VarChar(100)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor        User?        @relation("AuditEventActor", fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([requestId])
+  @@map("audit_events")
+}
+
+model SieExport {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  fiscalYearId       String       @map("fiscal_year_id") @db.Uuid
+  outputAttachmentId String?      @map("output_attachment_id") @db.Uuid
+  status             SieJobStatus @default(PENDING)
+  exportedById       String?      @map("exported_by_id") @db.Uuid
+  startedAt          DateTime?    @map("started_at") @db.Timestamptz(3)
+  completedAt        DateTime?    @map("completed_at") @db.Timestamptz(3)
+  exportedEntryCount Int          @default(0) @map("exported_entry_count")
+  errorDetails       Json?        @map("error_details")
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fiscalYear       FiscalYear   @relation(fields: [fiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  outputAttachment Attachment?  @relation("SieExportOutputAttachment", fields: [outputAttachmentId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  exportedBy       User?        @relation("SieExportInitiatedBy", fields: [exportedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
+
+  @@unique([organizationId, outputAttachmentId])
+  @@unique([id, organizationId])
+  @@index([organizationId, status, createdAt])
+  @@map("sie_exports")
+}

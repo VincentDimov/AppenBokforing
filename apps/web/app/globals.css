@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #eef4f6;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: #eef4f6;
+  color: #17384b;
+  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: #b7d9e6;
+  color: #0d2c3e;
+}
