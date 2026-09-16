@@ -37,6 +37,25 @@ interface JournalLinePayload {
   description?: string;
 }
 
+interface JournalEntryResponse {
+  accountingPeriod: { id: string };
+  id: string;
+  lines: Array<{
+    account: { id: string };
+    credit: string;
+    debit: string;
+    description: string | null;
+    lineNumber: number;
+  }>;
+  reversesEntryId?: string | null;
+  reversedByEntryId?: string | null;
+  source?: string;
+  status: string;
+  totals: { credit: string; debit: string; difference: string };
+  transactionDate?: string;
+  voucherNumber: number | null;
+}
+
 const runId = randomUUID();
 const runSuffix = runId.slice(0, 12);
 const password = "A-long-integration-test-password-2026!";
@@ -239,6 +258,194 @@ describe("journal entries and double-entry bookkeeping", () => {
     ).rejects.toThrow("Lines on posted journal entries are immutable");
   });
 
+  it("creates an auditable posted correction with exactly opposite lines and reciprocal links", async () => {
+    const original = await createPosted(ownerAgent);
+
+    const correctionResponse = await ownerAgent
+      .post(`/journal-entries/${original.id}/reverse`)
+      .send(reversePayload())
+      .expect(201);
+    const correction = correctionResponse.body as JournalEntryResponse;
+
+    expect(correction).toMatchObject({
+      reversesEntryId: original.id,
+      source: "REVERSAL",
+      status: "POSTED",
+      transactionDate: "2026-01-15"
+    });
+    expect(correction.voucherNumber).toBe((original.voucherNumber ?? 0) + 1);
+    expectOppositeLines(original, correction);
+
+    const originalAfter = (await ownerAgent.get(`/journal-entries/${original.id}`).expect(200))
+      .body as JournalEntryResponse;
+    expect(originalAfter).toMatchObject({
+      id: original.id,
+      reversedByEntryId: correction.id,
+      status: "POSTED"
+    });
+    expect(originalAfter.lines).toEqual(original.lines);
+
+    await expect(
+      prisma.auditEvent.findFirst({
+        where: {
+          action: AuditAction.CREATE,
+          actorUserId: owner.id,
+          entityId: correction.id,
+          entityType: AuditEntityType.JOURNAL_ENTRY,
+          organizationId: organizationA.id
+        }
+      })
+    ).resolves.not.toBeNull();
+    await expect(
+      prisma.auditEvent.findFirst({
+        where: {
+          action: AuditAction.POST,
+          actorUserId: owner.id,
+          entityId: correction.id,
+          entityType: AuditEntityType.JOURNAL_ENTRY,
+          organizationId: organizationA.id
+        }
+      })
+    ).resolves.not.toBeNull();
+    await expect(
+      prisma.auditEvent.findFirst({
+        where: {
+          action: AuditAction.REVERSE,
+          actorUserId: owner.id,
+          entityId: original.id,
+          entityType: AuditEntityType.JOURNAL_ENTRY,
+          organizationId: organizationA.id
+        }
+      })
+    ).resolves.not.toBeNull();
+  });
+
+  it("rejects a correction into a locked target period without consuming a voucher number", async () => {
+    const original = await createPosted(ownerAgent);
+    const before = await prisma.voucherSeries.findUniqueOrThrow({
+      select: { nextVoucherNumber: true },
+      where: { id: calendarA.voucherSeriesId }
+    });
+
+    await ownerAgent
+      .post(`/journal-entries/${original.id}/reverse`)
+      .send(reversePayload("2026-02-15"))
+      .expect(409);
+
+    const [after, corrections, originalAfter] = await Promise.all([
+      prisma.voucherSeries.findUniqueOrThrow({
+        select: { nextVoucherNumber: true },
+        where: { id: calendarA.voucherSeriesId }
+      }),
+      prisma.journalEntry.findMany({
+        select: { id: true },
+        where: {
+          organizationId: organizationA.id,
+          reversesEntryId: original.id
+        }
+      }),
+      ownerAgent.get(`/journal-entries/${original.id}`).expect(200)
+    ]);
+
+    expect(after.nextVoucherNumber).toBe(before.nextVoucherNumber);
+    expect(corrections).toEqual([]);
+    expect(originalAfter.body).toMatchObject({
+      id: original.id,
+      reversedByEntryId: null,
+      status: "POSTED"
+    });
+  });
+
+  it("requires authentication and organization membership to create a correction", async () => {
+    await request(app.getHttpServer())
+      .post(`/journal-entries/${randomUUID()}/reverse`)
+      .send(reversePayload())
+      .expect(401);
+
+    const original = await createPosted(ownerAgent);
+
+    await otherOwnerAgent
+      .post(`/journal-entries/${original.id}/reverse`)
+      .send(reversePayload())
+      .expect(404);
+  });
+
+  it("prevents read-only members from creating corrections", async () => {
+    const original = await createPosted(ownerAgent);
+
+    await readOnlyAgent
+      .post(`/journal-entries/${original.id}/reverse`)
+      .send(reversePayload())
+      .expect(403);
+  });
+
+  it("allows exactly one correction when the same posted voucher is reversed concurrently", async () => {
+    const original = await createPosted(ownerAgent);
+
+    const responses = await Promise.all([
+      ownerAgent.post(`/journal-entries/${original.id}/reverse`).send(reversePayload()),
+      ownerAgent.post(`/journal-entries/${original.id}/reverse`).send(reversePayload())
+    ]);
+    const successfulResponses = responses.filter((response) => response.status === 201);
+    const failedResponses = responses.filter((response) => response.status !== 201);
+
+    expect(successfulResponses).toHaveLength(1);
+    expect(failedResponses).toHaveLength(1);
+    expect(failedResponses[0]?.status).toBe(409);
+
+    const correction = successfulResponses[0]?.body as JournalEntryResponse;
+    const corrections = await prisma.journalEntry.findMany({
+      select: {
+        id: true,
+        reversesEntryId: true,
+        source: true,
+        status: true
+      },
+      where: {
+        organizationId: organizationA.id,
+        reversesEntryId: original.id
+      }
+    });
+
+    expect(corrections).toEqual([
+      expect.objectContaining({
+        id: correction.id,
+        reversesEntryId: original.id,
+        source: "REVERSAL",
+        status: "POSTED"
+      })
+    ]);
+  });
+
+  it("can correct a historical voucher into a later open period after its source period is locked", async () => {
+    const original = await createPosted(ownerAgent);
+
+    await prisma.accountingPeriod.create({
+      data: {
+        endDate: new Date("2026-03-31T00:00:00.000Z"),
+        fiscalYearId: calendarA.fiscalYearId,
+        organizationId: organizationA.id,
+        periodNumber: 3,
+        startDate: new Date("2026-03-01T00:00:00.000Z")
+      }
+    });
+    await prisma.accountingPeriod.update({
+      data: { lockedAt: new Date(), status: "LOCKED" },
+      where: { id: calendarA.openPeriodId }
+    });
+
+    const correction = await ownerAgent
+      .post(`/journal-entries/${original.id}/reverse`)
+      .send(reversePayload("2026-03-15"))
+      .expect(201);
+
+    expect(correction.body).toMatchObject({
+      reversesEntryId: original.id,
+      status: "POSTED",
+      transactionDate: "2026-03-15"
+    });
+  });
+
   function draftHeader(transactionDate = "2026-01-15") {
     return {
       description: "Integration journal entry",
@@ -260,6 +467,43 @@ describe("journal entries and double-entry bookkeeping", () => {
     ];
   }
 
+  function reversePayload(transactionDate = "2026-01-15") {
+    return {
+      description: "Integration correction",
+      transactionDate,
+      voucherSeriesId: calendarA.voucherSeriesId
+    };
+  }
+
+  async function createPosted(
+    agent: ReturnType<typeof request.agent>,
+    lines: JournalLinePayload[] = balancedLines(),
+    transactionDate = "2026-01-15"
+  ): Promise<JournalEntryResponse> {
+    const draft = await createDraft(agent, lines, transactionDate);
+    const response = await agent.post(`/journal-entries/${draft.id}/post`).expect(201);
+
+    return response.body as JournalEntryResponse;
+  }
+
+  function expectOppositeLines(original: JournalEntryResponse, correction: JournalEntryResponse) {
+    expect(correction.lines).toHaveLength(original.lines.length);
+
+    for (const originalLine of original.lines) {
+      const correctionLine = correction.lines.find(
+        (line) => line.lineNumber === originalLine.lineNumber
+      );
+
+      expect(correctionLine).toMatchObject({
+        account: { id: originalLine.account.id },
+        credit: originalLine.debit,
+        debit: originalLine.credit,
+        description: originalLine.description,
+        lineNumber: originalLine.lineNumber
+      });
+    }
+  }
+
   async function createDraft(
     agent: ReturnType<typeof request.agent>,
     lines: JournalLinePayload[],
@@ -270,13 +514,7 @@ describe("journal entries and double-entry bookkeeping", () => {
       .send({ ...draftHeader(transactionDate), lines })
       .expect(201);
 
-    return response.body as {
-      accountingPeriod: { id: string };
-      id: string;
-      status: string;
-      totals: { credit: string; debit: string; difference: string };
-      voucherNumber: number | null;
-    };
+    return response.body as JournalEntryResponse;
   }
 });
 

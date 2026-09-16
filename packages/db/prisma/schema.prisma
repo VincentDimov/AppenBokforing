@@ -63,6 +63,7 @@ enum JournalEntrySource {
   POSTING_TEMPLATE
   OPENING_BALANCE
   SIE_IMPORT
+  REVERSAL
 }
 
 enum AttachmentKind {
@@ -415,7 +416,7 @@ model JournalEntry {
   createdById        String?            @map("created_by_id") @db.Uuid
   postedById         String?            @map("posted_by_id") @db.Uuid
   postedAt           DateTime?          @map("posted_at") @db.Timestamptz(3)
-  reversalOfEntryId  String?            @map("reversal_of_entry_id") @db.Uuid
+  reversesEntryId    String?            @map("reverses_entry_id") @db.Uuid
   sieImportId        String?            @map("sie_import_id") @db.Uuid
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -426,19 +427,20 @@ model JournalEntry {
   voucherSeries    VoucherSeries?   @relation(fields: [voucherSeriesId, organizationId, fiscalYearId], references: [id, organizationId, fiscalYearId], onDelete: Restrict, onUpdate: Restrict)
   createdBy        User?            @relation("JournalEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull, onUpdate: Restrict)
   postedBy         User?            @relation("JournalEntryPostedBy", fields: [postedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
-  reversalOf       JournalEntry?    @relation("JournalEntryReversal", fields: [reversalOfEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
-  reversalEntries  JournalEntry[]   @relation("JournalEntryReversal")
+  reversesEntry    JournalEntry?    @relation("JournalEntryReversal", fields: [reversesEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  reversedByEntry  JournalEntry?    @relation("JournalEntryReversal")
   sieImport        SieImport?       @relation(fields: [sieImportId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
   lines            JournalLine[]
   attachments      Attachment[]
 
   @@unique([organizationId, fiscalYearId, voucherSeriesId, voucherNumber])
+  @@unique([reversesEntryId, organizationId])
   @@unique([id, organizationId])
   @@index([organizationId, entryDate])
   @@index([organizationId, fiscalYearId, entryDate])
   @@index([organizationId, status, entryDate])
   @@index([organizationId, accountingPeriodId])
-  @@index([organizationId, reversalOfEntryId])
+  @@index([organizationId, reversesEntryId])
   @@index([organizationId, sieImportId])
   @@map("journal_entries")
 }
@@ -476,19 +478,21 @@ model JournalLine {
 }
 
 model Attachment {
-  id               String         @id @default(uuid()) @db.Uuid
-  organizationId   String         @map("organization_id") @db.Uuid
-  journalEntryId   String?        @map("journal_entry_id") @db.Uuid
-  storageKey       String         @unique @map("storage_key") @db.VarChar(512)
-  originalFileName String         @map("original_file_name") @db.VarChar(512)
-  safeFileName     String         @map("safe_file_name") @db.VarChar(512)
-  mimeType         String         @map("mime_type") @db.VarChar(160)
-  byteSize         BigInt         @map("byte_size") @db.BigInt
-  sha256           String?        @db.Char(64)
-  kind             AttachmentKind @default(SUPPORTING_DOCUMENT)
-  uploadedById     String?        @map("uploaded_by_id") @db.Uuid
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  journalEntryId String?        @map("journal_entry_id") @db.Uuid
+  storageKey     String         @unique @map("storage_key") @db.VarChar(512)
+  originalName   String         @map("original_file_name") @db.VarChar(512)
+  // Retained as internal, safe response metadata for existing storage clients.
+  // It is generated server-side and is never a storage path component.
+  safeFileName String         @map("safe_file_name") @db.VarChar(512)
+  mimeType     String         @map("mime_type") @db.VarChar(160)
+  size         BigInt         @map("byte_size") @db.BigInt
+  sha256       String         @db.Char(64)
+  kind         AttachmentKind @default(SUPPORTING_DOCUMENT)
+  uploadedById String?        @map("uploaded_by_id") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   journalEntry     JournalEntry? @relation(fields: [journalEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
@@ -497,7 +501,7 @@ model Attachment {
   outputForExports SieExport[]   @relation("SieExportOutputAttachment")
 
   @@unique([id, organizationId])
-  @@index([organizationId, journalEntryId])
+  @@index([organizationId, journalEntryId, createdAt])
   @@index([organizationId, sha256])
   @@map("attachments")
 }

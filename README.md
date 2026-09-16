@@ -1,9 +1,9 @@
 # LedgerApp
 
 LedgerApp är en svensk, flerorganisationsbaserad bokföringsapplikation under
-utveckling. Fas 1–6 innehåller plattform, PostgreSQL-domän, säker
+utveckling. Fas 1–7 innehåller plattform, PostgreSQL-domän, säker
 autentisering, organisationsbehörighet, applikationsskal, kontoregister och
-ett dubbel bokföringsflöde för verifikationer.
+ett dubbel bokföringsflöde för verifikationer med spårbara rättelser.
 
 ## Starta lokalt
 
@@ -58,6 +58,29 @@ inte ändras eller tas bort. Appvyerna finns på
 `/bookkeeping/vouchers`, `/bookkeeping/vouchers/new` och
 `/bookkeeping/vouchers/:id` (med motsvarande `/app/...`-länkar i sidomenyn).
 
+## Rättelser av bokförda verifikationer
+
+`POST /journal-entries/:id/reverse` skapar en spårbar rättelse i stället för
+att ändra bokföringshistoriken. Begäran anger rättelsens
+`transactionDate` och `voucherSeriesId`, samt kan ange en valfri beskrivning.
+Den nya verifikationen får källan `REVERSAL`, bokförs direkt och innehåller
+samma rader som originalet med exakt omvända debet- och kreditbelopp.
+
+Rättelsens datum måste tillhöra ett öppet räkenskapsår och en öppen
+redovisningsperiod, och den valda serien måste vara tillgänglig i det
+räkenskapsåret. Det gör det möjligt att rätta en historisk verifikation i en
+senare, öppen period utan att öppna eller skriva om den gamla perioden.
+Originalets belopp, rader och status förblir oförändrade och bokförda.
+
+Varje rättelse länkar tenant-säkert till sitt original via
+`reverses_entry_id`. En unikhetsspärr per organisation tillåter högst en
+rättelse per original; API:t exponerar den omvända länken som
+`reversedByEntryId`. Båda verifikationerna är skrivskyddade efter bokföring.
+Flödet skapar audit-händelser för skapande och bokföring av rättelsen samt en
+`REVERSE`-händelse på originalet. Frontend visar länkar mellan original- och
+rättelseverifikationen och erbjuder inga destruktiva åtgärder för bokförda
+poster.
+
 Webben proxar `/api/*` till `API_INTERNAL_URL`, vilket gör cookies förstapart
 för browser-origin och håller tokenvärden borta från JavaScript-lagring.
 
@@ -66,6 +89,22 @@ behörighetsmatris, ratelimits och konfiguration. Läs
 [database.md](docs/database.md) för ER-diagram och integritetsregler. Läs
 [chart-of-accounts-import.md](docs/chart-of-accounts-import.md) för den
 licensmedvetna importgränsen för kontoplaner.
+
+## Bilagor till verifikationer
+
+Sparade utkast kan få underlag via `POST /journal-entries/:id/attachments`.
+`GET /journal-entries/:id/attachments` visar auktoriserad metadata och
+`GET /attachments/:id/download` utfärdar en kortlivad signerad nedladdningslänk.
+Endast PDF, JPEG, PNG och WEBP tas emot, högst 10 MiB per fil. Servern
+validerar filändelse, MIME-typ och filsignatur, skapar en SHA-256-kontrollsumma
+och använder alltid en genererad lagringsnyckel i den privata MinIO/S3-bucketen.
+Bilagor kan läggas till medan en verifikation är utkast och bevaras när den
+bokförs; nya uppladdningar till bokförda verifikationer blockeras.
+
+`S3_ENDPOINT` ska vara tillgänglig för API:t. Om den interna S3-adressen inte
+kan nås av webbläsaren anges dessutom `S3_PUBLIC_ENDPOINT`; den adressen
+används i signerade nedladdningslänkar. Standardgiltigheten är fem minuter och
+kan justeras med `S3_SIGNED_URL_TTL_SECONDS` (max en timme).
 
 ## Vanliga kommandon
 
@@ -98,4 +137,5 @@ corepack pnpm test:integration
 
 Anpassa anslutningssträngen om lokala PostgreSQL-värden har ändrats. Testerna
 skriver bara till `ledgerapp_test`, aldrig till utvecklingsdatabasen `ledgerapp`.
+
 # AppBokf-ring

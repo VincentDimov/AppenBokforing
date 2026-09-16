@@ -7,6 +7,7 @@ import { RequireOrganizationPermission } from "../organizations/decorators/requi
 import { CreateJournalEntryDto } from "./dto/create-journal-entry.dto";
 import { JournalEntryOptionsQueryDto } from "./dto/journal-entry-options-query.dto";
 import { ListJournalEntriesQueryDto } from "./dto/list-journal-entries-query.dto";
+import { ReverseJournalEntryDto } from "./dto/reverse-journal-entry.dto";
 import { UpdateJournalEntryDto } from "./dto/update-journal-entry.dto";
 import { JournalEntriesOrganizationGuard } from "./journal-entries-organization.guard";
 import { JournalEntriesService } from "./journal-entries.service";
@@ -95,6 +96,25 @@ export class JournalEntriesController {
       this.getOrganizationId(request),
       journalEntryId,
       user.id,
+      this.getAuditMetadata(request)
+    );
+  }
+
+  @Post(":id/reverse")
+  @UseGuards(JournalEntryResourceGuard)
+  @RequireOrganizationPermission("CREATE_BOOKKEEPING")
+  @ApiOperation({ summary: "Create and atomically post an immutable correction voucher" })
+  reverse(
+    @Param("id") journalEntryId: string,
+    @Body() dto: ReverseJournalEntryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.journalEntriesService.reverse(
+      this.getOrganizationId(request),
+      journalEntryId,
+      user.id,
+      dto,
       this.getAuditMetadata(request)
     );
   }

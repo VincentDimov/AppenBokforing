@@ -28,6 +28,20 @@ const journalEntryMigration = await readFile(
   ),
   "utf8"
 );
+const journalEntryCorrectionsMigration = await readFile(
+  new URL(
+    "../prisma/migrations/20260915090000_journal_entry_corrections/migration.sql",
+    import.meta.url
+  ),
+  "utf8"
+);
+const accountingAttachmentsMigration = await readFile(
+  new URL(
+    "../prisma/migrations/20260915110000_accounting_attachments/migration.sql",
+    import.meta.url
+  ),
+  "utf8"
+);
 
 test("organization member roles are an explicit least-privilege enum", () => {
   assert.match(
@@ -111,5 +125,37 @@ test("posted journal entries have database-enforced calendar, balance and immuta
   assert.match(
     journalEntryMigration,
     /journal_entries_organization_id_fiscal_year_id_entry_date_idx/
+  );
+});
+
+test("corrections use one tenant-safe reversal link and database-enforced inverse lines", () => {
+  assert.match(schema, /enum JournalEntrySource\s*{[\s\S]*REVERSAL/);
+  assert.match(schema, /reversesEntryId\s+String\?\s+@map\("reverses_entry_id"\)/);
+  assert.match(
+    schema,
+    /reversesEntry\s+JournalEntry\?\s+@relation\([^\n]*fields:\s*\[reversesEntryId,\s*organizationId\][^\n]*onDelete: Restrict/
+  );
+  assert.match(schema, /reversedByEntry\s+JournalEntry\?\s+@relation\("JournalEntryReversal"\)/);
+  assert.match(schema, /@@unique\(\[reversesEntryId,\s*organizationId\]\)/);
+  assert.match(journalEntryCorrectionsMigration, /reverses_entry_not_self_check/);
+  assert.match(journalEntryCorrectionsMigration, /journal_entries_correction_integrity/);
+  assert.match(journalEntryCorrectionsMigration, /exact debit-credit opposites/);
+});
+
+test("attachments keep verified evidence tenant-safe, private and retention-oriented", () => {
+  assert.match(schema, /originalName\s+String\s+@map\("original_file_name"\)/);
+  assert.match(schema, /size\s+BigInt\s+@map\("byte_size"\)\s+@db\.BigInt/);
+  assert.match(schema, /sha256\s+String\s+@db\.Char\(64\)/);
+  assert.match(
+    schema,
+    /journalEntry\s+JournalEntry\?\s+@relation\(fields:\s*\[journalEntryId,\s*organizationId\],[^\n]*onDelete: Restrict/
+  );
+  assert.match(schema, /@@index\(\[organizationId,\s*journalEntryId,\s*createdAt\]\)/);
+  assert.match(accountingAttachmentsMigration, /attachments_size_range_check/);
+  assert.match(accountingAttachmentsMigration, /attachments_sha256_lower_hex_check/);
+  assert.match(accountingAttachmentsMigration, /ALTER COLUMN "sha256" SET NOT NULL/);
+  assert.match(
+    accountingAttachmentsMigration,
+    /attachments_organization_id_journal_entry_id_created_at_idx/
   );
 });

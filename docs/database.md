@@ -77,8 +77,10 @@ erDiagram
     uuid fiscal_year_id FK
     uuid accounting_period_id FK
     uuid voucher_series_id FK
+    uuid reverses_entry_id FK
     int voucher_number
     enum status
+    enum source
   }
   JOURNAL_LINE {
     uuid id PK
@@ -170,7 +172,7 @@ erDiagram
   VAT_CODE o|--o{ JOURNAL_LINE : applies
   PROJECT o|--o{ JOURNAL_LINE : allocates
   COST_CENTER o|--o{ JOURNAL_LINE : allocates
-  JOURNAL_ENTRY o|--o{ JOURNAL_ENTRY : reverses
+  JOURNAL_ENTRY o|--o| JOURNAL_ENTRY : corrected_by
 
   ORGANIZATION ||--o{ ATTACHMENT : owns
   JOURNAL_ENTRY o|--o{ ATTACHMENT : documents
@@ -231,22 +233,36 @@ case-insensitive concurrency backstop.
   DECIMAL(18,4), and VAT rates use DECIMAL(5,2); floats are not used.
 - A voucher identity is unique across organization_id, fiscal_year_id,
   voucher_series_id and voucher_number. Drafts cannot take a voucher number.
-  Posted and reversed entries require a series, positive number and posting
-  timestamp. The posting transaction allocates the number with one atomic
+  Posted entries, including `REVERSAL` corrections, require a series, positive
+  number and posting timestamp. The posting transaction allocates the number with one atomic
   `UPDATE … RETURNING` on the fiscal-year-scoped voucher-series row; the unique
   constraint remains the final concurrency backstop.
 - Journal lines and opening balances must have exactly one positive debit or
-  credit amount. A deferred PostgreSQL constraint trigger requires posted and
-  reversed entries to contain at least two lines and balance exactly at
+  credit amount. A deferred PostgreSQL constraint trigger requires posted
+  entries, including corrections, to contain at least two lines and balance exactly at
   transaction commit.
 - Fiscal year date ranges are valid and cannot overlap within an organization.
   Accounting periods have a valid date range and a period number from 1 to 13.
 - A journal-entry trigger confirms that its date sits inside both its fiscal
   year and accounting period. Posting additionally requires that both are
   open; a locked period cannot be bypassed through a direct SQL client.
-- Drafts may be edited, but PostgreSQL blocks updates or deletes of posted and
-  reversed journal entries and their lines. `AuditEvent` records every create,
-  draft update and post, and is itself immutable.
+- Drafts may be edited, but PostgreSQL blocks updates or deletes of posted
+  journal entries and their lines. A correction is a new posted entry: it never
+  overwrites the original entry's values, lines or status. `AuditEvent` records
+  every create, draft update and post, plus `CREATE` and `POST` for a
+  correction and `REVERSE` for its original; audit history is itself immutable.
+- A correction uses `source = REVERSAL` and stores a tenant-safe
+  `reverses_entry_id` foreign key to its original. The unique
+  `(reverses_entry_id, organization_id)` constraint permits only one correction
+  for each original entry. `reversedByEntryId` is an API-facing derived inverse
+  of that relation, not a separately mutable accounting link. The correction's
+  lines retain the original dimensions and reverse every debit and credit
+  amount exactly.
+- `POST /journal-entries/:id/reverse` accepts a target transaction date,
+  voucher series and optional description. The target date is resolved to its
+  fiscal year and accounting period, both of which must be open before the
+  correction can be posted. Thus a closed historical period can be corrected
+  through a later open period without mutating its historical journal entry.
 - AuditEvent is intentionally polymorphic through entity_type and entity_id,
   so it cannot have one conventional entity foreign key. A database trigger
   blocks updates and deletes of audit history.
@@ -260,11 +276,35 @@ All foreign keys declare an explicit action.
 | Session to User                                                                     | CASCADE  | Sessions are disposable credentials.                            |
 | Replaced session to successor session                                               | SET NULL | A successor is retained if a disposable predecessor is removed. |
 | PostingTemplateLine to PostingTemplate                                              | CASCADE  | Template lines are mutable configuration, not ledger history.   |
+| Correction JournalEntry to original JournalEntry                                    | RESTRICT | Preserves both sides of the accounting correction trail.        |
 | Accounting records, fiscal years, accounts, dimensions, attachments and SIE records | RESTRICT | Prevents accidental loss of bookkeeping history.                |
 | Optional actor/uploader references to User                                          | SET NULL | Preserves the historical record if an identity is removed.      |
 
 Organizations, accounts, VAT codes, projects, cost centers and voucher series
 are designed to be deactivated rather than casually deleted.
+
+## Attachment evidence and object storage
+
+Accounting evidence uses the existing tenant-safe `Attachment` relation to a
+journal entry. The metadata stored for a voucher attachment is its UUID,
+organization and journal-entry IDs, sanitized display name, generated storage
+key, verified MIME type, byte size, SHA-256 checksum, uploader and creation
+time. The storage key is never exposed by the API.
+
+The upload boundary accepts only PDF, JPEG, PNG and WEBP, with a 10 MiB maximum.
+It requires the extension, client-declared MIME type and magic bytes to agree,
+and records a lowercase SHA-256 checksum calculated from the verified bytes.
+The database also requires a positive bounded size and a 64-character lowercase
+checksum. Attachment-to-entry and attachment-to-organization foreign keys use
+`RESTRICT`; attached evidence is retained after a draft is posted and cannot be
+casually deleted alongside accounting history.
+
+Objects are private in S3-compatible storage. Object keys are generated beneath
+the owning organization and journal entry, rather than derived from a supplied
+filename. Download requests pass membership authorization before the server
+returns a short-lived signed URL. `S3_ENDPOINT` is the service endpoint used by
+the API. When that endpoint is internal to a deployment, `S3_PUBLIC_ENDPOINT`
+must be browser-reachable because it is embedded in signed download URLs.
 
 ## Chart of accounts scope
 

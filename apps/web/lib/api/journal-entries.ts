@@ -1,4 +1,6 @@
 export type JournalEntryStatus = "DRAFT" | "POSTED" | "REVERSED";
+export type JournalEntrySource =
+  "MANUAL" | "POSTING_TEMPLATE" | "OPENING_BALANCE" | "SIE_IMPORT" | "REVERSAL";
 
 export interface JournalEntryAccount {
   id: string;
@@ -20,6 +22,14 @@ export interface VoucherSeriesSummary {
   code: string;
   id: string;
   name: string;
+}
+
+export interface JournalEntryLink {
+  id: string;
+  status: JournalEntryStatus;
+  transactionDate: string;
+  voucherNumber: number | null;
+  voucherSeries: VoucherSeriesSummary | null;
 }
 
 export interface JournalEntryLine {
@@ -55,6 +65,11 @@ export interface JournalEntry {
   lines: JournalEntryLine[];
   organizationId: string;
   postedAt: string | null;
+  reversedByEntry: JournalEntryLink | null;
+  reversedByEntryId: string | null;
+  reversesEntry: JournalEntryLink | null;
+  reversesEntryId: string | null;
+  source: JournalEntrySource;
   status: JournalEntryStatus;
   totals: { credit: string; debit: string; difference: string };
   transactionDate: string;
@@ -85,6 +100,12 @@ export interface JournalEntryOptions {
   accountingPeriod: JournalEntry["accountingPeriod"];
   fiscalYear: JournalEntry["fiscalYear"];
   voucherSeries: VoucherSeriesSummary[];
+}
+
+export interface ReverseJournalEntryInput {
+  description?: string;
+  transactionDate: string;
+  voucherSeriesId: string;
 }
 
 export class JournalEntriesApiError extends Error {
@@ -164,6 +185,13 @@ export function updateJournalEntry(
 
 export function postJournalEntry(journalEntryId: string): Promise<JournalEntry> {
   return requestJournalEntry(`/api/journal-entries/${journalEntryId}/post`, "POST");
+}
+
+export function reverseJournalEntry(
+  journalEntryId: string,
+  input: ReverseJournalEntryInput
+): Promise<JournalEntry> {
+  return requestJournalEntry(`/api/journal-entries/${journalEntryId}/reverse`, "POST", input);
 }
 
 async function requestJournalEntry(

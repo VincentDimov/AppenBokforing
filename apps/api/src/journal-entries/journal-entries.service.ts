@@ -9,6 +9,7 @@ import {
   AuditAction,
   AuditEntityType,
   FiscalYearStatus,
+  JournalEntrySource,
   JournalEntryStatus,
   Prisma,
   PrismaClient
@@ -19,6 +20,7 @@ import { CreateJournalEntryDto } from "./dto/create-journal-entry.dto";
 import { JournalEntryOptionsQueryDto } from "./dto/journal-entry-options-query.dto";
 import { JournalLineDto } from "./dto/journal-line.dto";
 import { ListJournalEntriesQueryDto } from "./dto/list-journal-entries-query.dto";
+import { ReverseJournalEntryDto } from "./dto/reverse-journal-entry.dto";
 import { UpdateJournalEntryDto } from "./dto/update-journal-entry.dto";
 
 interface JournalEntryAuditMetadata {
@@ -42,6 +44,16 @@ interface PreparedJournalLine {
 }
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
+
+const journalEntryLinkSelect = {
+  entryDate: true,
+  id: true,
+  status: true,
+  voucherNumber: true,
+  voucherSeries: {
+    select: { code: true, id: true, name: true }
+  }
+} satisfies Prisma.JournalEntrySelect;
 
 const journalEntryInclude = {
   accountingPeriod: {
@@ -81,6 +93,12 @@ const journalEntryInclude = {
   },
   voucherSeries: {
     select: { code: true, id: true, name: true }
+  },
+  reversedByEntry: {
+    select: journalEntryLinkSelect
+  },
+  reversesEntry: {
+    select: journalEntryLinkSelect
   }
 } satisfies Prisma.JournalEntryInclude;
 
@@ -313,24 +331,159 @@ export class JournalEntriesService {
     throw new ConflictException("Voucher number allocation conflicted. Please retry.");
   }
 
+  /**
+   * A correction is a separate, fully posted voucher. The source voucher is
+   * never changed: the inverse link is derived from the correction's
+   * tenant-scoped foreign key and its audit event makes the relationship
+   * discoverable without rewriting historical values.
+   */
+  async reverse(
+    organizationId: string,
+    journalEntryId: string,
+    actorUserId: string,
+    dto: ReverseJournalEntryDto,
+    metadata: JournalEntryAuditMetadata
+  ) {
+    for (let attempt = 0; attempt < maxPostingAttempts; attempt += 1) {
+      try {
+        const correction = await this.database.prisma.$transaction(
+          (transaction) =>
+            this.reverseInTransaction(
+              transaction,
+              organizationId,
+              journalEntryId,
+              actorUserId,
+              dto,
+              metadata
+            ),
+          {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            maxWait: 5_000,
+            timeout: 10_000
+          }
+        );
+
+        return this.toPublicEntry(correction);
+      } catch (error) {
+        if (this.isSerializationFailure(error) && attempt < maxPostingAttempts - 1) {
+          continue;
+        }
+
+        if (this.isUniqueConstraint(error)) {
+          throw new ConflictException("A correction already exists for this journal entry.");
+        }
+
+        throw error;
+      }
+    }
+
+    throw new ConflictException("The correction conflicted with another request. Please retry.");
+  }
+
+  private async reverseInTransaction(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    journalEntryId: string,
+    actorUserId: string,
+    dto: ReverseJournalEntryDto,
+    metadata: JournalEntryAuditMetadata
+  ): Promise<JournalEntryWithRelations> {
+    await this.lockJournalEntry(transaction, organizationId, journalEntryId);
+
+    const original = await this.findDetailed(transaction, organizationId, journalEntryId);
+
+    if (!original) {
+      throw new NotFoundException("Journal entry not found.");
+    }
+
+    if (original.status !== JournalEntryStatus.POSTED) {
+      throw new ConflictException("Only posted journal entries can be corrected.");
+    }
+
+    if (original.reversesEntryId) {
+      throw new ConflictException("A correction voucher cannot itself be corrected.");
+    }
+
+    if (original.reversedByEntry) {
+      throw new ConflictException("A correction already exists for this journal entry.");
+    }
+
+    const prepared = await this.prepareReversalInput(transaction, organizationId, original, dto);
+    this.requirePostableLines(original.lines);
+
+    const created = await transaction.journalEntry.create({
+      data: {
+        accountingPeriodId: prepared.calendar.accountingPeriodId,
+        createdById: actorUserId,
+        description: prepared.description,
+        entryDate: prepared.entryDate,
+        fiscalYearId: prepared.calendar.fiscalYearId,
+        lines: {
+          create: original.lines.map((line) => ({
+            accountId: line.accountId,
+            costCenterId: line.costCenterId,
+            creditAmount: line.debitAmount,
+            debitAmount: line.creditAmount,
+            description: line.description,
+            lineNumber: line.lineNumber,
+            projectId: line.projectId,
+            quantity: line.quantity,
+            unit: line.unit,
+            vatCodeId: line.vatCodeId
+          }))
+        },
+        organizationId,
+        reference: this.buildReversalReference(original),
+        reversesEntryId: original.id,
+        source: JournalEntrySource.REVERSAL,
+        voucherSeriesId: prepared.voucherSeriesId
+      },
+      include: journalEntryInclude
+    });
+
+    await this.writeAuditEvent(transaction, created, actorUserId, AuditAction.CREATE, metadata);
+
+    const posted = await this.postInTransaction(
+      transaction,
+      organizationId,
+      created.id,
+      actorUserId,
+      metadata,
+      { requireActiveReferences: false }
+    );
+
+    const originalWithCorrection = await this.findDetailed(
+      transaction,
+      organizationId,
+      original.id
+    );
+
+    if (!originalWithCorrection?.reversedByEntry) {
+      throw new ConflictException("The correction link could not be verified.");
+    }
+
+    await this.writeAuditEvent(
+      transaction,
+      originalWithCorrection,
+      actorUserId,
+      AuditAction.REVERSE,
+      metadata,
+      original,
+      { correctionEntryId: posted.id }
+    );
+
+    return posted;
+  }
+
   private async postInTransaction(
     transaction: Prisma.TransactionClient,
     organizationId: string,
     journalEntryId: string,
     actorUserId: string,
-    metadata: JournalEntryAuditMetadata
+    metadata: JournalEntryAuditMetadata,
+    options: { requireActiveReferences?: boolean } = {}
   ): Promise<JournalEntryWithRelations> {
-    const lockedEntries = await transaction.$queryRaw<{ id: string }[]>`
-      SELECT "id"
-      FROM "journal_entries"
-      WHERE "id" = ${journalEntryId}::uuid
-        AND "organization_id" = ${organizationId}::uuid
-      FOR UPDATE
-    `;
-
-    if (lockedEntries.length !== 1) {
-      throw new NotFoundException("Journal entry not found.");
-    }
+    await this.lockJournalEntry(transaction, organizationId, journalEntryId);
 
     const before = await this.findDetailed(transaction, organizationId, journalEntryId);
 
@@ -341,7 +494,9 @@ export class JournalEntriesService {
     this.requireDraft(before.status);
     await this.requireOpenPostingCalendar(transaction, organizationId, before);
     this.requirePostableLines(before.lines);
-    await this.requireActivePersistedReferences(transaction, organizationId, before);
+    if (options.requireActiveReferences !== false) {
+      await this.requireActivePersistedReferences(transaction, organizationId, before);
+    }
 
     if (!before.voucherSeriesId) {
       throw new ConflictException("A voucher series is required before posting.");
@@ -383,6 +538,69 @@ export class JournalEntriesService {
     );
 
     return posted;
+  }
+
+  private async lockJournalEntry(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    journalEntryId: string
+  ) {
+    const lockedEntries = await transaction.$queryRaw<{ id: string }[]>`
+      SELECT "id"
+      FROM "journal_entries"
+      WHERE "id" = ${journalEntryId}::uuid
+        AND "organization_id" = ${organizationId}::uuid
+      FOR UPDATE
+    `;
+
+    if (lockedEntries.length !== 1) {
+      throw new NotFoundException("Journal entry not found.");
+    }
+  }
+
+  private async prepareReversalInput(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    original: JournalEntryWithRelations,
+    dto: ReverseJournalEntryDto
+  ) {
+    const entryDate = this.parseDate(dto.transactionDate);
+    const calendar = await this.resolveCalendar(transaction, organizationId, dto.transactionDate);
+    const voucherSeries = await transaction.voucherSeries.findFirst({
+      select: { id: true },
+      where: {
+        fiscalYearId: calendar.fiscalYearId,
+        id: dto.voucherSeriesId,
+        isActive: true,
+        organizationId
+      }
+    });
+
+    if (!voucherSeries) {
+      throw new NotFoundException("Voucher series not found.");
+    }
+
+    const suppliedDescription = dto.description?.trim();
+
+    if (dto.description !== undefined && !suppliedDescription) {
+      throw new BadRequestException("description cannot be blank.");
+    }
+
+    const originalIdentity = `${original.voucherSeries?.code ?? ""}${original.voucherNumber ?? ""}`;
+    const generatedDescription = `Rättelse av verifikation ${originalIdentity || original.id}`;
+
+    return {
+      calendar,
+      description: suppliedDescription ?? generatedDescription,
+      entryDate,
+      voucherSeriesId: voucherSeries.id
+    };
+  }
+
+  private buildReversalReference(entry: JournalEntryWithRelations) {
+    const identity = `${entry.voucherSeries?.code ?? ""}${entry.voucherNumber ?? ""}`;
+
+    return `Rättelse av ${identity || entry.id}`.slice(0, 160);
   }
 
   private async prepareDraftInput(
@@ -684,8 +902,14 @@ export class JournalEntriesService {
     actorUserId: string,
     action: AuditAction,
     metadata: JournalEntryAuditMetadata,
-    before?: JournalEntryWithRelations
+    before?: JournalEntryWithRelations,
+    eventMetadata?: Record<string, string>
   ) {
+    const persistedMetadata = {
+      ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
+      ...eventMetadata
+    };
+
     await transaction.auditEvent.create({
       data: {
         action,
@@ -695,7 +919,7 @@ export class JournalEntriesService {
         entityId: entry.id,
         entityType: AuditEntityType.JOURNAL_ENTRY,
         ipAddress: metadata.ipAddress,
-        metadata: metadata.requestId ? { requestId: metadata.requestId } : undefined,
+        metadata: Object.keys(persistedMetadata).length > 0 ? persistedMetadata : undefined,
         organizationId: entry.organizationId,
         requestId: metadata.requestId
       }
@@ -757,6 +981,11 @@ export class JournalEntriesService {
       })),
       organizationId: entry.organizationId,
       postedAt: entry.postedAt,
+      reversedByEntry: this.toJournalEntryLink(entry.reversedByEntry),
+      reversedByEntryId: entry.reversedByEntry?.id ?? null,
+      reversesEntry: this.toJournalEntryLink(entry.reversesEntry),
+      reversesEntryId: entry.reversesEntryId,
+      source: entry.source,
       status: entry.status,
       totals: {
         credit: this.toMoneyString(totals.credit),
@@ -786,6 +1015,9 @@ export class JournalEntriesService {
         vatCodeId: line.vatCodeId
       })),
       status: entry.status,
+      reversedByEntryId: entry.reversedByEntry?.id ?? null,
+      reversesEntryId: entry.reversesEntryId,
+      source: entry.source,
       totals: {
         credit: this.toMoneyString(totals.credit),
         debit: this.toMoneyString(totals.debit)
@@ -793,6 +1025,22 @@ export class JournalEntriesService {
       transactionDate: this.toDateOnly(entry.entryDate),
       voucherNumber: entry.voucherNumber,
       voucherSeriesId: entry.voucherSeriesId
+    };
+  }
+
+  private toJournalEntryLink(
+    entry: JournalEntryWithRelations["reversesEntry"] | JournalEntryWithRelations["reversedByEntry"]
+  ) {
+    if (!entry) {
+      return null;
+    }
+
+    return {
+      id: entry.id,
+      status: entry.status,
+      transactionDate: this.toDateOnly(entry.entryDate),
+      voucherNumber: entry.voucherNumber,
+      voucherSeries: entry.voucherSeries
     };
   }
 

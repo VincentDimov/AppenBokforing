@@ -15,6 +15,7 @@ import { JournalEntryResourceGuard } from "./journal-entry-resource.guard";
     JournalEntriesOrganizationGuard,
     JournalEntriesService,
     JournalEntryResourceGuard
-  ]
+  ],
+  exports: [JournalEntriesAccessService, JournalEntryResourceGuard]
 })
 export class JournalEntriesModule {}

@@ -5,7 +5,9 @@ import {
   CheckCircle2,
   CircleAlert,
   LoaderCircle,
+  Paperclip,
   Plus,
+  RotateCcw,
   Save,
   Trash2
 } from "lucide-react";
@@ -17,6 +19,7 @@ import {
   AccountTypeahead,
   type AccountChoice
 } from "@/components/journal-entries/account-typeahead";
+import { VoucherAttachments } from "@/components/journal-entries/voucher-attachments";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,7 @@ import {
   getJournalEntry,
   getJournalEntryOptions,
   postJournalEntry,
+  reverseJournalEntry,
   updateJournalEntry,
   type JournalEntry,
   type JournalEntryInput,
@@ -53,6 +57,7 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   const router = useRouter();
   const { activeOrganization, activeOrganizationId, organizationsStatus } = useAuth();
   const [description, setDescription] = useState("");
+  const [attachmentsUploading, setAttachmentsUploading] = useState(false);
   const [entry, setEntry] = useState<JournalEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(entryId));
@@ -61,13 +66,20 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   const [options, setOptions] = useState<JournalEntryOptions | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(false);
+  const [reversalDate, setReversalDate] = useState(today());
+  const [reversalDescription, setReversalDescription] = useState("");
+  const [reversalOptions, setReversalOptions] = useState<JournalEntryOptions | null>(null);
+  const [reversalOptionsError, setReversalOptionsError] = useState<string | null>(null);
+  const [reversalOptionsLoading, setReversalOptionsLoading] = useState(false);
+  const [reversalSeriesId, setReversalSeriesId] = useState("");
+  const [showReversalConfirmation, setShowReversalConfirmation] = useState(false);
   const [transactionDate, setTransactionDate] = useState(today());
   const [voucherSeriesId, setVoucherSeriesId] = useState("");
   const nextLineToFocus = useRef<string | null>(null);
 
   const canWrite = activeOrganization ? writeRoles.has(activeOrganization.role) : false;
   const isDraft = !entry || entry.status === "DRAFT";
-  const isEditable = canWrite && isDraft && !isSaving;
+  const isEditable = canWrite && isDraft && !isSaving && !attachmentsUploading;
   const amounts = calculateVoucherAmounts(lines);
   const hasValidLines =
     lines.length > 0 &&
@@ -78,6 +90,24 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     hasValidLines;
   const isBalanced = amounts !== null && amounts.debit > 0n && amounts.difference === 0n;
   const canPost = canSave && lines.length >= 2 && isBalanced;
+  const canCreateCorrection = Boolean(
+    entry &&
+    entry.status === "POSTED" &&
+    canWrite &&
+    !isSaving &&
+    !entry.reversesEntryId &&
+    !entry.reversedByEntryId
+  );
+  const correctionTargetIsOpen =
+    reversalOptions?.accountingPeriod.status === "OPEN" &&
+    reversalOptions.fiscalYear.status === "OPEN";
+  const canConfirmCorrection = Boolean(
+    canCreateCorrection &&
+    isIsoDate(reversalDate) &&
+    reversalSeriesId &&
+    correctionTargetIsOpen &&
+    !reversalOptionsLoading
+  );
 
   useEffect(() => {
     if (!entryId) {
@@ -158,6 +188,48 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
 
     return () => controller.abort();
   }, [activeOrganizationId, transactionDate]);
+
+  useEffect(() => {
+    if (!showReversalConfirmation || !activeOrganizationId || !isIsoDate(reversalDate)) {
+      setReversalOptions(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setReversalOptionsLoading(true);
+    setReversalOptionsError(null);
+
+    void getJournalEntryOptions(activeOrganizationId, reversalDate, controller.signal)
+      .then((loadedOptions) => {
+        setReversalOptions(loadedOptions);
+        setReversalSeriesId((current) => {
+          if (current && loadedOptions.voucherSeries.some((series) => series.id === current)) {
+            return current;
+          }
+
+          return loadedOptions.voucherSeries[0]?.id ?? "";
+        });
+      })
+      .catch((caughtError: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setReversalOptions(null);
+        setReversalOptionsError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Kalender och verifikationsserier kunde inte laddas."
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setReversalOptionsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [activeOrganizationId, reversalDate, showReversalConfirmation]);
 
   useEffect(() => {
     const targetId = nextLineToFocus.current;
@@ -303,6 +375,42 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     }
   }
 
+  function openReversalConfirmation() {
+    setError(null);
+    setReversalDate(today());
+    setReversalDescription("");
+    setReversalOptions(null);
+    setReversalOptionsError(null);
+    setReversalSeriesId("");
+    setShowReversalConfirmation(true);
+  }
+
+  async function handleReverse() {
+    if (!entry || !canConfirmCorrection) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const correction = await reverseJournalEntry(entry.id, {
+        ...(reversalDescription.trim() ? { description: reversalDescription.trim() } : {}),
+        transactionDate: reversalDate,
+        voucherSeriesId: reversalSeriesId
+      });
+
+      setShowReversalConfirmation(false);
+      router.replace(`/app/bookkeeping/vouchers/${correction.id}`);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : "Rättelsen kunde inte bokföras."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   if (organizationsStatus === "idle" || organizationsStatus === "loading" || isLoading) {
     return <VoucherEditorMessage message="Laddar verifikation…" />;
   }
@@ -318,6 +426,9 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   }
 
   const selectedSeries = options?.voucherSeries.find((series) => series.id === voucherSeriesId);
+  const selectedReversalSeries = reversalOptions?.voucherSeries.find(
+    (series) => series.id === reversalSeriesId
+  );
   const pageTitle = entry?.voucherNumber
     ? `Verifikation ${entry.voucherSeries?.code ?? ""}${entry.voucherNumber}`
     : entry
@@ -357,9 +468,17 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           </p>
         </div>
         {entry?.status === "POSTED" ? (
-          <div className="flex items-center gap-2 border border-[#b7ddca] bg-[#eff9f3] px-4 py-3 text-sm text-[#256447]">
-            <CheckCircle2 aria-hidden="true" className="size-4" />
-            Bokförd {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString("sv-SE") : ""}
+          <div className="flex flex-wrap items-center gap-3 border border-[#b7ddca] bg-[#eff9f3] px-4 py-3 text-sm text-[#256447]">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 aria-hidden="true" className="size-4" />
+              Bokförd {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString("sv-SE") : ""}
+            </span>
+            {canCreateCorrection ? (
+              <Button onClick={openReversalConfirmation} size="sm" type="button" variant="outline">
+                <RotateCcw aria-hidden="true" className="size-3.5" />
+                Skapa rättelse
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </header>
@@ -372,6 +491,135 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <p>{error}</p>
         </div>
+      ) : null}
+
+      {entry?.reversesEntry || entry?.reversedByEntry ? (
+        <VoucherRelationshipPanel
+          correction={entry.reversedByEntry}
+          original={entry.reversesEntry}
+        />
+      ) : null}
+
+      {entry ? (
+        <VoucherAttachments
+          canUpload={canWrite && entry.status === "DRAFT" && !isSaving}
+          isDraft={entry.status === "DRAFT"}
+          journalEntryId={entry.id}
+          onUploadingChange={setAttachmentsUploading}
+        />
+      ) : (
+        <section className="mt-6 border border-[#d6e3e9] bg-[#f7fafb] px-5 py-4 text-sm leading-6 text-[#58717e] md:px-6">
+          <span className="mr-2 inline-flex align-middle text-[#24627c]">
+            <Paperclip aria-hidden="true" className="size-4" />
+          </span>
+          Spara utkastet fÃ¶rst fÃ¶r att lÃ¤gga till underlag. Bilagor bevaras sedan nÃ¤r verifikationen
+          bokfÃ¶rs.
+        </section>
+      )}
+
+      {showReversalConfirmation && entry ? (
+        <section className="mt-6 border border-[#e2cbbd] bg-[#fffaf6] p-5 shadow-[0_8px_22px_rgba(81,48,22,0.04)] md:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-[-0.025em] text-[#583827]">
+                Skapa rättelse
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#785a49]">
+                En ny bokförd motverifikation skapas med omvänd debet och kredit. Originalet är låst
+                och ändras inte.
+              </p>
+            </div>
+            <Badge variant="outline">Steg 2 av 2</Badge>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-[minmax(11rem,0.7fr)_minmax(13rem,0.9fr)_minmax(0,1.5fr)]">
+            <label className="block">
+              <span className="text-xs font-semibold tracking-[0.1em] text-[#795d4c] uppercase">
+                Rättelsedatum
+              </span>
+              <input
+                className="mt-2 h-10 w-full rounded-lg border border-[#dcc6b8] bg-white px-3 text-sm text-[#3e3029] outline-none focus:border-[#b87b58] focus:ring-4 focus:ring-[#f6e2d5]"
+                disabled={isSaving}
+                onChange={(event) => setReversalDate(event.target.value)}
+                type="date"
+                value={reversalDate}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold tracking-[0.1em] text-[#795d4c] uppercase">
+                Rättelseserie
+              </span>
+              <select
+                className="mt-2 h-10 w-full rounded-lg border border-[#dcc6b8] bg-white px-3 text-sm text-[#3e3029] outline-none focus:border-[#b87b58] focus:ring-4 focus:ring-[#f6e2d5] disabled:bg-[#f7eee8]"
+                disabled={isSaving || reversalOptionsLoading}
+                onChange={(event) => setReversalSeriesId(event.target.value)}
+                value={reversalSeriesId}
+              >
+                <option value="">{reversalOptionsLoading ? "Laddar serier…" : "Välj serie"}</option>
+                {reversalOptions?.voucherSeries.map((series) => (
+                  <option key={series.id} value={series.id}>
+                    {series.code} — {series.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold tracking-[0.1em] text-[#795d4c] uppercase">
+                Beskrivning (valfri)
+              </span>
+              <input
+                className="mt-2 h-10 w-full rounded-lg border border-[#dcc6b8] bg-white px-3 text-sm text-[#3e3029] outline-none placeholder:text-[#9c8577] focus:border-[#b87b58] focus:ring-4 focus:ring-[#f6e2d5] disabled:bg-[#f7eee8]"
+                disabled={isSaving}
+                maxLength={500}
+                onChange={(event) => setReversalDescription(event.target.value)}
+                placeholder={`Rättelse av ${entry.voucherSeries?.code ?? ""}${entry.voucherNumber ?? ""}`}
+                value={reversalDescription}
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#795d4c]">
+            <span>
+              Räkenskapsår: <strong>{reversalOptions?.fiscalYear.name ?? "—"}</strong>
+            </span>
+            <span>
+              Period: <strong>{reversalOptions?.accountingPeriod.periodNumber ?? "—"}</strong>
+            </span>
+            {selectedReversalSeries ? <span>Serie {selectedReversalSeries.code}</span> : null}
+            {reversalOptions?.accountingPeriod.status === "LOCKED" ? (
+              <span className="font-medium text-[#a04f39]">Målperioden är låst.</span>
+            ) : null}
+            {reversalOptions?.fiscalYear.status === "CLOSED" ? (
+              <span className="font-medium text-[#a04f39]">Målräkenskapsåret är stängt.</span>
+            ) : null}
+            {reversalOptionsError ? (
+              <span className="font-medium text-[#a04f39]">{reversalOptionsError}</span>
+            ) : null}
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button
+              disabled={isSaving}
+              onClick={() => setShowReversalConfirmation(false)}
+              type="button"
+              variant="outline"
+            >
+              Avbryt
+            </Button>
+            <Button
+              disabled={!canConfirmCorrection}
+              onClick={() => void handleReverse()}
+              type="button"
+            >
+              {isSaving ? (
+                <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+              ) : (
+                <RotateCcw aria-hidden="true" className="size-4" />
+              )}
+              Bekräfta och bokför rättelse
+            </Button>
+          </div>
+        </section>
       ) : null}
 
       {!canWrite && isDraft ? (
@@ -694,6 +942,53 @@ function StatusBadge({ status }: Readonly<{ status: JournalEntry["status"] }>) {
   }
 
   return <Badge variant="warning">Utkast</Badge>;
+}
+
+function VoucherRelationshipPanel({
+  correction,
+  original
+}: Readonly<{
+  correction: JournalEntry["reversedByEntry"];
+  original: JournalEntry["reversesEntry"];
+}>) {
+  return (
+    <section className="mt-6 border border-[#d2e2e7] bg-[#f4fafb] px-5 py-4 text-sm text-[#365869] md:px-6">
+      <p className="text-xs font-semibold tracking-[0.1em] text-[#638292] uppercase">
+        Kopplade verifikationer
+      </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        {original ? (
+          <VoucherRelationshipLink entry={original} label="Original verifikation" />
+        ) : null}
+        {correction ? (
+          <VoucherRelationshipLink entry={correction} label="Rättelseverifikation" />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function VoucherRelationshipLink({
+  entry,
+  label
+}: Readonly<{
+  entry: NonNullable<JournalEntry["reversesEntry"]>;
+  label: string;
+}>) {
+  const identity = entry.voucherNumber
+    ? `${entry.voucherSeries?.code ?? ""}${entry.voucherNumber}`
+    : "Utan verifikationsnummer";
+
+  return (
+    <Link
+      className="inline-flex items-center gap-2 rounded-md border border-[#c9dce3] bg-white px-3 py-2 font-medium text-[#1c526b] hover:border-[#83aeba] hover:bg-[#eaf5f7]"
+      href={`/app/bookkeeping/vouchers/${entry.id}`}
+    >
+      <span className="text-[#68838f]">{label}</span>
+      <span>{identity}</span>
+      <span className="text-xs text-[#68838f]">{entry.transactionDate}</span>
+    </Link>
+  );
 }
 
 function VoucherEditorMessage({ message }: Readonly<{ message: string }>) {
