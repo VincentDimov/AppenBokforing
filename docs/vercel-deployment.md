@@ -40,6 +40,12 @@ with the repository root as build context. Its build command is:
 corepack pnpm@9.15.4 --filter @ledgerapp/api build
 ```
 
+On Render, keep `NODE_ENV=production` as a runtime environment variable, but
+install build tooling explicitly with `--prod=false`; Prisma and TypeScript are
+development dependencies required to compile the API. The repository pins the
+Node 22 LTS line in `.node-version` so hosts do not select a newer major version
+from a loose engine range.
+
 The database package now runs `prisma generate` as part of its own build. This
 is required in every clean CI environment before TypeScript can import Prisma
 enums and generated query types.
