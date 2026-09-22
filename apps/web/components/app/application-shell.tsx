@@ -45,7 +45,7 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
 
   async function handleSignOut() {
     await signOut();
-    router.replace("/login");
+    router.replace("/");
     router.refresh();
   }
 
