@@ -6,10 +6,16 @@ background process in a Vercel web deployment.
 
 ## Vercel project
 
-Create a Vercel project with **Root Directory** set to `apps/web`. The committed
-`apps/web/vercel.json` installs workspace dependencies from the repository root
-and builds only `@ledgerapp/web`; it deliberately does not run the NestJS API
-build in Vercel's web deployment.
+The committed root `vercel.json` supports a project whose **Root Directory** is
+the repository root (the configuration reflected by existing deployments). It
+installs workspace dependencies, builds only `@ledgerapp/web`, and declares
+`apps/web/.next` as the deploy output; it deliberately does not run the NestJS
+API build in Vercel's web deployment.
+
+In Vercel Project Settings, remove any manually configured Output Directory
+such as `public`. The committed `vercel.json` is the source of truth. If the
+project is later moved to `apps/web` as Root Directory, remove the root config
+and use the existing `apps/web/vercel.json` instead.
 
 Set this production environment variable in Vercel:
 
