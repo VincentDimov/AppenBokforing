@@ -26,6 +26,11 @@ The Next rewrite proxies `/api/*` to this origin. Browser requests remain
 same-origin to the Vercel site, allowing the API's httpOnly authentication
 cookies to be returned through the proxy.
 
+`API_INTERNAL_URL` is evaluated while Next.js builds the rewrite configuration.
+Set it for the **Production** deployment environment and redeploy after changing
+it. A production web build now fails explicitly when it is absent rather than
+silently proxying to `localhost:4000`.
+
 ## API service
 
 Deploy `apps/api` to a Node-capable host (for example a container service),
