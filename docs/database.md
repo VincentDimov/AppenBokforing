@@ -327,3 +327,13 @@ Run corepack pnpm db:seed after applying migrations. The idempotent development
 seed creates one demo user and organization, the current Stockholm calendar
 fiscal year with monthly periods, series A, two 25% VAT codes and a small BAS
 account sample. It refuses to run when NODE_ENV=production.
+
+## General ledger access path
+
+The general ledger reads only posted journal entries, scoped by organization,
+fiscal year and date. Its partial index on `journal_entries` starts with the
+organization and fiscal-year equality filters, followed by `entry_date`, and
+contains only `POSTED` rows. This keeps draft activity out of both report
+results and the primary report access path. Journal-line dimensions remain
+tenant-bound foreign keys, so project and cost-center filters cannot cross an
+organization boundary.

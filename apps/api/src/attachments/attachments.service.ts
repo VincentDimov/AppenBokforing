@@ -65,7 +65,11 @@ export class AttachmentsService {
 
     this.requireDraft(currentEntry.status);
 
-    const storageKey = this.createStorageKey(organizationId, journalEntryId, validatedFile.extension);
+    const storageKey = this.createStorageKey(
+      organizationId,
+      journalEntryId,
+      validatedFile.extension
+    );
     await this.objectStorage.putObject({
       body: validatedFile.buffer,
       contentType: validatedFile.mimeType,
@@ -168,7 +172,9 @@ export class AttachmentsService {
 
   private requireDraft(status: JournalEntryStatus): void {
     if (status !== JournalEntryStatus.DRAFT) {
-      throw new ConflictException("Attachments can only be added while a journal entry is a draft.");
+      throw new ConflictException(
+        "Attachments can only be added while a journal entry is a draft."
+      );
     }
   }
 

@@ -10,6 +10,7 @@ import { AuthModule } from "./auth/auth.module";
 import { DatabaseModule } from "./database/database.module";
 import { JournalEntriesModule } from "./journal-entries/journal-entries.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
+import { ReportsModule } from "./reports/reports.module";
 
 @Module({
   imports: [
@@ -30,7 +31,8 @@ import { OrganizationsModule } from "./organizations/organizations.module";
     OrganizationsModule,
     AccountsModule,
     JournalEntriesModule,
-    AttachmentsModule
+    AttachmentsModule,
+    ReportsModule
   ],
   controllers: [HealthController],
   providers: [

@@ -28,9 +28,7 @@ function jsonResponse(payload: unknown, status = 200): Response {
   } as Response;
 }
 
-function renderAttachments(
-  props: Partial<ComponentProps<typeof VoucherAttachments>> = {}
-) {
+function renderAttachments(props: Partial<ComponentProps<typeof VoucherAttachments>> = {}) {
   const onUploadingChange = jest.fn();
 
   render(

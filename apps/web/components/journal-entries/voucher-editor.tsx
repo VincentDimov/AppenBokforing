@@ -512,8 +512,8 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           <span className="mr-2 inline-flex align-middle text-[#24627c]">
             <Paperclip aria-hidden="true" className="size-4" />
           </span>
-          Spara utkastet fÃ¶rst fÃ¶r att lÃ¤gga till underlag. Bilagor bevaras sedan nÃ¤r verifikationen
-          bokfÃ¶rs.
+          Spara utkastet fÃ¶rst fÃ¶r att lÃ¤gga till underlag. Bilagor bevaras sedan nÃ¤r
+          verifikationen bokfÃ¶rs.
         </section>
       )}
 

@@ -103,17 +103,19 @@ async function parsePayload(response: Response): Promise<unknown> {
 }
 
 function isAttachment(payload: unknown): payload is JournalEntryAttachment {
-  return Boolean(payload && typeof payload === "object" && "id" in payload && "originalName" in payload);
+  return Boolean(
+    payload && typeof payload === "object" && "id" in payload && "originalName" in payload
+  );
 }
 
 function isAttachmentDownload(payload: unknown): payload is AttachmentDownload {
   return Boolean(
     payload &&
-      typeof payload === "object" &&
-      "downloadUrl" in payload &&
-      typeof payload.downloadUrl === "string" &&
-      "expiresAt" in payload &&
-      typeof payload.expiresAt === "string"
+    typeof payload === "object" &&
+    "downloadUrl" in payload &&
+    typeof payload.downloadUrl === "string" &&
+    "expiresAt" in payload &&
+    typeof payload.expiresAt === "string"
   );
 }
 

@@ -93,7 +93,9 @@ export function VoucherAttachments({
         setAttachments((current) => [uploaded, ...current]);
       }
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Bilagan kunde inte laddas upp.");
+      setError(
+        caughtError instanceof Error ? caughtError.message : "Bilagan kunde inte laddas upp."
+      );
     } finally {
       setIsUploading(false);
       onUploadingChange(false);
@@ -131,7 +133,9 @@ export function VoucherAttachments({
     >
       <div className="flex flex-col gap-2 border-b border-[#e1ebef] px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
         <div>
-          <p className="text-xs font-semibold tracking-[0.1em] text-[#64818f] uppercase">Underlag</p>
+          <p className="text-xs font-semibold tracking-[0.1em] text-[#64818f] uppercase">
+            Underlag
+          </p>
           <h2
             className="mt-1 text-lg font-semibold tracking-[-0.025em] text-[#17384b]"
             id="voucher-attachments-heading"
@@ -139,7 +143,9 @@ export function VoucherAttachments({
             Bilagor
           </h2>
         </div>
-        <p className="text-xs leading-5 text-[#66818e]">PDF, JPEG, PNG eller WEBP — högst 10 MiB.</p>
+        <p className="text-xs leading-5 text-[#66818e]">
+          PDF, JPEG, PNG eller WEBP — högst 10 MiB.
+        </p>
       </div>
 
       {isDraft ? (
@@ -196,7 +202,8 @@ export function VoucherAttachments({
               {isUploading ? "Laddar upp underlag…" : "Släpp filer här eller välj filer"}
             </span>
             <span className="mt-1 text-xs leading-5 text-[#66818e]" id="voucher-attachments-help">
-              Filnamnet används bara för visning. Lagringsnyckel och kontrollsumma skapas på servern.
+              Filnamnet används bara för visning. Lagringsnyckel och kontrollsumma skapas på
+              servern.
             </span>
           </label>
           {!canUpload ? (
@@ -213,7 +220,10 @@ export function VoucherAttachments({
       )}
 
       {error ? (
-        <p className="mx-5 mt-4 border-l-2 border-[#c76b52] bg-[#fff6f2] px-3 py-2 text-sm text-[#914a38] md:mx-6" role="alert">
+        <p
+          className="mx-5 mt-4 border-l-2 border-[#c76b52] bg-[#fff6f2] px-3 py-2 text-sm text-[#914a38] md:mx-6"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
@@ -234,7 +244,10 @@ export function VoucherAttachments({
                   <FileText aria-hidden="true" className="size-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#244b60]" title={attachment.originalName}>
+                  <p
+                    className="truncate text-sm font-semibold text-[#244b60]"
+                    title={attachment.originalName}
+                  >
                     {attachment.originalName}
                   </p>
                   <p className="mt-1 text-xs text-[#66818e]">
