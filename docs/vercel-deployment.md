@@ -46,6 +46,11 @@ development dependencies required to compile the API. The repository pins the
 Node 22 LTS line in `.node-version` so hosts do not select a newer major version
 from a loose engine range.
 
+Render's runtime artifact may omit development dependencies after a successful
+build. Run `prisma migrate deploy` in the Render **Build Command**, where Prisma
+is available, rather than in the Start Command. The Start Command should only
+run `API_PORT=$PORT node apps/api/dist/main.js`.
+
 The database package now runs `prisma generate` as part of its own build. This
 is required in every clean CI environment before TypeScript can import Prisma
 enums and generated query types.
