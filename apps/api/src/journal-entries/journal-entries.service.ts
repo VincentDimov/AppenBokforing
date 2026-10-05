@@ -16,6 +16,7 @@ import {
 } from "@ledgerapp/db";
 
 import { DatabaseService } from "../database/database.service";
+import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
 import { CreateJournalEntryDto } from "./dto/create-journal-entry.dto";
 import { JournalEntryOptionsQueryDto } from "./dto/journal-entry-options-query.dto";
 import { JournalLineDto } from "./dto/journal-line.dto";
@@ -188,6 +189,12 @@ export class JournalEntriesService {
   ) {
     const entry = await this.database.prisma.$transaction(async (transaction) => {
       const prepared = await this.prepareDraftInput(transaction, organizationId, dto);
+      await requireOpenCalendar(
+        transaction,
+        organizationId,
+        prepared.calendar.fiscalYearId,
+        prepared.calendar.accountingPeriodId
+      );
       const created = await transaction.journalEntry.create({
         data: {
           accountingPeriodId: prepared.calendar.accountingPeriodId,
@@ -239,6 +246,12 @@ export class JournalEntriesService {
       }
 
       this.requireDraft(before.status);
+      await requireOpenCalendar(
+        transaction,
+        organizationId,
+        before.fiscalYearId,
+        before.accountingPeriodId
+      );
       const voucherSeriesId = dto.voucherSeriesId ?? before.voucherSeriesId;
 
       if (!voucherSeriesId) {
@@ -251,6 +264,13 @@ export class JournalEntriesService {
         transactionDate: dto.transactionDate ?? this.toDateOnly(before.entryDate),
         voucherSeriesId
       });
+
+      await requireOpenCalendar(
+        transaction,
+        organizationId,
+        prepared.calendar.fiscalYearId,
+        prepared.calendar.accountingPeriodId
+      );
 
       const updated = await transaction.journalEntry.update({
         data: {
@@ -409,6 +429,12 @@ export class JournalEntriesService {
     }
 
     const prepared = await this.prepareReversalInput(transaction, organizationId, original, dto);
+    await requireOpenCalendar(
+      transaction,
+      organizationId,
+      prepared.calendar.fiscalYearId,
+      prepared.calendar.accountingPeriodId
+    );
     this.requirePostableLines(original.lines);
 
     const created = await transaction.journalEntry.create({

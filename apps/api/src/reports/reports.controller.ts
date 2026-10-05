@@ -5,6 +5,8 @@ import { RequireOrganizationPermission } from "../organizations/decorators/requi
 import { JournalEntriesOrganizationGuard } from "../journal-entries/journal-entries-organization.guard";
 import { GeneralLedgerQueryDto } from "./dto/general-ledger-query.dto";
 import { IncomeStatementQueryDto } from "./dto/income-statement-query.dto";
+import { BalanceSheetQueryDto } from "./dto/balance-sheet-query.dto";
+import { VatReportQueryDto } from "./dto/vat-report-query.dto";
 import { ReportsService } from "./reports.service";
 @ApiTags("Reports")
 @ApiBearerAuth()
@@ -30,5 +32,25 @@ export class ReportsController {
     const organizationId = request.organizationMembership?.organizationId;
     if (!organizationId) throw new Error("Report requires organization membership.");
     return this.reports.incomeStatement(organizationId, query);
+  }
+
+  @Get("balance-sheet")
+  @UseGuards(JournalEntriesOrganizationGuard)
+  @RequireOrganizationPermission("READ_BOOKKEEPING")
+  @ApiOperation({ summary: "Return posted, tenant-scoped balance sheet balances" })
+  balanceSheet(@Query() query: BalanceSheetQueryDto, @Req() request: AuthenticatedRequest) {
+    const organizationId = request.organizationMembership?.organizationId;
+    if (!organizationId) throw new Error("Report requires organization membership.");
+    return this.reports.balanceSheet(organizationId, query);
+  }
+
+  @Get("vat")
+  @UseGuards(JournalEntriesOrganizationGuard)
+  @RequireOrganizationPermission("READ_BOOKKEEPING")
+  @ApiOperation({ summary: "Return posted, tenant-scoped VAT report and metadata anomalies" })
+  vat(@Query() query: VatReportQueryDto, @Req() request: AuthenticatedRequest): Promise<unknown> {
+    const organizationId = request.organizationMembership?.organizationId;
+    if (!organizationId) throw new Error("Report requires organization membership.");
+    return this.reports.vat(organizationId, query);
   }
 }

@@ -3,6 +3,23 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+const calendarLockMigration = await readFile(
+  new URL("../prisma/migrations/20261005140000_calendar_locking/migration.sql", import.meta.url),
+  "utf8"
+);
+
+test("calendar locking guards every accounting write and validates year closing", () => {
+  for (const table of ["journal_entries", "journal_lines", "opening_balances", "attachments"]) {
+    assert.match(
+      calendarLockMigration,
+      new RegExp(`BEFORE INSERT OR UPDATE OR DELETE ON ${table}`)
+    );
+  }
+  assert.match(calendarLockMigration, /FOR UPDATE/);
+  assert.match(calendarLockMigration, /direction IN 1\.\.2/);
+  assert.match(calendarLockMigration, /status = 'DRAFT'/);
+  assert.match(calendarLockMigration, /Closed fiscal years cannot be modified or reopened/);
+});
 const migration = await readFile(
   new URL(
     "../prisma/migrations/20260914065404_core_database_domain/migration.sql",

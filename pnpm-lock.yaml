@@ -50,6 +50,9 @@ importers:
       '@ledgerapp/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@ledgerapp/sie':
+        specifier: workspace:*
+        version: link:../../packages/sie
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.2.3(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -217,6 +220,12 @@ importers:
         version: 5.9.3
 
   packages/shared: {}
+
+  packages/sie:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/ui:
     dependencies:

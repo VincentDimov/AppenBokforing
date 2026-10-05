@@ -11,6 +11,9 @@ import { DatabaseModule } from "./database/database.module";
 import { JournalEntriesModule } from "./journal-entries/journal-entries.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { ReportsModule } from "./reports/reports.module";
+import { SieModule } from "./sie/sie.module";
+import { AuditModule } from "./audit/audit.module";
+import { FiscalYearsModule } from "./fiscal-years/fiscal-years.module";
 
 @Module({
   imports: [
@@ -32,7 +35,10 @@ import { ReportsModule } from "./reports/reports.module";
     AccountsModule,
     JournalEntriesModule,
     AttachmentsModule,
-    ReportsModule
+    ReportsModule,
+    SieModule,
+    AuditModule,
+    FiscalYearsModule
   ],
   controllers: [HealthController],
   providers: [

@@ -92,7 +92,7 @@ export const navigationGroups: NavigationGroup[] = [
       },
       {
         description: "Stäm av utgående och ingående moms.",
-        href: "/app/reports/vat-report",
+        href: "/app/reports/vat",
         icon: "receipt-text",
         label: "Momsrapport"
       }
@@ -153,6 +153,12 @@ export const navigationGroups: NavigationGroup[] = [
         href: "/app/settings/import-export",
         icon: "upload",
         label: "Import / export"
+      },
+      {
+        description: "Följ organisationens åtgärder och behörighetsändringar.",
+        href: "/app/settings/processing-history",
+        icon: "list-checks",
+        label: "Behandlingshistorik"
       }
     ]
   }

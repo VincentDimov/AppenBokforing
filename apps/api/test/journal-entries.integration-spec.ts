@@ -174,8 +174,15 @@ describe("journal entries and double-entry bookkeeping", () => {
   });
 
   it("rejects posting into a locked accounting period", async () => {
+    await prisma.accountingPeriod.update({
+      where: { id: calendarA.lockedPeriodId },
+      data: { status: "OPEN" }
+    });
     const created = await createDraft(ownerAgent, balancedLines(), "2026-02-15");
-
+    await prisma.accountingPeriod.update({
+      where: { id: calendarA.lockedPeriodId },
+      data: { status: "LOCKED" }
+    });
     expect(created.accountingPeriod.id).toBe(calendarA.lockedPeriodId);
     await ownerAgent.post(`/journal-entries/${created.id}/post`).expect(409);
   });

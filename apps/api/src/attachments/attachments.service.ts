@@ -10,6 +10,7 @@ import {
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service";
+import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
 import { validateAttachmentFile } from "./attachment-file-validation";
 import { OBJECT_STORAGE, type ObjectStorage } from "./object-storage";
 
@@ -79,8 +80,10 @@ export class AttachmentsService {
 
     try {
       const attachment = await this.database.prisma.$transaction(async (transaction) => {
-        const entries = await transaction.$queryRaw<{ status: JournalEntryStatus }[]>`
-          SELECT "status"
+        const entries = await transaction.$queryRaw<
+          { status: JournalEntryStatus; fiscalYearId: string; accountingPeriodId: string }[]
+        >`
+          SELECT "status", fiscal_year_id AS "fiscalYearId", accounting_period_id AS "accountingPeriodId"
           FROM "journal_entries"
           WHERE "id" = ${journalEntryId}::uuid
             AND "organization_id" = ${organizationId}::uuid
@@ -93,6 +96,12 @@ export class AttachmentsService {
         }
 
         this.requireDraft(entry.status);
+        await requireOpenCalendar(
+          transaction,
+          organizationId,
+          entry.fiscalYearId,
+          entry.accountingPeriodId
+        );
         const created = await transaction.attachment.create({
           data: {
             journalEntryId,

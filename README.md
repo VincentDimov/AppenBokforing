@@ -138,4 +138,19 @@ corepack pnpm test:integration
 Anpassa anslutningssträngen om lokala PostgreSQL-värden har ändrats. Testerna
 skriver bara till `ledgerapp_test`, aldrig till utvecklingsdatabasen `ledgerapp`.
 
+## Behandlingshistorik
+
+`GET /audit-events` visar organisationsskyddad historik med datum-, användar-,
+åtgärds- och objekttypsfilter. Vyn finns under Inställningar / Behandlingshistorik.
+Auditposter är skrivskyddade i både API och PostgreSQL. Läs
+[processing-history.md](docs/processing-history.md) för loggning, migration och
+begränsningar i ännu ej implementerade arbetsflöden.
+
+## Räkenskapsår och periodlås
+
+Inställningar / Räkenskapsår visar månadernas låsstatus och erbjuder bekräftad
+låsning/upplåsning samt stängning av år. API och databastriggers skyddar även
+utkast, import och bilagor. Behörigheter, stängningsvillkor och migration finns i
+[fiscal-years.md](docs/fiscal-years.md).
+
 # AppBokf-ring

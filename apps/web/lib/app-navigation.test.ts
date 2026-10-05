@@ -21,7 +21,7 @@ describe("application navigation", () => {
         "/app/bookkeeping/vouchers",
         "/app/bookkeeping/vouchers/new",
         "/app/reports/general-ledger",
-        "/app/reports/vat-report",
+        "/app/reports/vat",
         "/app/registers/cost-centers",
         "/app/settings/import-export"
       ])

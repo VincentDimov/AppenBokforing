@@ -33,6 +33,7 @@ export class OrganizationsService {
   async create(userId: string, dto: CreateOrganizationDto, metadata: OrganizationAuditMetadata) {
     try {
       const organization = await this.database.prisma.$transaction(async (transaction) => {
+        await transaction.$executeRaw`SELECT set_config('ledgerapp.actor_user_id', ${userId}, true), set_config('ledgerapp.request_id', ${metadata.requestId ?? ""}, true)`;
         const created = await transaction.organization.create({
           data: {
             defaultCurrency: dto.defaultCurrency ?? "SEK",

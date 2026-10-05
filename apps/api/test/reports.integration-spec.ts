@@ -65,7 +65,7 @@ describe("general ledger report", () => {
         voucher: "A2"
       })
     );
-    expect(revenue).toMatchObject({ openingBalance: "-100.00", closingBalance: "-150.00" });
+    expect(revenue).toMatchObject({ openingBalance: "-100.00", closingBalance: "-170.00" });
     expect(revenue.transactions).toEqual([
       expect.objectContaining({
         date: "2026-02-10",
@@ -114,8 +114,8 @@ describe("general ledger report", () => {
     expect(response.body.groups).toEqual([
       expect.objectContaining({
         label: "Intäkter",
-        periodTotal: "50.00",
-        yearToDateTotal: "150.00"
+        periodTotal: "70.00",
+        yearToDateTotal: "170.00"
       }),
       expect.objectContaining({
         label: "Kostnader",
@@ -123,7 +123,40 @@ describe("general ledger report", () => {
         yearToDateTotal: "60.00"
       })
     ]);
-    expect(response.body.totals).toEqual({ periodResult: "30.00", yearToDateResult: "90.00" });
+    expect(response.body.totals).toEqual({ periodResult: "50.00", yearToDateResult: "110.00" });
+  });
+
+  it("returns a balanced balance sheet including opening balances and comparison", async () => {
+    const response = await ownerAgent
+      .get("/reports/balance-sheet")
+      .query({
+        organizationId,
+        fiscalYear: fiscalYearId,
+        reportDate: "2026-02-28",
+        comparisonDate: "2026-01-31"
+      })
+      .expect(200);
+    expect(response.body.groups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "TillgÃ¥ngar",
+          total: "210.00",
+          comparisonTotal: "160.00"
+        }),
+        expect.objectContaining({
+          label: "Eget kapital",
+          total: "210.00",
+          comparisonTotal: "160.00"
+        }),
+        expect.objectContaining({ label: "Skulder", total: "0.00" })
+      ])
+    );
+    expect(response.body.totals).toMatchObject({
+      assets: "210.00",
+      equityAndLiabilities: "210.00",
+      difference: "0.00",
+      comparisonDifference: "0.00"
+    });
   });
 
   it("excludes drafts and rejects unauthenticated or cross-organization reads", async () => {
@@ -193,40 +226,77 @@ async function createLedgerFixture(
       endDate: new Date("2026-12-31T00:00:00.000Z")
     }
   });
-  const [bank, revenue, expense, project, costCenter, series] = await Promise.all([
-    prisma.account.create({
-      data: {
+  const [bank, revenue, expense, receivable, equity, project, costCenter, series] =
+    await Promise.all([
+      prisma.account.create({
+        data: {
+          organizationId,
+          accountNumber: "1930",
+          name: "Företagskonto",
+          type: AccountType.ASSET,
+          normalBalance: BalanceSide.DEBIT
+        }
+      }),
+      prisma.account.create({
+        data: {
+          organizationId,
+          accountNumber: "3001",
+          name: "Försäljning",
+          type: AccountType.REVENUE,
+          normalBalance: BalanceSide.CREDIT
+        }
+      }),
+      prisma.account.create({
+        data: {
+          organizationId,
+          accountNumber: "5001",
+          name: "Lokalkostnad",
+          type: AccountType.EXPENSE,
+          normalBalance: BalanceSide.DEBIT
+        }
+      }),
+      prisma.account.create({
+        data: {
+          organizationId,
+          accountNumber: "1510",
+          name: "Kundfordringar",
+          type: AccountType.ASSET,
+          normalBalance: BalanceSide.DEBIT
+        }
+      }),
+      prisma.account.create({
+        data: {
+          organizationId,
+          accountNumber: "2081",
+          name: "Aktiekapital",
+          type: AccountType.EQUITY,
+          normalBalance: BalanceSide.CREDIT
+        }
+      }),
+      prisma.project.create({ data: { organizationId, code: "P1", name: "Projekt 1" } }),
+      prisma.costCenter.create({ data: { organizationId, code: "CC1", name: "Kostnadsställe 1" } }),
+      prisma.voucherSeries.create({
+        data: { organizationId, fiscalYearId: fiscalYear.id, code: "A", name: "Serie A" }
+      })
+    ]);
+  await prisma.openingBalance.createMany({
+    data: [
+      {
         organizationId,
-        accountNumber: "1930",
-        name: "Företagskonto",
-        type: AccountType.ASSET,
-        normalBalance: BalanceSide.DEBIT
-      }
-    }),
-    prisma.account.create({
-      data: {
+        fiscalYearId: fiscalYear.id,
+        accountId: receivable.id,
+        debitAmount: "100.00",
+        creditAmount: "0.00"
+      },
+      {
         organizationId,
-        accountNumber: "3001",
-        name: "Försäljning",
-        type: AccountType.REVENUE,
-        normalBalance: BalanceSide.CREDIT
+        fiscalYearId: fiscalYear.id,
+        accountId: equity.id,
+        debitAmount: "0.00",
+        creditAmount: "100.00"
       }
-    }),
-    prisma.account.create({
-      data: {
-        organizationId,
-        accountNumber: "5001",
-        name: "Lokalkostnad",
-        type: AccountType.EXPENSE,
-        normalBalance: BalanceSide.DEBIT
-      }
-    }),
-    prisma.project.create({ data: { organizationId, code: "P1", name: "Projekt 1" } }),
-    prisma.costCenter.create({ data: { organizationId, code: "CC1", name: "Kostnadsställe 1" } }),
-    prisma.voucherSeries.create({
-      data: { organizationId, fiscalYearId: fiscalYear.id, code: "A", name: "Serie A" }
-    })
-  ]);
+    ]
+  });
   await createEntry(agent, {
     organizationId,
     fiscalYearId: fiscalYear.id,
@@ -284,6 +354,20 @@ async function createLedgerFixture(
       .expect(201);
     await agent.post(`/journal-entries/${draft.body.id}/post`).expect(201);
   }
+  const invoice = await agent
+    .post("/journal-entries")
+    .send({
+      organizationId,
+      voucherSeriesId: series.id,
+      transactionDate: "2026-02-25",
+      description: "Known receivable fixture",
+      lines: [
+        { accountId: receivable.id, debit: "20.00", credit: "0.00" },
+        { accountId: revenue.id, debit: "0.00", credit: "20.00" }
+      ]
+    })
+    .expect(201);
+  await agent.post(`/journal-entries/${invoice.body.id}/post`).expect(201);
   return fiscalYear.id;
 }
 
