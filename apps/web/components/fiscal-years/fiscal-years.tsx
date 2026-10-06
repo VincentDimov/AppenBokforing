@@ -24,6 +24,11 @@ const field = "rounded-md border border-slate-300 bg-white px-3 py-2 text-sm";
 const date = (value: string) => value.slice(0, 10);
 
 export function FiscalYears() {
+  const { activeOrganizationId } = useAuth();
+  return <OrganizationFiscalYears key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationFiscalYears() {
   const { activeOrganizationId, activeOrganization } = useAuth();
   const organizationRef = useRef(activeOrganizationId);
   organizationRef.current = activeOrganizationId;

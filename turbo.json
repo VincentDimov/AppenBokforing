@@ -5,6 +5,11 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
+    "@ledgerapp/web#build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**"],
+      "env": ["API_INTERNAL_URL"]
+    },
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,

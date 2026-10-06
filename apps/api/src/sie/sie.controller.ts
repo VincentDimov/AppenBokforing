@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+  Header,
+  StreamableFile
+} from "@nestjs/common";
 import { IsBoolean, IsOptional, IsString, IsUUID } from "class-validator";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import { JournalEntriesOrganizationGuard } from "../journal-entries/journal-entries-organization.guard";
@@ -34,14 +44,24 @@ export class SieController {
   @Get("exports/sie")
   @UseGuards(JournalEntriesOrganizationGuard)
   @RequireOrganizationPermission("READ_BOOKKEEPING")
-  export(@Query() dto: ExportSieDto, @Req() request: AuthenticatedRequest): Promise<string> {
+  @Header("X-Content-Type-Options", "nosniff")
+  @Header("Cache-Control", "no-store")
+  async export(
+    @Query() dto: ExportSieDto,
+    @Req() request: AuthenticatedRequest
+  ): Promise<StreamableFile> {
     const organizationId = request.organizationMembership?.organizationId;
     if (!organizationId) throw new Error("Export requires organization membership.");
-    return this.sie.export(
+    const content = await this.sie.export(
       organizationId,
       dto.fiscalYear,
       request.auth?.id,
       request.header("x-request-id")?.slice(0, 100) || randomUUID()
     );
+    // Fixed filename: organization/record text never reaches response headers.
+    return new StreamableFile(Buffer.from(content, "utf8"), {
+      type: "text/plain; charset=utf-8",
+      disposition: 'attachment; filename="ledgerapp.sie"'
+    });
   }
 }

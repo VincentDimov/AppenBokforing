@@ -28,12 +28,24 @@ interface VoucherAttachmentsProps {
 }
 
 /** Evidence is uploaded only to saved drafts and remains readable after posting. */
-export function VoucherAttachments({
+export function VoucherAttachments(props: Readonly<VoucherAttachmentsProps>) {
+  return <EntryAttachments key={props.journalEntryId} {...props} />;
+}
+
+function EntryAttachments({
   canUpload,
   isDraft,
   journalEntryId,
   onUploadingChange
 }: Readonly<VoucherAttachmentsProps>) {
+  const mounted = useRef(true);
+  const uploadInFlight = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<JournalEntryAttachment[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -48,7 +60,9 @@ export function VoucherAttachments({
     setError(null);
 
     void getJournalEntryAttachments(journalEntryId, controller.signal)
-      .then((loadedAttachments) => setAttachments(loadedAttachments))
+      .then((loadedAttachments) => {
+        if (!controller.signal.aborted) setAttachments(loadedAttachments);
+      })
       .catch((caughtError: unknown) => {
         if (!controller.signal.aborted) {
           setError(
@@ -66,7 +80,7 @@ export function VoucherAttachments({
   }, [journalEntryId]);
 
   async function handleFiles(files: FileList | File[]) {
-    if (!canUpload || !isDraft || isUploading) {
+    if (!mounted.current || !canUpload || !isDraft || uploadInFlight.current) {
       return;
     }
 
@@ -84,21 +98,28 @@ export function VoucherAttachments({
     }
 
     setError(null);
+    uploadInFlight.current = true;
     setIsUploading(true);
     onUploadingChange(true);
 
     try {
       for (const file of selectedFiles) {
+        if (!mounted.current) return;
         const uploaded = await uploadJournalEntryAttachment(journalEntryId, file);
+        if (!mounted.current) return;
         setAttachments((current) => [uploaded, ...current]);
       }
     } catch (caughtError) {
+      if (!mounted.current) return;
       setError(
         caughtError instanceof Error ? caughtError.message : "Bilagan kunde inte laddas upp."
       );
     } finally {
-      setIsUploading(false);
-      onUploadingChange(false);
+      uploadInFlight.current = false;
+      if (mounted.current) {
+        setIsUploading(false);
+        onUploadingChange(false);
+      }
 
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -107,7 +128,7 @@ export function VoucherAttachments({
   }
 
   async function downloadAttachment(attachment: JournalEntryAttachment) {
-    if (downloadingId) {
+    if (!mounted.current || downloadingId) {
       return;
     }
 
@@ -116,13 +137,14 @@ export function VoucherAttachments({
 
     try {
       const { downloadUrl } = await getAttachmentDownload(attachment.id);
-      window.location.assign(downloadUrl);
+      if (mounted.current) window.location.assign(downloadUrl);
     } catch (caughtError) {
+      if (!mounted.current) return;
       setError(
         caughtError instanceof Error ? caughtError.message : "Nedladdningen kunde inte startas."
       );
     } finally {
-      setDownloadingId(null);
+      if (mounted.current) setDownloadingId(null);
     }
   }
 

@@ -31,15 +31,32 @@ Owner/admin/accountant skriver bokföring; member/read-only läser.
 
 - Huvudbok, resultat- och balansräkning samt momsrapport har verkliga POSTED-queries och UI. Huvudboken utelämnar dock IB; momsens tax/base-kontrakt behöver rättas.
 - Balansräkning läser IB och stödjer jämförelsedatum inom samma år. Inget komplett IB-/årsöverföringsflöde finns.
-- SIE har fristående paket, default-preview, confirm-transaktion och text-export. Import tappar IB/dimensioner/raddatum och kan sänka nummercounter. Export är inte verifierad SIE4B-konform och returnerar för närvarande HTML-content-type.
+- SIE har fristående paket, default-preview, confirm-transaktion och text-export. Import tappar IB/dimensioner/raddatum och kan sänka nummercounter. Export är inte verifierad SIE4B-konform och saknar riktig PC8-bytehantering. HTTP-exporten är nu en UTF-8-textdownload med fast filnamn och nosniff.
 - Organisation kan väljas i UI men skapande/inställningar kräver API. Nya år får inte automatiskt serie eller kontoplan.
 - Print/CSV finns i vissa rapporter. PDF är webbläsarens printdialog, inte en server-PDF-tjänst; komplett printstylesheet saknas.
 - Kontoplansimport har en licensmedveten adaptergräns, inte en fungerande importprodukt eller full BAS-datamängd.
 - Dashboard och toppbarens årsval använder isolerad exempeldata, inte organisationens ekonomi.
 
-Viktiga kända risker: postning av ett ändrat befintligt utkast sparar inte först
-skärmens ändringar, frontendstate kan behållas efter organisationsbyte och
-historisk kontometadata kan omklassificeras. Se GAP_ANALYSIS innan användning.
+FAS 17 rättar sparning före postning och organisationsbunden frontendstate,
+utan att ändra backendguards eller redovisningsregler. Historisk kontometadata
+kan fortfarande omklassificeras; IB/moms/SIE-domänbrister kvarstår.
+Se GAP_ANALYSIS innan användning.
+
+## SIE HTTP-kontrakt efter FAS 17
+
+GET /exports/sie returnerar UTF-8-byte exakt från serializersträngen som
+`text/plain; charset=utf-8`, `attachment; filename="ledgerapp.sie"`,
+`X-Content-Type-Options: nosniff` och no-store. HTML blir text, inte HTML;
+recordtext påverkar aldrig downloadfilnamn/headers. Serializer deklarerar ännu
+PC8 utan CP437-bytehantering; ingen SIE4B-konformitet/certifiering påstås.
+
+POST /imports/sie: JSON `content` får vara högst **128 KiB (131072 UTF-8-byte)**,
+räknat efter JSON-avkodning. Preview och confirm avvisas före SIE-parsning och
+import-DB-arbete om gränsen överskrids. Global JSON-parser har ett **1 MiB** tak
+som även rymmer maximal 6x escape-expansion och normal UUID/confirm-envelope.
+Båda gränser ger JSON 413; multipart-bilagors separata 10 MiB-tak är oförändrat.
+Auth-/medlemskontroller kan fortfarande läsa DB före importtjänsten.
+Se [SIE](docs/sie.md) och GAP_ANALYSIS för kvarstående format/domänrisker.
 
 ## Planned / not implemented
 
@@ -77,8 +94,8 @@ corepack pnpm@9.15.4 dev
 
 Webb: `http://localhost:3000`, API liveness: `http://localhost:4000/health`,
 Swagger: `http://localhost:4000/docs`, lokal storagekonsol: `http://localhost:9001`.
-Compose startbarhet verifierades inte i senaste granskningen eftersom
-Docker-motorn inte var igång. Infrastrukturvolymer är inte backup.
+Compose startbarhet är inte verifierad. En separat PostgreSQL 16-testcontainer
+har körts; Docker krävde åtkomst utanför sandboxen. Infrastrukturvolymer är inte backup.
 
 Valfri `corepack pnpm@9.15.4 db:seed` är **endast för disponibla utvecklingsdata**.
 Den skapar demoorg, aktuellt år, månadsperioder, serie A, två VAT-koder och tio
@@ -91,33 +108,60 @@ balans, immutability, lås och audit finns inte enbart i Prisma-schemat.
 
 ## Kontroller och aktuellt resultat
 
+Kör med processenv från repo-roten; .env i roten läses inte automatiskt av Next.
+Den reserverade adressen nedan används endast för build-verifiering, **inte**
+för körande applikation/deployment.
+
 ```powershell
 corepack pnpm@9.15.4 lint
 corepack pnpm@9.15.4 typecheck
 corepack pnpm@9.15.4 test
+$env:API_INTERNAL_URL = 'https://ledgerapp-api.example.invalid'
 corepack pnpm@9.15.4 build
-corepack pnpm@9.15.4 test:integration
 ```
 
-2026-10-06: lint och typecheck godkända; 53 ordinarie tester godkända.
-Integrationstester stoppades före assertions eftersom TEST_DATABASE_URL saknas.
-De kräver en **separat disponibel och migrerad PostgreSQL-databas**. Setup väljer
-angiven URL men kontrollerar inte att du verkligen valt en säker test-DB.
-Använd aldrig utvecklings-/produktionsdata som testdatabas.
+FAS 17, 2026-10-06: lint/typecheck/test/build PASS; 99 tester (API 43, web 43,
+DB 11, SIE 2). Turbo behåller strict-läge och hashar API_INTERNAL_URL endast
+för web-build. Inga DATABASE_URL/JWT-hemligheter skickas till webbbygget.
+CI kör pushes till master och PR, med migrationsbaserad isolerad Postgres.
+API lint/typecheck omfattar både src och integrationstestfiler.
 
-Root `build` misslyckas på API_INTERNAL_URL: Next kräver den under production
-build och Turbo strict-env släpper inte igenom den med dagens konfiguration.
-Diagnostisk build lyckades med följande tillfälliga processinställning:
+Uppföljning 2026-10-06: **49 PostgreSQL-integrationstester i sju sviter passerar**
+mot isolerade disponibla databaser. Alla elva migrationer har körts från tom DB;
+den nya audit-rättningen har även applicerats efter de tidigare tio migrationerna.
+De tidigare Docker-felen berodde på sandboxåtkomst, inte på en avstängd motor.
+Verifieringen avslöjade och rättade en tabellöverskridande audit-triggerreferens
+och ett ogiltigt Prisma-inputfält vid skapande av perioder. Ursprungliga
+migrationsfiler är oförändrade; ny migration ersätter endast audit-funktionen.
+Se GAP_ANALYSIS för exakta resultat och kvarstående begränsningar.
+
+Starta en separat disponibel Postgres, inte den ordinarie utvecklingsdatabasen:
 
 ```powershell
-$env:API_INTERNAL_URL = 'http://localhost:4000'
-corepack pnpm@9.15.4 exec turbo run build --env-mode=loose
+docker run -d --name ledgerapp-p0-test -e POSTGRES_DB=ledgerapp_test -e POSTGRES_USER=ledgerapp_test -e POSTGRES_PASSWORD=local_disposable_test_only -p 15432:5432 postgres:16-alpine
+docker exec ledgerapp-p0-test pg_isready -U ledgerapp_test -d ledgerapp_test
+# Vänta tills pg_isready lyckas, innan migrationen.
+$env:TEST_DATABASE_URL = 'postgresql://ledgerapp_test:local_disposable_test_only@localhost:15432/ledgerapp_test?schema=public'
+$env:DATABASE_URL = $env:TEST_DATABASE_URL
+corepack pnpm@9.15.4 --filter @ledgerapp/db exec prisma migrate deploy --schema prisma/schema.prisma
+corepack pnpm@9.15.4 test:integration
+docker stop ledgerapp-p0-test
+Remove-Item Env:TEST_DATABASE_URL
+Remove-Item Env:DATABASE_URL
 ```
 
-Detta är inte en rättning av root-script, CI eller cachehashning. P0-roadmapen
-innehåller rätt env-kontrakt. Ingen konfigurationsfil ändrades i analysfasen.
-Produktionsberoenden rapporterade 12 advisories (7 high); dessa är dokumenterade,
-inte åtgärdade. Testpass betyder inte redovisningsmässig eller rättslig efterlevnad.
+Säkerhetsspärren kräver postgres/postgresql, loopbackhost (localhost/127.0.0.1/::1)
+och exakt ledgerapp_test, och avvisar remote-/dev-/produktions-URL:er före anslutning.
+Containern ovan behålls stoppad; använd en ny disponibel container vid ny test-DB.
+Kör i ett separat terminalfönster så testens processenv inte påverkar utvecklingen.
+Använd aldrig verkliga bokföringsdata som testdatabas och använd inte db:push.
+Riktig GitHub-run/browser-E2E och S3 har inte verifierats i denna fas.
+På Windows: kör Prisma-generate/build och integrationstester i följd, inte
+parallellt, eftersom en aktiv Prisma-process låser query-engine-DLL:en.
+
+Produktionsberoenden rapporterade tidigare 12 advisories (7 high); inga
+dependencies har ändrats och ingen ny audit hävdas. Testpass betyder inte
+redovisningsmässig eller rättslig efterlevnad.
 
 ## Deployment och dokumentation
 
@@ -137,3 +181,4 @@ CURRENT_STATE/GAP_ANALYSIS; foundation-ADR är historisk.
 Backup/restore av både DB och bilagor, privata storagepolicies, runtime-DB-roll,
 observability, riktig CI/E2E och kvalificerad svensk redovisningsgranskning
 måste säkras före produktionsbruk. Nästa etapp är P0-stabilisering, inte nya moduler.
++

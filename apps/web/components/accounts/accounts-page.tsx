@@ -14,6 +14,11 @@ type EditorState = { account: Account | null } | null;
 const accountManagers = new Set(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
 export function AccountsPage() {
+  const { activeOrganizationId } = useAuth();
+  return <OrganizationAccountsPage key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationAccountsPage() {
   const { activeOrganization, activeOrganizationId, organizationsStatus } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [editor, setEditor] = useState<EditorState>(null);
@@ -41,9 +46,11 @@ export function AccountsPage() {
     setError(null);
 
     void getAccounts(activeOrganizationId, deferredSearch, controller.signal)
-      .then((loadedAccounts) => setAccounts(loadedAccounts))
+      .then((loadedAccounts) => {
+        if (!controller.signal.aborted) setAccounts(loadedAccounts);
+      })
       .catch((caughtError: unknown) => {
-        if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
+        if (controller.signal.aborted) {
           return;
         }
 

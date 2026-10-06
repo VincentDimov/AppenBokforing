@@ -15,7 +15,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:integration": "pnpm --filter @ledgerapp/db build && pnpm --filter @ledgerapp/api test:integration",
+    "test:integration": "pnpm --filter @ledgerapp/db build && pnpm --filter @ledgerapp/sie build && pnpm --filter @ledgerapp/api test:integration",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "db:generate": "corepack pnpm --filter @ledgerapp/db generate",

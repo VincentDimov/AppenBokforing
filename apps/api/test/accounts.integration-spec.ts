@@ -62,7 +62,7 @@ describe("account management", () => {
     readOnlyAgent = request.agent(server);
 
     owner = await register(ownerAgent, "accounts-owner");
-    const otherOwner = await register(otherOwnerAgent, "accounts-other-owner");
+    await register(otherOwnerAgent, "accounts-other-owner");
     const readOnly = await register(readOnlyAgent, "accounts-read-only");
 
     organizationA = await createOrganization(ownerAgent, "accounts-owner-org");

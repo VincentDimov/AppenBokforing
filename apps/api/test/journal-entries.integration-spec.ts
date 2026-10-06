@@ -90,7 +90,7 @@ describe("journal entries and double-entry bookkeeping", () => {
     readOnlyAgent = request.agent(server);
 
     owner = await register(ownerAgent, "journals-owner");
-    const otherOwner = await register(otherOwnerAgent, "journals-other-owner");
+    await register(otherOwnerAgent, "journals-other-owner");
     const readOnly = await register(readOnlyAgent, "journals-read-only");
     organizationA = await createOrganization(ownerAgent, "journals-owner-org");
     organizationB = await createOrganization(otherOwnerAgent, "journals-other-owner-org");

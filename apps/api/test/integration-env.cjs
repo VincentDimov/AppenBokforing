@@ -4,6 +4,21 @@ if (!process.env.TEST_DATABASE_URL) {
   );
 }
 
+let integrationUrl;
+try {
+  integrationUrl = new URL(process.env.TEST_DATABASE_URL);
+} catch {
+  throw new Error("TEST_DATABASE_URL must be a valid isolated PostgreSQL URL.");
+}
+if (
+  !["postgres:", "postgresql:"].includes(integrationUrl.protocol) ||
+  !["localhost", "127.0.0.1", "[::1]"].includes(integrationUrl.hostname) ||
+  integrationUrl.pathname !== "/ledgerapp_test"
+) {
+  throw new Error(
+    "Integration tests require a loopback PostgreSQL host and database ledgerapp_test; development/production URLs are forbidden."
+  );
+}
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 process.env.NODE_ENV = "test";
 process.env.ARGON2_MEMORY_COST = "8192";

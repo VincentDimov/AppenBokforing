@@ -47,6 +47,7 @@ export function AccountTypeahead({
 
     void getAccounts(organizationId, query, controller.signal)
       .then((accounts) => {
+        if (controller.signal.aborted) return;
         setMatches(accounts.filter((candidate) => candidate.active));
         setActiveIndex(0);
       })

@@ -79,7 +79,9 @@ export class FiscalYearsService {
           name: dto.name.trim(),
           startDate: new Date(dto.startDate),
           endDate: new Date(dto.endDate),
-          accountingPeriods: { create: periods.map((period) => ({ ...period, organizationId })) }
+          // The composite fiscalYear relation supplies both fiscalYearId and
+          // organizationId. Its nested unchecked input excludes those keys.
+          accountingPeriods: { create: periods }
         },
         include: { accountingPeriods: { orderBy: { periodNumber: "asc" } } }
       });

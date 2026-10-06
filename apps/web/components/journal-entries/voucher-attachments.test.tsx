@@ -1,7 +1,9 @@
 import { jest } from "@jest/globals";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { ComponentProps } from "react";
+
+import { deferred } from "@/test/accounting-fixtures";
 
 import { VoucherAttachments } from "@/components/journal-entries/voucher-attachments";
 
@@ -45,6 +47,41 @@ function renderAttachments(props: Partial<ComponentProps<typeof VoucherAttachmen
 }
 
 describe("VoucherAttachments", () => {
+  it("removes loaded evidence immediately when the entry changes and ignores late reads", async () => {
+    global.fetch = fetchMock;
+    const pending = deferred<Response>();
+    fetchMock.mockImplementation(async (url) =>
+      String(url).includes("voucher-a") ? pending.promise : jsonResponse([])
+    );
+    const props = { canUpload: true, isDraft: true, onUploadingChange: jest.fn() };
+    const view = render(<VoucherAttachments {...props} journalEntryId="voucher-a" />);
+    view.rerender(<VoucherAttachments {...props} journalEntryId="voucher-b" />);
+    await screen.findByText("Inga bilagor är kopplade ännu.");
+    await act(async () => pending.resolve(jsonResponse([attachment])));
+    expect(screen.queryByText("receipt.pdf")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+
+  it("stops an obsolete upload batch rather than uploading more files to the old entry", async () => {
+    global.fetch = fetchMock;
+    const pending = deferred<Response>();
+    fetchMock.mockImplementation(async (_url, init) =>
+      init?.method === "POST" ? pending.promise : jsonResponse([])
+    );
+    const props = { canUpload: true, isDraft: true, onUploadingChange: jest.fn() };
+    const view = render(<VoucherAttachments {...props} journalEntryId="voucher-a" />);
+    await screen.findByText("Inga bilagor är kopplade ännu.");
+    const file = new File(["%PDF-1.7"], "receipt.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText(/Släpp filer här eller välj filer/i), {
+      target: { files: [file, file] }
+    });
+    view.rerender(<VoucherAttachments {...props} journalEntryId="voucher-b" />);
+    await act(async () => pending.resolve(jsonResponse(attachment, 201)));
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    expect(screen.queryByText("receipt.pdf")).not.toBeInTheDocument();
+    expect(props.onUploadingChange).toHaveBeenCalledTimes(1);
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     Object.defineProperty(global, "fetch", {

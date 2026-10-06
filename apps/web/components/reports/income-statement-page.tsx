@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { useReportRequest } from "@/lib/use-report-request";
+
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 
@@ -26,13 +28,17 @@ const inputClass = "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-s
 
 export function IncomeStatementPage() {
   const { activeOrganizationId } = useAuth();
+  return <OrganizationIncomeStatementPage key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationIncomeStatementPage() {
+  const { activeOrganizationId } = useAuth();
   const [fiscalYear, setFiscalYear] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [project, setProject] = useState("");
   const [costCenter, setCostCenter] = useState("");
-  const [report, setReport] = useState<IncomeStatement | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { report, error, setError, load } = useReportRequest<IncomeStatement>();
 
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate)
@@ -45,24 +51,7 @@ export function IncomeStatementPage() {
       ...(project ? { project } : {}),
       ...(costCenter ? { costCenter } : {})
     });
-    const response = await fetch(`/api/reports/income-statement?${query}`, {
-      credentials: "include",
-      cache: "no-store"
-    });
-    const body: unknown = await response.json();
-    if (!response.ok) {
-      setError(
-        typeof body === "object" &&
-          body !== null &&
-          "message" in body &&
-          typeof body.message === "string"
-          ? body.message
-          : "Rapporten kunde inte laddas."
-      );
-      return;
-    }
-    setError(null);
-    setReport(body as IncomeStatement);
+    await load(`/api/reports/income-statement?${query}`);
   }
 
   return (

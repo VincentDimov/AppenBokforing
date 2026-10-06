@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { useReportRequest } from "@/lib/use-report-request";
+
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 
@@ -21,11 +23,15 @@ const inputClass = "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-s
 
 export function VatReportPage() {
   const { activeOrganizationId } = useAuth();
+  return <OrganizationVatReportPage key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationVatReportPage() {
+  const { activeOrganizationId } = useAuth();
   const [fiscalYear, setFiscalYear] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [report, setReport] = useState<VatReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { report, error, setError, load } = useReportRequest<VatReport>();
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate)
       return setError("Välj räkenskapsår och datumintervall.");
@@ -35,24 +41,7 @@ export function VatReportPage() {
       fromDate,
       toDate
     });
-    const response = await fetch(`/api/reports/vat?${query}`, {
-      cache: "no-store",
-      credentials: "include"
-    });
-    const body: unknown = await response.json();
-    if (!response.ok) {
-      setError(
-        typeof body === "object" &&
-          body !== null &&
-          "message" in body &&
-          typeof body.message === "string"
-          ? body.message
-          : "Momsrapporten kunde inte laddas."
-      );
-      return;
-    }
-    setError(null);
-    setReport(body as VatReport);
+    await load(`/api/reports/vat?${query}`);
   }
   function exportCsv() {
     if (!report) return;

@@ -110,5 +110,84 @@ describe("immutable organization audit history", () => {
         where: { organizationId, entityId: period.id, action: { in: ["LOCK", "UNLOCK"] } }
       })
     ).toBe(2);
+    await prisma.accountingPeriod.update({ where: { id: period.id }, data: { status: "OPEN" } });
+    expect(
+      await prisma.auditEvent.count({
+        where: { organizationId, entityId: period.id, entityType: "ACCOUNTING_PERIOD" }
+      })
+    ).toBe(2);
+  });
+
+  it("audits membership inserts and role changes without reading calendar-only fields", async () => {
+    const actor = await prisma.organizationMember.findFirstOrThrow({
+      where: { organizationId, role: "OWNER" }
+    });
+    const user = await prisma.user.create({
+      data: { email: `${randomUUID()}@example.test`, displayName: "Membership audit fixture" }
+    });
+    const requestId = randomUUID();
+    const member = await prisma.$transaction(async (transaction) => {
+      await transaction.$executeRaw`SELECT set_config('ledgerapp.actor_user_id', ${actor.userId}, true)`;
+      await transaction.$executeRaw`SELECT set_config('ledgerapp.request_id', ${requestId}, true)`;
+      const created = await transaction.organizationMember.create({
+        data: { organizationId, userId: user.id, role: "READ_ONLY" }
+      });
+      await transaction.organizationMember.update({
+        where: { id: created.id },
+        data: { role: "ACCOUNTANT" }
+      });
+      await transaction.organizationMember.update({
+        where: { id: created.id },
+        data: { role: "ACCOUNTANT" }
+      });
+      return created;
+    });
+    const events = await prisma.auditEvent.findMany({
+      where: { organizationId, entityId: member.id, entityType: "ORGANIZATION_MEMBER" }
+    });
+    expect(events).toHaveLength(2);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "CREATE",
+          actorUserId: actor.userId,
+          requestId,
+          metadata: { userId: user.id, role: "READ_ONLY", event: "USER_ADDED" }
+        }),
+        expect.objectContaining({
+          action: "UPDATE",
+          actorUserId: actor.userId,
+          requestId,
+          metadata: {
+            userId: user.id,
+            previousRole: "READ_ONLY",
+            role: "ACCOUNTANT",
+            event: "PERMISSIONS_CHANGED"
+          }
+        })
+      ])
+    );
+    expect(await prisma.organizationMember.findUniqueOrThrow({ where: { id: member.id } })).toEqual(
+      expect.objectContaining({ role: "ACCOUNTANT" })
+    );
+  });
+
+  it("rolls back the membership write and its audit event together", async () => {
+    const user = await prisma.user.create({
+      data: { email: `${randomUUID()}@example.test`, displayName: "Rollback audit fixture" }
+    });
+    const memberId = randomUUID();
+    await expect(
+      prisma.$transaction(async (transaction) => {
+        await transaction.organizationMember.create({
+          data: { id: memberId, organizationId, userId: user.id, role: "MEMBER" }
+        });
+        throw new Error("deliberate fixture rollback");
+      })
+    ).rejects.toThrow("deliberate fixture rollback");
+    expect(await prisma.organizationMember.findUnique({ where: { id: memberId } })).toBeNull();
+    expect(await prisma.auditEvent.count({ where: { organizationId, entityId: memberId } })).toBe(
+      0
+    );
   });
 });

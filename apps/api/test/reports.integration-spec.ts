@@ -72,6 +72,13 @@ describe("general ledger report", () => {
         debit: "0.00",
         credit: "50.00",
         runningBalance: "-150.00"
+      }),
+      expect.objectContaining({
+        date: "2026-02-25",
+        debit: "0.00",
+        credit: "20.00",
+        runningBalance: "-170.00",
+        voucher: "A5"
       })
     ]);
   });
@@ -139,7 +146,7 @@ describe("general ledger report", () => {
     expect(response.body.groups).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          label: "TillgÃ¥ngar",
+          label: "Tillgångar",
           total: "210.00",
           comparisonTotal: "160.00"
         }),

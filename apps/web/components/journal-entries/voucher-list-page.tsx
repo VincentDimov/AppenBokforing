@@ -17,6 +17,11 @@ import { formatOre, parseMoneyToOre } from "@/lib/vouchers";
 const writeRoles = new Set(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
 export function VoucherListPage() {
+  const { activeOrganizationId } = useAuth();
+  return <OrganizationVoucherListPage key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationVoucherListPage() {
   const { activeOrganization, activeOrganizationId, organizationsStatus } = useAuth();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +42,9 @@ export function VoucherListPage() {
     setError(null);
 
     void getJournalEntries(activeOrganizationId, controller.signal)
-      .then(setEntries)
+      .then((loaded) => {
+        if (!controller.signal.aborted) setEntries(loaded);
+      })
       .catch((caughtError: unknown) => {
         if (controller.signal.aborted) {
           return;

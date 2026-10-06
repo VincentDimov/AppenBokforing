@@ -9,6 +9,30 @@ Komplexitet: S = avgränsad ändring, M = flera komponenter/testfall,
 L = flera lager/migrationer, XL = större domän- och arbetsflödesarbete.
 Inga timskattningar. Risk-ID hänvisar till GAP_ANALYSIS.
 
+## Status efter FAS 17 del 1
+
+- **P0-01 PARTIAL:** säker text/attachment/nosniff/UTF-8-transport och testad
+  128 KiB-content/1 MiB-JSON-boundary klar. Injektion av SIE-records via
+  serializertext och verklig PC8-kodning återstår; ingen SIE4B-certifiering.
+- **P0-04 PARTIAL (begärt frontendflöde klart):** current-value PATCH/CREATE före
+  POST, sparfelskydd, submitlås, knapp/hotkey och status/org-regressionstester
+  passerar. Separat fleranvändar-versionering och browser→DB-E2E återstår.
+- **P0-05 COMPLETE inom granskade frontendvyer:** organisationsbundet reset,
+  obsolete abort/svarsskydd och mismatch utan writes testat för editor,
+  fyra rapporter, konton/verifikationer, kalender/historik och bilagor.
+  Backendguards har inte ersatts; live-/browserverifiering återstår.
+- **P0-12 PARTIAL:** master+PR, strict web-env/hash, reserverad CI-origin,
+  migrationskontrakt/testdatabasspärr och lint/typecheck av integrationfiler
+  implementerade. Root lint/typecheck/test/build passerar (99 tester).
+  Uppföljningen körde alla elva migrationer från tom isolerad PostgreSQL och
+  49 integrationstester i sju sviter med PASS. Audit-triggerns tabell-dispatch
+  och nested Prisma-period-input rättades utan försvagade DB-skydd.
+  Faktisk GitHub-run, rent checkout och browser→DB-E2E är fortfarande ej styrkta.
+
+Tabellen nedan bevarar ursprunglig leverans/acceptans; denna status avgör vad
+som är löst. Baslinjens loose-env-byggdiagnostik är inte längre lösningen:
+root build fungerar nu i strict-läge med dokumenterad processenv.
+
 ## P0 — accounting/security correctness
 
 Nästa utvecklingsetapp bör vara **Korrekthet och release-säkring**. Beslut om
@@ -31,7 +55,7 @@ redovisningsregler ska först få dokumenterade förväntningar och fixtures.
 | P0-13 | Least privilege och återställbart underlag    | L           | D01/D02/S10: separera DB-roll, privat bucket/TLS/behörigheter, backup/RPO/RTO och återläs DB+blob isolerat. Bevara audit/ledgerimmutability.                                        |
 
 P0-01–03 är säkerhetspaket, P0-04–11 redovisningspaket och P0-12–13 releasepaket.
-Build med loose-env är en diagnostik, inte färdig CI. Ingen produktionsdata i test.
+Historisk build med loose-env var en diagnostik; FAS 17 har ett strikt env-kontrakt. Ingen produktionsdata i test.
 
 ### P0 releasegate
 

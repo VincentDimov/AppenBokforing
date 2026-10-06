@@ -6,6 +6,202 @@ controllers/guards/DTO:er, centrala tjänster, större frontendkomponenter,
 testrutter/fixtures, CI, Compose, miljöexempel, manifest och låsfil.
 Källkoden väger tyngre än äldre dokumentation. Analys och dokumentation endast.
 
+## FAS 17 — P0-stabilisering, del 1 (2026-10-06)
+
+Baslinjefynden nedan bevaras som historik. Denna uppföljning ersätter endast
+påståenden om A02, F01/F02, transportdelen av S02 och build/CI-delen av O01.
+
+- Utkast sparas alltid från aktuella formulärvärden före postning: CREATE eller
+  PATCH, därefter POST på svarets ID. Ett synkront lås täcker hela kedjan,
+  inklusive Ctrl/Cmd+Enter. Sparfel stoppar POST och behåller formuläret.
+  POSTED/REVERSED får ingen redovisnings-PATCH.
+- Organisations- och entry-nycklade komponenter rensar editor, options, konton,
+  verifikationslista, alla fyra rapporter, kalender/historik och bilagor.
+  Abort och kontroll av sena svar hindrar gamla reads från att återkomma.
+  Fel organisations-ID på laddad verifikation ger ett meddelande utan write-UI.
+  Ett orgbyte efter sparstart stoppar fortsatt POST/navigation. Redan skickade
+  serveroperationer kan slutföras för sin ursprungliga organisation; detta är
+  inte en rollbackgaranti. Backendguards är oförändrat auktoritativa.
+- SIE-export är `text/plain; charset=utf-8`, attachment `ledgerapp.sie`,
+  `nosniff` och `no-store`. Buffer använder UTF-8 och bevarar strängen exakt,
+  även HTML/CRLF/kontrolltecken, utan att använda texten i headers.
+  Serializer deklarerar fortfarande PC8; riktig CP437/SIE4B-konformitet och
+  rad-/recordinjektion i själva filformatet återstår i P0-10/P0-01.
+- SIE-import: högst **131 072 UTF-8-byte (128 KiB)** i avkodad JSON-`content`.
+  Både preview och confirm kontrolleras före SIE-parser och importens DB-arbete.
+  Auth-/medlemsguards kan fortfarande läsa DB före domäntjänsten.
+  En explicit Nest/Express JSON-parser har **1 048 576-byte (1 MiB)** tak för
+  samtliga JSON-endpoints, vilket rymmer 6x escape-expansion plus normal
+  UUID/confirm-envelope. För stora content/envelopes ger JSON 413 med meddelande.
+  Detta ersätter den implicita 100 KiB-parsern; multipart-bilagors 10 MiB-gräns
+  och befintlig DTO-validering är oförändrade. Extra onödigt stor JSON-envelope
+  kan avvisas även om content är liten. Ingen obegränsad sträng tillåts.
+- Turbo strikt web-build tillåter och hashar endast `API_INTERNAL_URL` explicit.
+  Inga DATABASE_URL/JWT-hemligheter läggs i webbens env-kontrakt. CI använder
+  `https://ledgerapp-api.example.invalid` utan krav på en levande API-tjänst,
+  push på `master` samt PR. Migrationer går mot `ledgerapp_test`, aldrig db:push.
+  Testsetup kräver PostgreSQL, loopbackhost och exakt databasen ledgerapp_test
+  innan DATABASE_URL ersätts. API lint/typecheck omfattar nu även test-directory.
+
+Verifiering: lint PASS (6 tasks), typecheck PASS (9 tasks), root test PASS:
+API 12 sviter/43 tester, web 10/43, DB 11 och SIE 2 = **99 tester**.
+API/web har körts, oförändrade DB-/SIE-kontrakt kan återanvändas ur Turbo-cache.
+Root strict build PASS (4 tasks, 26 statiska sidor) med dokumenterad env.
+Dry-run verifierar ändrad webb-cachehash vid ändrad API-adress och oförändrad
+API-buildhash. Nya tester omfattar knapp/hotkey, aktuella belopp, misslyckad
+PATCH, CREATE→POST, dubbla triggers, immutable status, orgbyte under sparning,
+alla rapporter/listor/kalender/historik och sena bilageresultat/batchstopp;
+6 SIE HTTP-fall samt 9 testdatabassäkerhetsfall.
+
+`corepack pnpm@9.15.4 test:integration`: FAIL/BLOCKED, exit 1, sju sviter
+stoppade i setup utan TEST_DATABASE_URL, **0 DB-assertions**. De 47 befintliga
+PostgreSQL-testfallen kördes inte. Docker info: exit 1, docker_engine-pipe saknas
+(även config access warning). Ingen migration, seed eller verklig DB/S3 användes.
+SIE HTTP-test använder riktig controller/guard/parser/preview med mockad
+auth/medlemsuppslagning/DB och exporttjänst; det är inte PostgreSQL-integration.
+Ingen GitHub/cloud/browser/E2E-run har verifierats. Produktionsberedskap är
+fortfarande inte styrkt. Fleranvändares ändringar mellan PATCH och POST kräver
+ett separat versionerings-/concurrencykontrakt; frontendlåset ersätter inte det.
+
+### Exakta slutkommandon, FAS 17
+
+| Kommando från roten                                                                         | Resultat                                                                                |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `corepack pnpm@9.15.4 lint`                                                                 | PASS, exit 0; 6 tasks, inkluderar API test/**/*.ts.                                     |
+| `corepack pnpm@9.15.4 typecheck`                                                            | PASS, exit 0; 9 tasks, inkluderar API integrationfiler.                                 |
+| `corepack pnpm@9.15.4 test`                                                                 | PASS, exit 0; 99 tester; API/web nya sviter körda, oförändrade paket/cache enligt ovan. |
+| `$env:API_INTERNAL_URL='https://ledgerapp-api.example.invalid'; corepack pnpm@9.15.4 build` | PASS, exit 0; 4 tasks, 26 statiska sidor; strict, ingen loose-flagga.                   |
+| `corepack pnpm@9.15.4 test:integration`                                                     | BLOCKED/FAIL, exit 1; 7 sviter stoppade i setup, 0 assertions.                          |
+| `docker info --format '{{.ServerVersion}}'`                                                 | FAIL, exit 1; ingen daemon.                                                             |
+| `git diff --check`                                                                          | PASS, exit 0.                                                                           |
+
+Under arbetet rättades testverktygsfel (JSDOM structuredClone/mock-hoisting,
+strict array-index-typer och en saknad parser-spy), samt två tidigare oanvända
+integrationstestvariabler som upptäcktes av utökad lint. Dessa var mellanresultat;
+PASS ovan avser slutversionen. Ingen affärsvalidering/testassertion togs bort.
+
+### Ändrade käll-/konfigurationsfiler, FAS 17
+
+- `.github/workflows/ci.yml`
+- `README.md`
+- `apps/api/package.json`
+- `apps/api/src/database/integration-database-safety.spec.ts`
+- `apps/api/src/http/app-setup.ts`
+- `apps/api/src/sie/sie-http.spec.ts`
+- `apps/api/src/sie/sie-input-boundary.ts`
+- `apps/api/src/sie/sie.controller.ts`
+- `apps/api/src/sie/sie.service.ts`
+- `apps/api/test/accounts.integration-spec.ts`
+- `apps/api/test/integration-env.cjs`
+- `apps/api/test/journal-entries.integration-spec.ts`
+- `apps/api/tsconfig.test.json`
+- `apps/web/components/accounts/accounts-page.tsx`
+- `apps/web/components/accounts/organization-context.test.tsx`
+- `apps/web/components/audit/organization-context.test.tsx`
+- `apps/web/components/audit/processing-history.tsx`
+- `apps/web/components/fiscal-years/fiscal-years.tsx`
+- `apps/web/components/journal-entries/account-typeahead.tsx`
+- `apps/web/components/journal-entries/voucher-attachments.test.tsx`
+- `apps/web/components/journal-entries/voucher-attachments.tsx`
+- `apps/web/components/journal-entries/voucher-editor.test.tsx`
+- `apps/web/components/journal-entries/voucher-editor.tsx`
+- `apps/web/components/journal-entries/voucher-list-page.tsx`
+- `apps/web/components/reports/balance-sheet-page.tsx`
+- `apps/web/components/reports/general-ledger-page.tsx`
+- `apps/web/components/reports/income-statement-page.tsx`
+- `apps/web/components/reports/organization-context.test.tsx`
+- `apps/web/components/reports/vat-report-page.tsx`
+- `apps/web/lib/use-report-request.ts`
+- `apps/web/test/accounting-fixtures.ts`
+- `docs/CURRENT_STATE.md`
+- `docs/GAP_ANALYSIS.md`
+- `docs/ROADMAP.md`
+- `docs/sie.md`
+- `package.json`
+- `turbo.json`
+
+Nycklad komponentlivscykel och abortkontroller följer de tillämpade Next.js-/
+React-riktlinjerna; Turbo-riktlinjerna styr det strikt avgränsade env/hash-kontraktet.
+Ingen migrations-/schema-/redovisningsmotorändring ingår.
+
+## P0-12 uppföljning — verklig PostgreSQL-verifiering (2026-10-06)
+
+Detta protokoll ersätter den tidigare BLOCKED-statusen för lokal integration,
+inte de historiska körresultaten eller redovisningsriskerna nedan. Docker var
+tillgängligt utanför sandboxen; tidigare config/pipe-fel styrkte inte att motorn
+var avstängd. Inga befintliga utvecklings-/produktionsdatabaser användes.
+
+Två disponibla `postgres:16-alpine`-containrar användes, med databasen
+`ledgerapp_test` och endast loopbackpublicerade portar 15433 respektive 15434:
+`ledgerapp-p0-verify-20261006` och `ledgerapp-p0-fresh-20261006`.
+Den första migrerades med de tio ursprungliga migrationerna och därefter den
+nya; den andra körde samtliga elva från tom DB. Inget db:push, seed, datareset
+eller befintlig migrationschecksumma ändrades.
+Båda testcontainrarna stoppades efter verifieringen; de behålls med testdata
+för felsökning och inga andra containrar stoppades.
+
+### Bekräftade fel och avgränsade rättningar
+
+- Första DB-körningen gav 47 misslyckade testfall: organisationsskapande fick
+  HTTP 500/P2022. Den delade audit-triggerns ELSIF-villkor refererade `NEW.status`
+  även för organization_members, där fältet saknas. SQL-uttrycket behöver
+  planeras även om tabellvillkoret är falskt. Ny framåtriktad migration
+  `20261006150000_audit_trigger_record_dispatch` gör table-first IF-dispatch
+  före tabellspecifik fältåtkomst. Befintliga audittriggers, metadata/aktör/
+  requestId och append-only-skydd behålls; ingen historik skrivs om.
+  Se [PostgreSQL: uttrycksutvärdering](https://www.postgresql.org/docs/16/sql-expressions.html#SYNTAX-EXPRESS-EVAL)
+  och [trigger-records](https://www.postgresql.org/docs/16/plpgsql-trigger.html).
+- Räkenskapsårs-API:s nested-create skickade organizationId i period-input,
+  vilket Prisma 6.17.1 avvisar: kompositrelationen fyller själv både year-ID
+  och org-ID. Input innehåller nu endast periodfälten, i samma transaktion.
+  Databastestet verifierar tolv perioder, rätt organisation/år och datumgränser.
+- Rapportfixturen innehöll en bokförd faktura på 20.00 den 25 februari men
+  expected-transaktionslistan saknade den; listan innehåller nu båda kända
+  intäktsraderna och slutbalansen -170.00. Felkodad förväntan `TillgÃ¥ngar`
+  rättades till `Tillgångar`. Kalenderns lästest saknade DTO-obligatoriska
+  fromDate/toDate och fick korrekt 400; testet skickar nu januariintervallet.
+  Inga beloppsmotorer, DTO-regler eller assertions för tenant/lås togs bort.
+
+Två nya DB-regressionstestfall (audit) verifierar medlemsinsert/rolländring,
+oförändrad roll utan extra event, aktör/requestId/metadata samt atomisk rollback
+av medlem och audit. Befintligt periodtest verifierar även oförändrad status
+utan extra audit. Totalt: **49 integrationstester**, inte 49 nya tester.
+
+### Slutverifiering
+
+Migration/integration använder processenv:
+`TEST_DATABASE_URL=postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15434/ledgerapp_test?schema=public`
+och `DATABASE_URL=TEST_DATABASE_URL`; omkörning mot uppgraderad fixture använder
+port 15433. Värdena är endast lokala disponibla testcredentials.
+
+| Kommando från roten                                                                                    | Resultat                                                                             |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `corepack pnpm@9.15.4 --filter @ledgerapp/db exec prisma migrate deploy --schema prisma/schema.prisma` | PASS, exit 0; hela kedjan (11) i färsk DB och ny funktion efter tidigare kedja (10). |
+| `corepack pnpm@9.15.4 test:integration`                                                                | PASS, exit 0; sju sviter/49 tester i färsk DB och omkörning i uppgraderad test-DB.   |
+| `corepack pnpm@9.15.4 lint`                                                                            | PASS, exit 0; sex tasks.                                                             |
+| `corepack pnpm@9.15.4 typecheck`                                                                       | PASS, exit 0; nio tasks.                                                             |
+| `corepack pnpm@9.15.4 test`                                                                            | PASS, exit 0; 99 tester (API 43, web 43, DB 11, SIE 2). API/web/DB körda; SIE-cache. |
+| `$env:API_INTERNAL_URL='https://ledgerapp-api.example.invalid'; corepack pnpm@9.15.4 build`            | PASS, exit 0; fyra tasks, 26 statiska sidor; strict-läge.                            |
+
+Samtliga integrationssviter körda: auth-organization, accounts, journal-entries,
+attachments (mockad storage), reports, audit och fiscal-years. Assertions täcker
+bland annat tenant/roller, refreshrotation, balans/numrering/rättelser, lås och
+auditimmutability. De bevisar inte generell racefrihet, SIE-domänkorrekthet,
+momsriktighet, verklig S3, browser/proxy eller regulatorisk efterlevnad.
+
+Mellanresultat: efter audit-rättningen 40/49 PASS; efter period/rapportfix
+48/49 PASS; sista kalenderrequest rättad, slutresultat 49/49 PASS. Typecheck
+startad parallellt med integration fick Windows EPERM när Prisma skulle ersätta
+aktiv query-engine-DLL; sekventiell omkörning PASS. Ingen regel försvagades.
+
+Ändringar i denna uppföljning: ny migration, fiscal-years.service.ts,
+audit.integration-spec.ts, fiscal-years.integration-spec.ts,
+reports.integration-spec.ts samt README/CURRENT_STATE/GAP_ANALYSIS/ROADMAP.
+Postgres-skillen användes för en avgränsad migrationsrättning som inte utökar
+behörigheter eller ersätter befintliga integritetsskydd. P0-12 förblir PARTIAL:
+GitHub-körning, rent checkout och browser→DB-E2E återstår. Nästa avgränsade
+P0-etapp är P0-02 beroendestabilisering; den har inte påbörjats här.
+
 ## Bedömningsmodell
 
 - CRITICAL: styrkt allvarlig kompromettering eller omfattande oåterkallelig förlust. Ingen sådan attack har verifierats i denna granskning.
@@ -221,7 +417,7 @@ Prioriterad saknad testlista:
 11. P1: report-fetch races/orgbyte/loading/empty/error, valid UUID-val från riktig kalender, print/mobile/a11y.
 12. P1: E2E från nyregistrering till org/år/serie/konto/voucher/rapport/export och full logout.
 
-## Verifieringsprotokoll
+## Verifieringsprotokoll — historisk analys före FAS 17
 
 Kört från repo-roten med Node `22.20.0` via `corepack pnpm@9.15.4`,
 2026-10-06. Turbo återanvände en del befintliga DB-/småpaketsresultat; API/web

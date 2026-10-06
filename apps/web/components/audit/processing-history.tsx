@@ -50,6 +50,11 @@ const inputClass = "h-10 w-full rounded-md border border-[#b9cbd4] bg-white px-3
 
 export function ProcessingHistory() {
   const { activeOrganizationId } = useAuth();
+  return <OrganizationProcessingHistory key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationProcessingHistory() {
+  const { activeOrganizationId } = useAuth();
   const [filters, setFilters] = useState({
     fromDate: "",
     toDate: "",

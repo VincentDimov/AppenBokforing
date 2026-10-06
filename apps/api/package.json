@@ -9,10 +9,10 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
-    "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --max-warnings=0",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "jest --config ./jest.config.cjs",
     "test:integration": "jest --config ./test/jest-integration.config.cjs --runInBand"
   },

@@ -11,10 +11,13 @@ import { DatabaseService } from "../database/database.service";
 import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
 import { createHash, randomUUID } from "node:crypto";
 
+import { assertSieInputSize } from "./sie-input-boundary";
+
 @Injectable()
 export class SieService {
   constructor(private readonly database: DatabaseService) {}
   preview(content: string) {
+    assertSieInputSize(content);
     return this.previewResult(parseSie4(content));
   }
   async import(
@@ -24,6 +27,7 @@ export class SieService {
     actorUserId?: string,
     requestId?: string
   ) {
+    assertSieInputSize(content);
     const document = parseSie4(content);
     const preview = this.previewResult(document);
     if (!confirm) return { mode: "PREVIEW", ...preview };

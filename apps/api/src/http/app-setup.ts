@@ -1,4 +1,6 @@
 import { ValidationPipe, type INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
+import { JSON_BODY_MAX_BYTES } from "../sie/sie-input-boundary";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 
@@ -21,6 +23,9 @@ function getCorsOrigins(): string[] | false {
 export function configureHttpApp(app: INestApplication): void {
   app.use(helmet());
   app.use(cookieParser());
+  // One explicit JSON parser replaces Nest/Express’s implicit 100 KiB default.
+  // Allows the bounded SIE string plus worst-case JSON escaping; multipart is unchanged.
+  (app as NestExpressApplication).useBodyParser("json", { limit: JSON_BODY_MAX_BYTES });
   app.enableCors({
     credentials: true,
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],

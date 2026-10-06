@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { useReportRequest } from "@/lib/use-report-request";
+
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 
@@ -30,11 +32,15 @@ const inputClass = "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-s
 
 export function BalanceSheetPage() {
   const { activeOrganizationId } = useAuth();
+  return <OrganizationBalanceSheetPage key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationBalanceSheetPage() {
+  const { activeOrganizationId } = useAuth();
   const [fiscalYear, setFiscalYear] = useState("");
   const [reportDate, setReportDate] = useState("");
   const [comparisonDate, setComparisonDate] = useState("");
-  const [report, setReport] = useState<BalanceSheet | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { report, error, setError, load } = useReportRequest<BalanceSheet>();
 
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !reportDate)
@@ -45,24 +51,7 @@ export function BalanceSheetPage() {
       reportDate,
       ...(comparisonDate ? { comparisonDate } : {})
     });
-    const response = await fetch(`/api/reports/balance-sheet?${query}`, {
-      cache: "no-store",
-      credentials: "include"
-    });
-    const body: unknown = await response.json();
-    if (!response.ok) {
-      setError(
-        typeof body === "object" &&
-          body !== null &&
-          "message" in body &&
-          typeof body.message === "string"
-          ? body.message
-          : "Rapporten kunde inte laddas."
-      );
-      return;
-    }
-    setError(null);
-    setReport(body as BalanceSheet);
+    await load(`/api/reports/balance-sheet?${query}`);
   }
 
   function exportCsv() {

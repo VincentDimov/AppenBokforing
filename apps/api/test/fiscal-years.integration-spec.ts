@@ -47,6 +47,28 @@ describe("calendar locking across accounting POST endpoints", () => {
     yearId = year.id;
     periodId = year.accountingPeriods[0].id;
     expect(year.accountingPeriods).toHaveLength(12);
+    expect(year.organizationId).toBe(organizationId);
+    expect(year.accountingPeriods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          organizationId,
+          fiscalYearId: yearId,
+          periodNumber: 1,
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2026-01-31T00:00:00.000Z"
+        }),
+        expect.objectContaining({
+          organizationId,
+          fiscalYearId: yearId,
+          periodNumber: 12,
+          startDate: "2026-12-01T00:00:00.000Z",
+          endDate: "2026-12-31T00:00:00.000Z"
+        })
+      ])
+    );
+    expect(
+      await prisma.accountingPeriod.count({ where: { fiscalYearId: yearId, organizationId } })
+    ).toBe(12);
     const series = await prisma.voucherSeries.create({
       data: { organizationId, fiscalYearId: yearId, code: "A", name: "General" }
     });
@@ -133,7 +155,12 @@ describe("calendar locking across accounting POST endpoints", () => {
     await owner.get(`/journal-entries/${postedId}`).expect(200);
     await owner
       .get("/reports/general-ledger")
-      .query({ organizationId, fiscalYear: yearId })
+      .query({
+        organizationId,
+        fiscalYear: yearId,
+        fromDate: "2026-01-01",
+        toDate: "2026-01-31"
+      })
       .expect(200);
     const audit = await prisma.auditEvent.findFirstOrThrow({
       where: { organizationId, entityId: periodId, action: "LOCK" }

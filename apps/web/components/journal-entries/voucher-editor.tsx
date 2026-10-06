@@ -53,7 +53,18 @@ interface VoucherEditorProps {
 
 const writeRoles = new Set(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
-export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
+export function VoucherEditor(props: Readonly<VoucherEditorProps>) {
+  const { activeOrganizationId } = useAuth();
+  // A new organization owns a new editor lifetime, including options and attachments.
+  return (
+    <OrganizationVoucherEditor
+      key={`${activeOrganizationId ?? "no-organization"}:${props.entryId ?? "new"}`}
+      {...props}
+    />
+  );
+}
+
+function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   const router = useRouter();
   const { activeOrganization, activeOrganizationId, organizationsStatus } = useAuth();
   const [description, setDescription] = useState("");
@@ -76,16 +87,32 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   const [transactionDate, setTransactionDate] = useState(today());
   const [voucherSeriesId, setVoucherSeriesId] = useState("");
   const nextLineToFocus = useRef<string | null>(null);
+  const mutationInFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const canWrite = activeOrganization ? writeRoles.has(activeOrganization.role) : false;
   const isDraft = !entry || entry.status === "DRAFT";
-  const isEditable = canWrite && isDraft && !isSaving && !attachmentsUploading;
+  const contextMatches = !entry || entry.organizationId === activeOrganizationId;
+  const isEditable =
+    canWrite &&
+    contextMatches &&
+    (!entryId || !!entry) &&
+    isDraft &&
+    !isSaving &&
+    !attachmentsUploading;
   const amounts = calculateVoucherAmounts(lines);
   const hasValidLines =
     lines.length > 0 &&
     lines.every((line) => line.account !== null && isValidJournalAmountLine(line));
   const canSave =
     isEditable &&
+    !optionsLoading &&
     Boolean(activeOrganizationId && voucherSeriesId && description.trim() && transactionDate) &&
     hasValidLines;
   const isBalanced = amounts !== null && amounts.debit > 0n && amounts.difference === 0n;
@@ -94,6 +121,7 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     entry &&
     entry.status === "POSTED" &&
     canWrite &&
+    contextMatches &&
     !isSaving &&
     !entry.reversesEntryId &&
     !entry.reversedByEntryId
@@ -126,7 +154,16 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     setError(null);
 
     void getJournalEntry(entryId, controller.signal)
-      .then((loadedEntry) => applyEntry(loadedEntry))
+      .then((loadedEntry) => {
+        if (controller.signal.aborted) return;
+        if (loadedEntry.organizationId !== activeOrganizationId) {
+          setError(
+            "Verifikationen tillhör en annan organisation. Välj dess organisation för att fortsätta."
+          );
+          return;
+        }
+        applyEntry(loadedEntry);
+      })
       .catch((caughtError: unknown) => {
         if (controller.signal.aborted) {
           return;
@@ -145,7 +182,7 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
       });
 
     return () => controller.abort();
-  }, [entryId]);
+  }, [entryId, activeOrganizationId]);
 
   useEffect(() => {
     if (!activeOrganizationId || !isIsoDate(transactionDate)) {
@@ -154,11 +191,13 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     }
 
     const controller = new AbortController();
+    setOptions(null);
     setOptionsLoading(true);
     setOptionsError(null);
 
     void getJournalEntryOptions(activeOrganizationId, transactionDate, controller.signal)
       .then((loadedOptions) => {
+        if (controller.signal.aborted) return;
         setOptions(loadedOptions);
         setVoucherSeriesId((current) => {
           if (current && loadedOptions.voucherSeries.some((series) => series.id === current)) {
@@ -201,6 +240,7 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
 
     void getJournalEntryOptions(activeOrganizationId, reversalDate, controller.signal)
       .then((loadedOptions) => {
+        if (controller.signal.aborted) return;
         setReversalOptions(loadedOptions);
         setReversalSeriesId((current) => {
           if (current && loadedOptions.voucherSeries.some((series) => series.id === current)) {
@@ -317,62 +357,62 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     };
   }
 
-  async function persistDraft(navigateAfterSave: boolean): Promise<JournalEntry | null> {
-    const input = buildInput();
-
-    if (!input || !activeOrganizationId) {
+  /** One persistence/posting path for both the button and keyboard shortcut. */
+  async function persistDraft(
+    navigateAfterSave: boolean,
+    postAfterSave = false
+  ): Promise<JournalEntry | null> {
+    if (mutationInFlight.current || !mounted.current || !isEditable || !contextMatches) return null;
+    if (postAfterSave && !canPost) {
+      setError("Verifikationen måste ha minst två giltiga rader och skillnaden måste vara 0,00.");
       return null;
     }
+    const input = buildInput();
+    if (!input || !activeOrganizationId) return null;
 
+    // Ref closes the same-render double-click/hotkey gap before React disables the controls.
+    mutationInFlight.current = true;
     setIsSaving(true);
     setError(null);
-
     try {
       const saved = entry
         ? await updateJournalEntry(entry.id, input)
         : await createJournalEntry({ ...input, organizationId: activeOrganizationId });
-
-      applyEntry(saved);
-
-      if (navigateAfterSave && !entry) {
-        router.replace(`/app/bookkeeping/vouchers/${saved.id}`);
+      // Abort the continuation if the user left this organization while saving.
+      if (!mounted.current) return null;
+      if (
+        saved.organizationId !== activeOrganizationId ||
+        saved.status !== "DRAFT" ||
+        (entry && saved.id !== entry.id)
+      ) {
+        throw new Error("Det sparade utkastets organisationskontext eller status är fel.");
       }
-
+      applyEntry(saved);
+      if (postAfterSave) {
+        const posted = await postJournalEntry(saved.id);
+        if (!mounted.current) return null;
+        applyEntry(posted);
+        router.replace(`/app/bookkeeping/vouchers/${posted.id}`);
+        return posted;
+      }
+      if (navigateAfterSave && !entry) router.replace(`/app/bookkeeping/vouchers/${saved.id}`);
       return saved;
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Utkastet kunde inte sparas.");
+      if (mounted.current)
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Verifikationen kunde inte sparas eller bokföras."
+        );
       return null;
     } finally {
-      setIsSaving(false);
+      mutationInFlight.current = false;
+      if (mounted.current) setIsSaving(false);
     }
   }
 
   async function handlePost() {
-    if (!canPost) {
-      setError("Verifikationen måste ha minst två giltiga rader och skillnaden måste vara 0,00.");
-      return;
-    }
-
-    const saved = entry ?? (await persistDraft(false));
-
-    if (!saved) {
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      const posted = await postJournalEntry(saved.id);
-      applyEntry(posted);
-      router.replace(`/app/bookkeeping/vouchers/${posted.id}`);
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error ? caughtError.message : "Verifikationen kunde inte bokföras."
-      );
-    } finally {
-      setIsSaving(false);
-    }
+    await persistDraft(false, true);
   }
 
   function openReversalConfirmation() {
@@ -386,10 +426,17 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   }
 
   async function handleReverse() {
-    if (!entry || !canConfirmCorrection) {
+    if (
+      !entry ||
+      !canConfirmCorrection ||
+      !contextMatches ||
+      mutationInFlight.current ||
+      !mounted.current
+    ) {
       return;
     }
 
+    mutationInFlight.current = true;
     setIsSaving(true);
     setError(null);
 
@@ -400,14 +447,17 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         voucherSeriesId: reversalSeriesId
       });
 
+      if (!mounted.current) return;
       setShowReversalConfirmation(false);
       router.replace(`/app/bookkeeping/vouchers/${correction.id}`);
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error ? caughtError.message : "Rättelsen kunde inte bokföras."
-      );
+      if (mounted.current)
+        setError(
+          caughtError instanceof Error ? caughtError.message : "Rättelsen kunde inte bokföras."
+        );
     } finally {
-      setIsSaving(false);
+      mutationInFlight.current = false;
+      if (mounted.current) setIsSaving(false);
     }
   }
 
@@ -502,6 +552,7 @@ export function VoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
 
       {entry ? (
         <VoucherAttachments
+          key={entry.id}
           canUpload={canWrite && entry.status === "DRAFT" && !isSaving}
           isDraft={entry.status === "DRAFT"}
           journalEntryId={entry.id}

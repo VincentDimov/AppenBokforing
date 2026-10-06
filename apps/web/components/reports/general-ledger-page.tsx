@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { useReportRequest } from "@/lib/use-report-request";
+
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 
@@ -31,6 +33,11 @@ const inputClassName =
 
 export function GeneralLedgerPage() {
   const { activeOrganizationId } = useAuth();
+  return <OrganizationGeneralLedgerPage key={activeOrganizationId ?? "no-organization"} />;
+}
+
+function OrganizationGeneralLedgerPage() {
+  const { activeOrganizationId } = useAuth();
   const [fiscalYear, setFiscalYear] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -38,8 +45,7 @@ export function GeneralLedgerPage() {
   const [accountTo, setAccountTo] = useState("");
   const [project, setProject] = useState("");
   const [costCenter, setCostCenter] = useState("");
-  const [report, setReport] = useState<GeneralLedgerReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { report, error, setError, load } = useReportRequest<GeneralLedgerReport>();
 
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate) {
@@ -56,24 +62,7 @@ export function GeneralLedgerPage() {
       ...(project ? { project } : {}),
       ...(costCenter ? { costCenter } : {})
     });
-    const response = await fetch(`/api/reports/general-ledger?${parameters}`, {
-      cache: "no-store",
-      credentials: "include"
-    });
-    const body: unknown = await response.json();
-    if (!response.ok) {
-      const message =
-        typeof body === "object" &&
-        body !== null &&
-        "message" in body &&
-        typeof body.message === "string"
-          ? body.message
-          : "Rapporten kunde inte laddas.";
-      setError(message);
-      return;
-    }
-    setError(null);
-    setReport(body as GeneralLedgerReport);
+    await load(`/api/reports/general-ledger?${parameters}`);
   }
 
   function exportCsv() {
