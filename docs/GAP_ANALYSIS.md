@@ -1,5 +1,15 @@
 # LedgerApp — GAP-analys
 
+## FAS 23.1 — avgränsad CI-hotfix
+
+Bekräftat Linux-CI-paketeringsfel: E2E importerade relativ genererad SIE-dist
+utan workspace-edge. Publika SIE/DB-importer och deklarerade Node-test-
+devDependencies ersätter detta. Ren lokal källkopia typecheckar utan befintlig
+dist/cache; E2E ingår fortfarande i strict typkontroll och TS7006 infereras rätt.
+Ingen ändrad domänlogik eller lättad säkerhetsgate. P0-02/03/10/11/13 kvarstår.
+GitHub-status för 5147fad är fortfarande röd tills hotfix faktiskt pushats och
+en ny remote verify-run har passerat; lokal grön kontroll är inte remote CI.
+
 ## Aktuellt efter FAS 21–23 — 2026-10-07
 
 - P0-01 COMPLETE inom byte-/serializer-/inputgränsen: PC8/CP437 och injektionsskydd.

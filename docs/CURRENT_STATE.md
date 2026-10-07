@@ -1,5 +1,40 @@
 # LedgerApp — faktiskt nuläge
 
+## FAS 23.1 — CI-paketeringshotfix, 2026-10-07
+
+Linux-CI på 5147fad föll på webbens E2E-import av genererad relativ
+`packages/sie/dist`; följdfelet TS7006 tappade SIE-typinferensen. Importerna
+använder nu publika `@ledgerapp/sie` och `@ledgerapp/db`, båda deklarerade
+som workspace-devDependencies i web. DB används endast i Node-side E2E,
+inte i app/components/lib eller browserbundle. Lockfile uppdaterad.
+Turbos befintliga `^build`/`^typecheck` ordnar båda paketens build/typecheck
+före webbens typkontroll; ingen Turbo/CI-strictness behöver ändras.
+
+Ren separat Windows-källkopia utan dist/node_modules/.turbo/tsbuildinfo:
+frozen install, Prisma generate och typecheck PASS (9 tasks, 0 cache hits).
+TS7006 försvann via riktig SieDocument-inferens; inga any/ignore-undantag.
+GitHub-run 37664031696 för gammal commit har verify/Typecheck FAILURE och
+browser-e2e SUCCESS; ingen ny push eller grön remote run påstås av lokal fix.
+Redovisning, SIE/momssemantik, samtidighet och säkerhetsgates är oförändrade.
+Lokala releasegates för hotfixen: `corepack pnpm@9.15.4 lint` PASS (6 tasks),
+`typecheck` PASS (9), `test` PASS (156, oförändrat; oförändrade API/DB/SIE ur
+Turbo-cache, web 51 körda), `test:integration` PASS (86/11 sviter),
+`test:e2e` PASS (13 Chromium, hela runner inklusive rebuild/migration),
+`API_INTERNAL_URL=https://ledgerapp-api.example.invalid; build` PASS
+(4 tasks, 28 sidor). Restore-scriptsyntax PASS, reconciliation 1 PASS,
+local-only E2E-guard 7 PASS. Audit PASS_WITH_DOCUMENTED_EXCEPTIONS:
+deepmerge-ts 7.1.5 HIGH GHSA-ggr8-5vv4-36mx kvarstår till 2026-11-07.
+CI-workflow behåller samtliga gates utan continue-on-error eller E2E-exkludering.
+
+Typkontrollen byggde paketen från tom dist/cache i den rena källkopian;
+ingen Linux-container- eller ny GitHub-körning påstås. Produktions-JS-chunks
+gav 0 träffar på PrismaClient/@prisma/client/@ledgerapp/db och ingen DB-import
+finns i app/components/lib. Säkerhets-/domän-P0 är oförändrade.
+Ett integrationstestförsök med nytt DB-namnsuffix nekades före tester (0 körda)
+av befintlig local-only-policy; därefter användes tillåtna isolerade
+ledgerapp_test/ledgerapp_e2e på 127.0.0.1:15438. Policyn lättades inte.
+Den rena källkopian och testdatabaserna är bevarade; testcontainern stoppad.
+
 ## FAS 21–23 — sammanhängande arbete, 2026-10-07
 
 SIE har riktig PC8/CP437, exakta cent, injektionsskydd, explicit signerad preview,

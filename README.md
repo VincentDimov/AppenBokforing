@@ -1,5 +1,11 @@
 # LedgerApp
 
+FAS 23.1 CI-hotfix: Node-side E2E använder nu deklarerade workspace-
+devDependencies `@ledgerapp/sie`/`@ledgerapp/db` i stället för relativa
+genererade dist-/src-importer. Ren källkopia klarar frozen install, Prisma
+generate och strict typecheck utan befintliga byggartefakter. Ingen ändrad
+SIE/moms/redovisningslogik eller lättad säkerhetsgate; [aktuell CI-status](docs/CURRENT_STATE.md).
+
 FAS 21–23 har genomförts sammanhängande: riktig PC8-SIE för dokumenterad subset,
 signerad importreview, bevarad IB/dimension/raddatum, versionskontroller och
 samtidighetstestad bokföring, säkerhetshärdning och återställningsverktyg.

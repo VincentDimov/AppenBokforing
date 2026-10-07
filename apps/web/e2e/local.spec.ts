@@ -6,10 +6,10 @@ import {
   type Page
 } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { PrismaClient } from "../../../packages/db/src";
+import { PrismaClient } from "@ledgerapp/db";
 import { goldenAccounting as golden } from "../../../tests/fixtures/accounting-golden";
 import { readFile } from "node:fs/promises";
-import { parseSie4 } from "../../../packages/sie/dist";
+import { parseSie4 } from "@ledgerapp/sie";
 
 type Organization = {
   id: string;

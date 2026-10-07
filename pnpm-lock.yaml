@@ -178,6 +178,12 @@ importers:
       '@jest/globals':
         specifier: ^29.7.0
         version: 29.7.0
+      '@ledgerapp/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@ledgerapp/sie':
+        specifier: workspace:*
+        version: link:../../packages/sie
       '@tailwindcss/postcss':
         specifier: ^4.1.13
         version: 4.3.3
