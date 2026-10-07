@@ -1,5 +1,37 @@
 # Vercel deployment
 
+## Environment separation and FAS 18 verification
+
+| Environment       | Frontend `API_INTERNAL_URL`                                         | Backend data                                                   |
+| ----------------- | ------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Production        | Public HTTPS origin of the production NestJS service                | Production DB/storage only on the API host                     |
+| Preview           | Separate preview API origin, scoped to Preview/branch               | Isolated preview/test DB/storage; never production bookkeeping |
+| Local development | Local API origin, normally `http://localhost:4000`                  | Local development services                                     |
+| Local browser E2E | `http://127.0.0.1:4410` by default, set at build time by the runner | Disposable `ledgerapp_e2e` only                                |
+
+Set Production and Preview values separately in Vercel. After changing a value,
+rebuild/redeploy the relevant environment: rewrites are part of the Next build
+and Turbo includes this variable in the web build cache key. Changing only
+runtime configuration of an existing build is insufficient.
+
+Browser fetches stay same-origin `/api/*`. Do not add `NEXT_PUBLIC_DATABASE_URL`,
+`NEXT_PUBLIC_JWT_*`, public S3 credentials, or a public-secret workaround.
+DB/JWT/storage secrets belong only to NestJS. Never copy a production backend
+environment into preview or the disposable E2E runner.
+
+Read-only production smoke was run 2026-10-06: **4 passed, 1 auth check skipped**.
+`/`, `/login`, `/register` returned 200 in Chromium without pageerror.
+`/api/health` returned the real Nest health JSON with nosniff, CSP,
+SAMEORIGIN, no-referrer and no-store. Public HTML lacked CSP/nosniff/frame/
+referrer headers; this remains a hardening gap. Secure authentication cookies
+were not inspected in production without an explicitly authorized isolated
+test account. No production registration or accounting mutation was performed.
+
+Commands, optional credential gating, local isolation and CI limits:
+[E2E verification](e2e-verification.md). Smoke success proves neither full
+accounting correctness nor regulatory compliance. No deployment was performed
+as part of these checks.
+
 LedgerApp deploys the Next.js application to Vercel and keeps the NestJS API as
 a separately deployed, long-running Node service. NestJS is not run as a
 background process in a Vercel web deployment.

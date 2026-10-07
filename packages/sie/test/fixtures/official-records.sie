@@ -1,0 +1,4 @@
+#SIETYP 4
+#FORMAT PC8
+#DIM 1 "Cost centre"
+#DIM 6 "Project"

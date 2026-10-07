@@ -60,6 +60,35 @@ async function editExisting() {
   fireEvent.change(screen.getByLabelText("Kredit rad 2"), { target: { value: "5000,00" } });
 }
 describe("canonical posting flow", () => {
+  it("retains local edits on version conflict and explicitly reloads latest values", async () => {
+    const normal = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url, init) => {
+      if (init?.method === "PATCH") return jsonResponse({ code: "JOURNAL_ENTRY_VERSION_CONFLICT", message: "Verifikationen har ändrats av en annan användare." }, 409);
+      return normal(url, init);
+    });
+    render(<VoucherEditor entryId={demoEntry.id} />); await editExisting();
+    fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
+    expect(await screen.findByText("Verifikationen har ändrats av en annan användare.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Debet rad 1")).toHaveValue("5000,00");
+    expect(mutations()).toHaveLength(1);
+    expect(JSON.parse(String(mutations()[0]?.[1]?.body)).expectedVersion).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Ladda senaste och kasta lokala ändringar" }));
+    await screen.findByDisplayValue("Original draft");
+    expect(screen.queryByText("Verifikationen har ändrats av en annan användare.")).not.toBeInTheDocument();
+  });
+  it("saves explicit VAT base/tax roles and group without inferring from accounts", async () => {
+    render(<VoucherEditor entryId={demoEntry.id} />);
+    await editExisting();
+    fireEvent.change(screen.getByLabelText("Momsroll rad 1"), { target: { value: "BASE" } });
+    fireEvent.change(screen.getByLabelText("Momsroll rad 2"), { target: { value: "TAX" } });
+    fireEvent.change(screen.getByLabelText("Momsgrupp rad 1"), { target: { value: "sale" } });
+    fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
+    await waitFor(() => expect(mutations()).toHaveLength(2));
+    expect(JSON.parse(String(mutations()[0]?.[1]?.body)).lines).toEqual([
+      expect.objectContaining({ vatRole: "BASE", vatGroup: "sale" }),
+      expect.objectContaining({ vatRole: "TAX" })
+    ]);
+  });
   it.each(["button", "keyboard"])(
     "PATCHes the visible existing draft before POST via %s",
     async (trigger) => {

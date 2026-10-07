@@ -52,12 +52,19 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+      - name: Production dependency advisory gate (expiring scoped exceptions)
+        run: node scripts/security-audit.cjs
 
       - name: Typecheck
         run: pnpm typecheck
 
       - name: Test
         run: pnpm test
+      - name: Restore tooling syntax and report-only reconciliation contract
+        run: |
+          node --check scripts/restore-drill.cjs
+          node --check scripts/restore-database-drill.cjs
+          node --test tests/storage-reconciliation.test.cjs
 
       - name: Integration test
         env:
@@ -68,3 +75,36 @@ jobs:
         env:
           API_INTERNAL_URL: https://ledgerapp-api.example.invalid
         run: pnpm build
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ledgerapp_e2e
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_USER: ledgerapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ledgerapp -d ledgerapp_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node --test scripts/e2e-safety.test.cjs
+      - name: Browser to local API to disposable PostgreSQL
+        env:
+          E2E_DATABASE_URL: postgresql://ledgerapp:disposable_ci_only@127.0.0.1:5432/ledgerapp_e2e
+        run: pnpm test:e2e
+      # No production smoke or production credentials in PR CI.
+      # Disposable cookie traces are deliberately not uploaded as public artifacts.

@@ -1,6 +1,7 @@
 import type { JournalEntry } from "@/lib/api/journal-entries";
 
 export const demoEntry: JournalEntry = {
+  version: 1,
   id: "entry-a",
   organizationId: "org-a",
   status: "DRAFT",

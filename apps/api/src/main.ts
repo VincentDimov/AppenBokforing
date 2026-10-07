@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 import { AppModule } from "./app.module";
 import { configureHttpApp } from "./http/app-setup";
+import { assertProductionSettings } from "./http/security-policy";
 
 const DEFAULT_API_PORT = 4000;
 function parsePort(rawPort: string | undefined): number {
@@ -22,6 +23,7 @@ function parsePort(rawPort: string | undefined): number {
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  assertProductionSettings(process.env);
   const port = parsePort(process.env.API_PORT);
   const host = process.env.API_HOST ?? "0.0.0.0";
 
@@ -35,7 +37,7 @@ async function bootstrap(): Promise<void> {
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, swaggerConfig);
 
-  SwaggerModule.setup("docs", app, documentFactory);
+  if (process.env.NODE_ENV !== "production") SwaggerModule.setup("docs", app, documentFactory);
 
   await app.listen(port, host);
 

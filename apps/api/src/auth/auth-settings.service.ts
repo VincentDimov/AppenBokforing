@@ -84,6 +84,11 @@ export class AuthSettingsService {
     if (!value || value.length < 32) {
       throw new Error(name + " must contain at least 32 characters.");
     }
+    if (
+      this.isProduction &&
+      /local|development|example|placeholder|change.before|disposable|integration.test/i.test(value)
+    )
+      throw new Error(name + " must not use a known placeholder in production.");
 
     return value;
   }

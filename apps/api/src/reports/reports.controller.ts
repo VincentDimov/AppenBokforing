@@ -8,12 +8,22 @@ import { IncomeStatementQueryDto } from "./dto/income-statement-query.dto";
 import { BalanceSheetQueryDto } from "./dto/balance-sheet-query.dto";
 import { VatReportQueryDto } from "./dto/vat-report-query.dto";
 import { ReportsService } from "./reports.service";
+import { TrialBalanceQueryDto } from "./dto/trial-balance-query.dto";
 @ApiTags("Reports")
 @ApiBearerAuth()
 @ApiCookieAuth("ledgerapp_access")
 @Controller("reports")
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
+  @Get("trial-balance")
+  @UseGuards(JournalEntriesOrganizationGuard)
+  @RequireOrganizationPermission("READ_BOOKKEEPING")
+  @ApiOperation({ summary: "Return opening, posted movement and closing debit/credit balances" })
+  trialBalance(@Query() query: TrialBalanceQueryDto, @Req() request: AuthenticatedRequest) {
+    const organizationId = request.organizationMembership?.organizationId;
+    if (!organizationId) throw new Error("Report requires organization membership.");
+    return this.reports.trialBalance(organizationId, query);
+  }
   @Get("general-ledger")
   @UseGuards(JournalEntriesOrganizationGuard)
   @RequireOrganizationPermission("READ_BOOKKEEPING")

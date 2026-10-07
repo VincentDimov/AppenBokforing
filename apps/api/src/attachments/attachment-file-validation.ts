@@ -67,6 +67,20 @@ export function validateAttachmentFile(
     throw new BadRequestException("The attachment MIME type does not match its extension.");
   }
 
+  if (detectedMimeType === "application/pdf") {
+    const pdf = file.buffer.toString("latin1");
+    // A conservative boundary, not a full PDF parser or malware scanner.
+    // Reject obvious truncation, appended payloads and active-file features.
+    if (
+      !/^%PDF-(?:1\.[0-7]|2\.0)(?:\r\n|\r|\n)/.test(pdf) ||
+      !/%%EOF[\r\n\t ]*$/.test(pdf) ||
+      !/\b\d+\s+\d+\s+obj\b/.test(pdf) ||
+      /\/(?:JavaScript|JS|Launch|EmbeddedFile|RichMedia|OpenAction)\b/.test(pdf)
+    ) {
+      throw new BadRequestException("Malformed or active PDF content is not accepted.");
+    }
+  }
+
   return {
     ...byExtension,
     buffer: file.buffer,

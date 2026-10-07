@@ -3,6 +3,7 @@ import { GeneralLedgerPage } from "./general-ledger-page";
 import { IncomeStatementPage } from "./income-statement-page";
 import { BalanceSheetPage } from "./balance-sheet-page";
 import { VatReportPage } from "./vat-report-page";
+import { TrialBalancePage } from "./trial-balance-page";
 import { deferred, jsonResponse } from "@/test/accounting-fixtures";
 
 let organizationId = "org-a";
@@ -11,7 +12,13 @@ jest.mock("@/components/auth/auth-provider", () => ({
 }));
 const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>();
 const originalFetch = global.fetch;
-const cases = [GeneralLedgerPage, IncomeStatementPage, BalanceSheetPage, VatReportPage];
+const cases = [
+  GeneralLedgerPage,
+  IncomeStatementPage,
+  BalanceSheetPage,
+  VatReportPage,
+  TrialBalancePage
+];
 function fixture(marker: string) {
   return {
     fiscalYear: { id: "year", name: "2026" },
@@ -19,6 +26,15 @@ function fixture(marker: string) {
     comparisonDate: null,
     accounts: [
       {
+        id: "account",
+        number: "1930",
+        name: marker,
+        openingDebit: "0.00",
+        openingCredit: "0.00",
+        periodDebit: "1.00",
+        periodCredit: "0.00",
+        closingDebit: "1.00",
+        closingCredit: "0.00",
         account: { id: "account", number: "1930", name: marker },
         transactions: [],
         openingBalance: "0.00",
@@ -48,6 +64,12 @@ function fixture(marker: string) {
     ],
     anomalies: [],
     totals: {
+      openingDebit: "0.00",
+      openingCredit: "0.00",
+      periodDebit: "1.00",
+      periodCredit: "1.00",
+      closingDebit: "1.00",
+      closingCredit: "1.00",
       assets: "1.00",
       equityAndLiabilities: "1.00",
       difference: "0.00",

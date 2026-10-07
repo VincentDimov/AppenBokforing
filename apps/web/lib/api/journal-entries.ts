@@ -33,6 +33,8 @@ export interface JournalEntryLink {
 }
 
 export interface JournalEntryLine {
+  vatRole?: "UNCLASSIFIED" | "BASE" | "TAX" | "NONE";
+  vatGroup?: string | null;
   account: JournalEntryAccount;
   costCenter: JournalEntryDimension | null;
   credit: string;
@@ -45,6 +47,7 @@ export interface JournalEntryLine {
 }
 
 export interface JournalEntry {
+  version: number;
   accountingPeriod: {
     endDate: string;
     id: string;
@@ -79,6 +82,8 @@ export interface JournalEntry {
 }
 
 export interface JournalEntryLineInput {
+  vatRole?: "UNCLASSIFIED" | "BASE" | "TAX" | "NONE";
+  vatGroup?: string;
   accountId: string;
   costCenterCode?: string | null;
   credit: string;
@@ -111,7 +116,8 @@ export interface ReverseJournalEntryInput {
 export class JournalEntriesApiError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly code?: string
   ) {
     super(message);
     this.name = "JournalEntriesApiError";
@@ -178,13 +184,13 @@ export function createJournalEntry(input: JournalEntryInput): Promise<JournalEnt
 
 export function updateJournalEntry(
   journalEntryId: string,
-  input: Omit<JournalEntryInput, "organizationId">
+  input: Omit<JournalEntryInput, "organizationId"> & { expectedVersion: number }
 ): Promise<JournalEntry> {
   return requestJournalEntry(`/api/journal-entries/${journalEntryId}`, "PATCH", input);
 }
 
-export function postJournalEntry(journalEntryId: string): Promise<JournalEntry> {
-  return requestJournalEntry(`/api/journal-entries/${journalEntryId}/post`, "POST");
+export function postJournalEntry(journalEntryId: string, expectedVersion: number): Promise<JournalEntry> {
+  return requestJournalEntry(`/api/journal-entries/${journalEntryId}/post`, "POST", { expectedVersion });
 }
 
 export function reverseJournalEntry(
@@ -211,7 +217,7 @@ async function requestJournalEntry(
   const payload = await parsePayload(response);
 
   if (!response.ok) {
-    throw new JournalEntriesApiError(getErrorMessage(payload), response.status);
+    throw new JournalEntriesApiError(getErrorMessage(payload), response.status, payload && typeof payload === "object" && "code" in payload ? String(payload.code) : undefined);
   }
 
   if (!payload || typeof payload !== "object" || !("id" in payload)) {

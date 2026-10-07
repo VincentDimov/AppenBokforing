@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { AppTopbar } from "@/components/app/app-topbar";
@@ -22,10 +22,11 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
     user
   } = useAuth();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const signingOut = useRef(false);
 
   useEffect(() => {
     if (status === "anonymous") {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      router.replace(signingOut.current ? "/" : `/login?next=${encodeURIComponent(pathname)}`);
     }
   }, [pathname, router, status]);
 
@@ -44,6 +45,7 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
   }
 
   async function handleSignOut() {
+    signingOut.current = true;
     await signOut();
     router.replace("/");
     router.refresh();

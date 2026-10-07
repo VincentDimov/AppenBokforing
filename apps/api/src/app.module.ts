@@ -4,6 +4,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 import { HealthController } from "./health/health.controller";
+import { ReadinessController } from "./health/readiness.controller";
 import { AccountsModule } from "./accounts/accounts.module";
 import { AttachmentsModule } from "./attachments/attachments.module";
 import { AuthModule } from "./auth/auth.module";
@@ -40,7 +41,7 @@ import { FiscalYearsModule } from "./fiscal-years/fiscal-years.module";
     AuditModule,
     FiscalYearsModule
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, ReadinessController],
   providers: [
     {
       provide: APP_GUARD,

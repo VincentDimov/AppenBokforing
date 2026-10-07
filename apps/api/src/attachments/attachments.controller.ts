@@ -48,7 +48,15 @@ export class AttachmentsController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @UseInterceptors(
     FileInterceptor("file", {
-      limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 }
+      limits: {
+        fileSize: MAX_ATTACHMENT_BYTES,
+        files: 1,
+        fields: 0,
+        parts: 1,
+        fieldNameSize: 100,
+        fieldSize: 1024,
+        headerPairs: 100
+      }
     })
   )
   @ApiConsumes("multipart/form-data")

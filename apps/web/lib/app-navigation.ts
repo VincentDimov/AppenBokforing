@@ -73,6 +73,12 @@ export const navigationGroups: NavigationGroup[] = [
         label: "Huvudbok"
       },
       {
+        description: "Stäm av IB, periodens debet/kredit och UB.",
+        href: "/app/reports/trial-balance",
+        icon: "table-properties",
+        label: "Saldobalans"
+      },
+      {
         description: "Se en samlad lista över verifikationer.",
         href: "/app/reports/voucher-list",
         icon: "table-properties",

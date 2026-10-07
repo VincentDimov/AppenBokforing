@@ -56,7 +56,7 @@ export class AttachmentsService {
   ) {
     const validatedFile = validateAttachmentFile(file);
     const currentEntry = await this.database.prisma.journalEntry.findFirst({
-      select: { status: true },
+      select: { status: true, fiscalYearId: true, accountingPeriodId: true },
       where: { id: journalEntryId, organizationId }
     });
 
@@ -80,6 +80,12 @@ export class AttachmentsService {
 
     try {
       const attachment = await this.database.prisma.$transaction(async (transaction) => {
+        await requireOpenCalendar(
+          transaction,
+          organizationId,
+          currentEntry.fiscalYearId,
+          currentEntry.accountingPeriodId
+        );
         const entries = await transaction.$queryRaw<
           { status: JournalEntryStatus; fiscalYearId: string; accountingPeriodId: string }[]
         >`
@@ -96,6 +102,13 @@ export class AttachmentsService {
         }
 
         this.requireDraft(entry.status);
+        if (
+          entry.fiscalYearId !== currentEntry.fiscalYearId ||
+          entry.accountingPeriodId !== currentEntry.accountingPeriodId
+        )
+          throw new ConflictException(
+            "The draft calendar changed during upload; retry after reloading."
+          );
         await requireOpenCalendar(
           transaction,
           organizationId,

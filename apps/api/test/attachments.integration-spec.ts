@@ -241,7 +241,7 @@ describe("journal entry attachments", () => {
       filename: "posting-evidence.pdf"
     }).expect(201);
 
-    await ownerAgent.post(`/journal-entries/${draft.id}/post`).expect(201);
+    await ownerAgent.post(`/journal-entries/${draft.id}/post`).send({ expectedVersion: 1 }).expect(201);
 
     const list = await ownerAgent.get(`/journal-entries/${draft.id}/attachments`).expect(200);
     expect(list.body).toEqual(

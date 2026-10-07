@@ -266,16 +266,33 @@ model AccountingPeriod {
   @@map("accounting_periods")
 }
 
+enum VatLineRole {
+  UNCLASSIFIED
+  BASE
+  TAX
+  NONE
+}
+
+enum VatReportingCategory {
+  UNMAPPED
+  DOMESTIC_STANDARD
+  NONE
+}
+
 model VatCode {
-  id             String      @id @default(uuid()) @db.Uuid
-  organizationId String      @map("organization_id") @db.Uuid
-  code           String      @db.VarChar(32)
-  name           String      @db.VarChar(160)
-  rate           Decimal     @db.Decimal(5, 2)
-  type           VatCodeType
-  isActive       Boolean     @default(true) @map("is_active")
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                   String               @id @default(uuid()) @db.Uuid
+  organizationId       String               @map("organization_id") @db.Uuid
+  code                 String               @db.VarChar(32)
+  name                 String               @db.VarChar(160)
+  rate                 Decimal              @db.Decimal(5, 2)
+  type                 VatCodeType
+  configurationVersion String               @default("unreviewed") @map("configuration_version") @db.VarChar(64)
+  reportingCategory    VatReportingCategory @default(UNMAPPED) @map("reporting_category")
+  effectiveFrom        DateTime             @default(dbgenerated("'1970-01-01'::date")) @map("effective_from") @db.Date
+  effectiveTo          DateTime?            @map("effective_to") @db.Date
+  isActive             Boolean              @default(true) @map("is_active")
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   accounts             Account[]
@@ -402,6 +419,7 @@ model SieImport {
 }
 
 model JournalEntry {
+  version Int @default(1)
   id                 String             @id @default(uuid()) @db.Uuid
   organizationId     String             @map("organization_id") @db.Uuid
   fiscalYearId       String             @map("fiscal_year_id") @db.Uuid
@@ -446,21 +464,25 @@ model JournalEntry {
 }
 
 model JournalLine {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  journalEntryId String   @map("journal_entry_id") @db.Uuid
-  accountId      String   @map("account_id") @db.Uuid
-  vatCodeId      String?  @map("vat_code_id") @db.Uuid
-  projectId      String?  @map("project_id") @db.Uuid
-  costCenterId   String?  @map("cost_center_id") @db.Uuid
-  lineNumber     Int      @map("line_number")
-  description    String?  @db.VarChar(500)
-  debitAmount    Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
-  creditAmount   Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
-  quantity       Decimal? @db.Decimal(18, 4)
-  unit           String?  @db.VarChar(20)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  journalEntryId String      @map("journal_entry_id") @db.Uuid
+  accountId      String      @map("account_id") @db.Uuid
+  vatCodeId      String?     @map("vat_code_id") @db.Uuid
+  vatRole        VatLineRole @default(UNCLASSIFIED) @map("vat_role")
+  vatGroup       String?     @map("vat_group") @db.VarChar(64)
+  vatSnapshot    Json?       @map("vat_snapshot") @db.JsonB
+  projectId      String?     @map("project_id") @db.Uuid
+  costCenterId   String?     @map("cost_center_id") @db.Uuid
+  lineNumber     Int         @map("line_number")
+  transactionDate DateTime? @map("transaction_date") @db.Date
+  description    String?     @db.VarChar(500)
+  debitAmount    Decimal     @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount   Decimal     @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  quantity       Decimal?    @db.Decimal(18, 4)
+  unit           String?     @db.VarChar(20)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   journalEntry JournalEntry @relation(fields: [journalEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
@@ -485,14 +507,14 @@ model Attachment {
   originalName   String         @map("original_file_name") @db.VarChar(512)
   // Retained as internal, safe response metadata for existing storage clients.
   // It is generated server-side and is never a storage path component.
-  safeFileName String         @map("safe_file_name") @db.VarChar(512)
-  mimeType     String         @map("mime_type") @db.VarChar(160)
-  size         BigInt         @map("byte_size") @db.BigInt
-  sha256       String         @db.Char(64)
-  kind         AttachmentKind @default(SUPPORTING_DOCUMENT)
-  uploadedById String?        @map("uploaded_by_id") @db.Uuid
-  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  safeFileName   String         @map("safe_file_name") @db.VarChar(512)
+  mimeType       String         @map("mime_type") @db.VarChar(160)
+  size           BigInt         @map("byte_size") @db.BigInt
+  sha256         String         @db.Char(64)
+  kind           AttachmentKind @default(SUPPORTING_DOCUMENT)
+  uploadedById   String?        @map("uploaded_by_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   journalEntry     JournalEntry? @relation(fields: [journalEntryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)

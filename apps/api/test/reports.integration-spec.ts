@@ -83,7 +83,7 @@ describe("general ledger report", () => {
     ]);
   });
 
-  it("applies account, project and cost center filters to the same known fixtures", async () => {
+  it("rejects dimension-filtered balances when IB has no dimension allocation", async () => {
     const response = await ownerAgent
       .get("/reports/general-ledger")
       .query({
@@ -96,15 +96,9 @@ describe("general ledger report", () => {
         project: "P1",
         costCenter: "CC1"
       })
-      .expect(200);
+      .expect(422);
 
-    expect(response.body.accounts).toHaveLength(1);
-    expect(response.body.accounts[0]).toMatchObject({
-      account: { number: "1930" },
-      openingBalance: "0.00",
-      closingBalance: "50.00"
-    });
-    expect(response.body.accounts[0].transactions).toHaveLength(1);
+    expect(response.body.code).toBe("UNALLOCATED_OPENING_BALANCE");
   });
 
   it("returns manually defined income-statement period and accumulated totals", async () => {
@@ -359,7 +353,7 @@ async function createLedgerFixture(
         ]
       })
       .expect(201);
-    await agent.post(`/journal-entries/${draft.body.id}/post`).expect(201);
+    await agent.post(`/journal-entries/${draft.body.id}/post`).send({ expectedVersion: 1 }).expect(201);
   }
   const invoice = await agent
     .post("/journal-entries")
@@ -374,7 +368,7 @@ async function createLedgerFixture(
       ]
     })
     .expect(201);
-  await agent.post(`/journal-entries/${invoice.body.id}/post`).expect(201);
+  await agent.post(`/journal-entries/${invoice.body.id}/post`).send({ expectedVersion: 1 }).expect(201);
   return fiscalYear.id;
 }
 
@@ -421,5 +415,5 @@ async function createEntry(
     })
     .expect(201);
   if (input.status === JournalEntryStatus.POSTED)
-    await agent.post(`/journal-entries/${draft.body.id}/post`).expect(201);
+    await agent.post(`/journal-entries/${draft.body.id}/post`).send({ expectedVersion: 1 }).expect(201);
 }

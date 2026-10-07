@@ -9,15 +9,32 @@ import { Button } from "@/components/ui/button";
 
 type VatReport = {
   codes: {
+    id: string;
     code: string;
     inputAmount: string;
     name: string;
     outputAmount: string;
     rate: string;
     type: string;
+    configurationVersion: string;
+    taxableBase: string;
   }[];
   anomalies: { account: string; code: string; message: string; voucher: string | null }[];
-  totals: { inputVat: string; outputVat: string; vatPosition: string };
+  fromDate: string;
+  toDate: string;
+  swedishReturn: {
+    configurationVersion: string;
+    warnings: string[];
+    boxes: { box: string; name: string; amount: string }[];
+  };
+  totals: {
+    inputVat: string;
+    outputVat: string;
+    vatPosition: string;
+    outputBase: string;
+    inputBase: string;
+    nonVatBase: string;
+  };
 };
 const inputClass = "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-sm";
 
@@ -46,12 +63,13 @@ function OrganizationVatReportPage() {
   function exportCsv() {
     if (!report) return;
     const rows = [
-      ["VAT-kod", "Namn", "Typ", "Sats", "Ingående", "Utgående"],
+      ["VAT-kod", "Namn", "Typ", "Sats", "Underlag", "Ingående", "Utgående"],
       ...report.codes.map((code) => [
         code.code,
         code.name,
         code.type,
         code.rate,
+        code.taxableBase,
         code.inputAmount,
         code.outputAmount
       ])
@@ -119,6 +137,15 @@ function OrganizationVatReportPage() {
       ) : null}
       {report ? (
         <section className="mt-6 space-y-6 bg-white print:mt-0">
+          <p>
+            Period: {report.fromDate} – {report.toDate}. Granskning krävs; ingen deklarationsfil
+            eller efterlevnadsgaranti.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Summary label="Försäljningsunderlag" value={report.totals.outputBase} />
+            <Summary label="Inköpsunderlag" value={report.totals.inputBase} />
+            <Summary label="Underlag utan moms" value={report.totals.nonVatBase} />
+          </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <Summary label="Ingående VAT" value={report.totals.inputVat} />
             <Summary label="Utgående VAT" value={report.totals.outputVat} />
@@ -134,22 +161,40 @@ function OrganizationVatReportPage() {
                   <th className="p-3 text-left">Kod</th>
                   <th className="p-3 text-left">Namn</th>
                   <th className="p-3 text-right">Sats</th>
+                  <th className="p-3 text-right">Underlag</th>
                   <th className="p-3 text-right">Ingående</th>
                   <th className="p-3 text-right">Utgående</th>
                 </tr>
               </thead>
               <tbody>
                 {report.codes.map((code) => (
-                  <tr key={code.code}>
+                  <tr key={`${code.id ?? code.code}-${code.configurationVersion}-${code.rate}`}>
                     <td className="p-3 font-medium">{code.code}</td>
                     <td className="p-3">{code.name}</td>
                     <td className="p-3 text-right">{code.rate} %</td>
+                    <td className="p-3 text-right">{code.taxableBase}</td>
                     <td className="p-3 text-right">{code.inputAmount}</td>
                     <td className="p-3 text-right">{code.outputAmount}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </article>
+          <article className="border p-4">
+            <h2>
+              Svenska rapportfält – begränsad mappning ({report.swedishReturn?.configurationVersion}
+              )
+            </h2>
+            {report.swedishReturn?.boxes.map((box) => (
+              <p key={box.box}>
+                Fält {box.box}: {box.name} — {box.amount}
+              </p>
+            ))}
+            {report.swedishReturn?.warnings.map((warning, index) => (
+              <p role="alert" key={index}>
+                {warning}
+              </p>
+            ))}
           </article>
           <article className="border border-[#ead4a1] bg-[#fffaf0]">
             <h2 className="border-b border-[#ead4a1] p-4 font-semibold text-[#72520e]">

@@ -12,7 +12,8 @@ import {
   JournalEntrySource,
   JournalEntryStatus,
   Prisma,
-  PrismaClient
+  PrismaClient,
+  VatLineRole
 } from "@ledgerapp/db";
 
 import { DatabaseService } from "../database/database.service";
@@ -42,6 +43,8 @@ interface PreparedJournalLine {
   description: string | null;
   projectId: string | null;
   vatCodeId: string | null;
+  vatRole: VatLineRole;
+  vatGroup: string | null;
 }
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
@@ -239,6 +242,11 @@ export class JournalEntriesService {
     }
 
     const entry = await this.database.prisma.$transaction(async (transaction) => {
+      const initial = await this.findDetailed(transaction, organizationId, journalEntryId);
+      if (!initial) throw new NotFoundException("Journal entry not found.");
+      const target = dto.transactionDate ? await this.resolveCalendar(transaction, organizationId, dto.transactionDate) : { fiscalYearId: initial.fiscalYearId, accountingPeriodId: initial.accountingPeriodId };
+      for (const yearId of [...new Set([initial.fiscalYearId, target.fiscalYearId])].sort()) await requireOpenCalendar(transaction, organizationId, yearId);
+      await this.lockJournalEntry(transaction, organizationId, journalEntryId);
       const before = await this.findDetailed(transaction, organizationId, journalEntryId);
 
       if (!before) {
@@ -246,6 +254,8 @@ export class JournalEntriesService {
       }
 
       this.requireDraft(before.status);
+      this.requireVersion(before.version, dto.expectedVersion);
+      if (before.fiscalYearId !== initial.fiscalYearId) this.versionConflict();
       await requireOpenCalendar(
         transaction,
         organizationId,
@@ -272,6 +282,17 @@ export class JournalEntriesService {
         prepared.calendar.accountingPeriodId
       );
 
+      // Prisma does not guarantee deleteMany runs before nested create.
+      const changed = await transaction.journalEntry.updateMany({ where: { id: journalEntryId, organizationId, version: dto.expectedVersion, status: "DRAFT" }, data: { version: { increment: 1 } } });
+      if (changed.count !== 1) this.versionConflict();
+      // Free the draft's tenant-scoped line numbers explicitly, inside this
+      // same transaction. Any failed replacement rolls the deletion back.
+      if (dto.lines !== undefined) {
+        await transaction.journalLine.deleteMany({
+          where: { organizationId, journalEntryId }
+        });
+      }
+
       const updated = await transaction.journalEntry.update({
         data: {
           accountingPeriodId: prepared.calendar.accountingPeriodId,
@@ -285,8 +306,7 @@ export class JournalEntriesService {
                   create: prepared.lines.map((line, index) => ({
                     ...line,
                     lineNumber: index + 1
-                  })),
-                  deleteMany: {}
+                  }))
                 }
               }),
           voucherSeriesId: prepared.voucherSeriesId
@@ -314,7 +334,8 @@ export class JournalEntriesService {
     organizationId: string,
     journalEntryId: string,
     actorUserId: string,
-    metadata: JournalEntryAuditMetadata
+    metadata: JournalEntryAuditMetadata,
+    expectedVersion: number
   ) {
     for (let attempt = 0; attempt < maxPostingAttempts; attempt += 1) {
       try {
@@ -325,10 +346,11 @@ export class JournalEntriesService {
               organizationId,
               journalEntryId,
               actorUserId,
-              metadata
+              metadata,
+              { expectedVersion }
             ),
           {
-            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
             maxWait: 5_000,
             timeout: 10_000
           }
@@ -408,6 +430,8 @@ export class JournalEntriesService {
     dto: ReverseJournalEntryDto,
     metadata: JournalEntryAuditMetadata
   ): Promise<JournalEntryWithRelations> {
+    const target = await this.resolveCalendar(transaction, organizationId, dto.transactionDate);
+    await requireOpenCalendar(transaction, organizationId, target.fiscalYearId, target.accountingPeriodId);
     await this.lockJournalEntry(transaction, organizationId, journalEntryId);
 
     const original = await this.findDetailed(transaction, organizationId, journalEntryId);
@@ -452,10 +476,14 @@ export class JournalEntriesService {
             debitAmount: line.creditAmount,
             description: line.description,
             lineNumber: line.lineNumber,
+            transactionDate: line.transactionDate,
             projectId: line.projectId,
             quantity: line.quantity,
             unit: line.unit,
-            vatCodeId: line.vatCodeId
+            vatCodeId: line.vatCodeId,
+            vatRole: line.vatRole,
+            vatGroup: line.vatGroup,
+            vatSnapshot: line.vatSnapshot ?? Prisma.DbNull
           }))
         },
         organizationId,
@@ -467,7 +495,26 @@ export class JournalEntriesService {
       include: journalEntryInclude
     });
 
-    await this.writeAuditEvent(transaction, created, actorUserId, AuditAction.CREATE, metadata);
+    // Copy JSONB verbatim: Prisma's read value cannot distinguish SQL NULL from JSON null.
+    // This also preserves unresolved legacy metadata without inventing historical tax roles.
+    await transaction.$executeRaw`
+      UPDATE "journal_lines" r SET "vat_snapshot" = o."vat_snapshot"
+      FROM "journal_lines" o
+      WHERE r."organization_id" = ${organizationId}::uuid
+        AND o."organization_id" = r."organization_id"
+        AND r."journal_entry_id" = ${created.id}::uuid
+        AND o."journal_entry_id" = ${original.id}::uuid
+        AND r."line_number" = o."line_number"
+    `;
+    const createdWithVat = await this.findDetailed(transaction, organizationId, created.id);
+    if (!createdWithVat) throw new ConflictException("Correction metadata could not be read.");
+    await this.writeAuditEvent(
+      transaction,
+      createdWithVat,
+      actorUserId,
+      AuditAction.CREATE,
+      metadata
+    );
 
     const posted = await this.postInTransaction(
       transaction,
@@ -507,8 +554,11 @@ export class JournalEntriesService {
     journalEntryId: string,
     actorUserId: string,
     metadata: JournalEntryAuditMetadata,
-    options: { requireActiveReferences?: boolean } = {}
+    options: { requireActiveReferences?: boolean; expectedVersion?: number } = {}
   ): Promise<JournalEntryWithRelations> {
+    const initial = await transaction.journalEntry.findFirst({ where: { id: journalEntryId, organizationId }, select: { fiscalYearId: true, accountingPeriodId: true } });
+    if (!initial) throw new NotFoundException("Journal entry not found.");
+    await requireOpenCalendar(transaction, organizationId, initial.fiscalYearId, initial.accountingPeriodId);
     await this.lockJournalEntry(transaction, organizationId, journalEntryId);
 
     const before = await this.findDetailed(transaction, organizationId, journalEntryId);
@@ -518,10 +568,55 @@ export class JournalEntriesService {
     }
 
     this.requireDraft(before.status);
+    if (options.expectedVersion !== undefined) this.requireVersion(before.version, options.expectedVersion);
+    if (before.fiscalYearId !== initial.fiscalYearId || before.accountingPeriodId !== initial.accountingPeriodId) this.versionConflict();
     await this.requireOpenPostingCalendar(transaction, organizationId, before);
     this.requirePostableLines(before.lines);
     if (options.requireActiveReferences !== false) {
       await this.requireActivePersistedReferences(transaction, organizationId, before);
+      // Freeze tenant-owned metadata at posting. Reversals copy the original snapshot.
+      const codes = await transaction.vatCode.findMany({
+        where: {
+          organizationId,
+          id: { in: before.lines.flatMap((l) => (l.vatCodeId ? [l.vatCodeId] : [])) }
+        }
+      });
+      const byId = new Map(codes.map((code) => [code.id, code]));
+      const accounts = await transaction.account.findMany({
+        where: { organizationId, id: { in: before.lines.map((l) => l.accountId) } },
+        select: { id: true, vatCodeId: true }
+      });
+      const expectations = new Map(accounts.map((a) => [a.id, a.vatCodeId]));
+      for (const line of before.lines) {
+        const code = line.vatCodeId ? byId.get(line.vatCodeId) : undefined;
+        if (
+          code &&
+          (before.entryDate < code.effectiveFrom ||
+            (code.effectiveTo && before.entryDate > code.effectiveTo))
+        )
+          throw new BadRequestException(
+            "VAT configuration is not effective on the transaction date."
+          );
+        await transaction.journalLine.update({
+          where: { id: line.id },
+          data: {
+            vatSnapshot: code
+              ? {
+                  id: code.id,
+                  code: code.code,
+                  name: code.name,
+                  rate: code.rate.toFixed(2),
+                  direction: code.type === "EXEMPT" ? "NONE" : code.type,
+                  configurationVersion: code.configurationVersion,
+                  reportingCategory: code.reportingCategory,
+                  effectiveFrom: this.toDateOnly(code.effectiveFrom),
+                  effectiveTo: code.effectiveTo ? this.toDateOnly(code.effectiveTo) : null,
+                  expectedAccountVatCodeId: expectations.get(line.accountId) ?? null
+                }
+              : { expectedAccountVatCodeId: expectations.get(line.accountId) ?? null }
+          }
+        });
+      }
     }
 
     if (!before.voucherSeriesId) {
@@ -548,6 +643,7 @@ export class JournalEntriesService {
         postedAt: new Date(),
         postedById: actorUserId,
         status: JournalEntryStatus.POSTED,
+        version: { increment: 1 },
         voucherNumber: allocated[0].voucherNumber
       },
       include: journalEntryInclude,
@@ -714,7 +810,9 @@ export class JournalEntriesService {
         debitAmount,
         description: line.description?.trim() || null,
         projectId: line.projectCode ? projectsByCode.get(line.projectCode)! : null,
-        vatCodeId: line.vatCode ? vatCodesByCode.get(line.vatCode)! : null
+        vatCodeId: line.vatCode ? vatCodesByCode.get(line.vatCode)! : null,
+        vatRole: line.vatRole ?? (line.vatCode ? VatLineRole.UNCLASSIFIED : VatLineRole.NONE),
+        vatGroup: line.vatGroup ?? null
       };
     });
   }
@@ -960,7 +1058,9 @@ export class JournalEntriesService {
       debit: this.toMoneyString(line.debitAmount),
       description: line.description,
       projectCode: line.project?.code ?? null,
-      vatCode: line.vatCode?.code ?? null
+      vatCode: line.vatCode?.code ?? null,
+      vatRole: line.vatRole,
+      vatGroup: line.vatGroup ?? undefined
     }));
   }
 
@@ -985,6 +1085,7 @@ export class JournalEntriesService {
         status: entry.fiscalYear.status
       },
       id: entry.id,
+      version: entry.version,
       lines: entry.lines.map((line) => ({
         account: {
           id: line.account.id,
@@ -997,6 +1098,9 @@ export class JournalEntriesService {
         description: line.description,
         id: line.id,
         lineNumber: line.lineNumber,
+        vatRole: line.vatRole,
+        vatGroup: line.vatGroup,
+        vatSnapshot: line.vatSnapshot as unknown,
         project: line.project,
         vatCode: line.vatCode
           ? {
@@ -1038,7 +1142,10 @@ export class JournalEntriesService {
         description: line.description,
         lineNumber: line.lineNumber,
         projectId: line.projectId,
-        vatCodeId: line.vatCodeId
+        vatCodeId: line.vatCodeId,
+        vatRole: line.vatRole,
+        vatGroup: line.vatGroup,
+        vatSnapshot: line.vatSnapshot
       })),
       status: entry.status,
       reversedByEntryId: entry.reversedByEntry?.id ?? null,
@@ -1134,11 +1241,17 @@ export class JournalEntriesService {
         typeof error.meta === "object" &&
         error.meta !== null &&
         "code" in error.meta &&
-        error.meta.code === "40001")
+        ["40001", "40P01"].includes(String(error.meta.code)))
     );
   }
 
   private isUniqueConstraint(error: unknown): boolean {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+  }
+  private versionConflict(): never {
+    throw new ConflictException({ code: "JOURNAL_ENTRY_VERSION_CONFLICT", message: "Verifikationen har ändrats av en annan användare." });
+  }
+  private requireVersion(actual: number, expected: number) {
+    if (!Number.isInteger(expected) || actual !== expected) this.versionConflict();
   }
 }

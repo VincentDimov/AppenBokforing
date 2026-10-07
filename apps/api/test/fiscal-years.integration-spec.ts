@@ -104,7 +104,7 @@ describe("calendar locking across accounting POST endpoints", () => {
     };
     draftId = (await owner.post("/journal-entries").send(body).expect(201)).body.id;
     postedId = (await owner.post("/journal-entries").send(body).expect(201)).body.id;
-    await owner.post(`/journal-entries/${postedId}/post`).expect(201);
+    await owner.post(`/journal-entries/${postedId}/post`).send({ expectedVersion: 1 }).expect(201);
     await owner
       .post(`/accounting-periods/${periodId}/lock`)
       .set("x-request-id", "calendar-lock-fixture")
@@ -121,11 +121,11 @@ describe("calendar locking across accounting POST endpoints", () => {
   });
   it("blocks draft creation, posting, editing and moving a locked draft", async () => {
     await owner.post("/journal-entries").send(body).expect(409);
-    await owner.post(`/journal-entries/${draftId}/post`).expect(409);
-    await owner.patch(`/journal-entries/${draftId}`).send({ description: "Changed" }).expect(409);
+    await owner.post(`/journal-entries/${draftId}/post`).send({ expectedVersion: 1 }).expect(409);
+    await owner.patch(`/journal-entries/${draftId}`).send({ expectedVersion: 1, description: "Changed" }).expect(409);
     await owner
       .patch(`/journal-entries/${draftId}`)
-      .send({ transactionDate: "2026-02-15" })
+      .send({ expectedVersion: 1, transactionDate: "2026-02-15" })
       .expect(409);
     expect((await prisma.journalEntry.findUniqueOrThrow({ where: { id: draftId } })).status).toBe(
       "DRAFT"
@@ -144,8 +144,9 @@ describe("calendar locking across accounting POST endpoints", () => {
   it("blocks confirmed SIE imports while keeping preview available", async () => {
     const content =
       '#SIETYP 4\n#RAR 0 20260101 20261231\n#KONTO 1930 "Bank"\n#KONTO 3000 "Revenue"\n#VER A 99 20260115 "Locked import"\n{\n#TRANS 1930 {} 100.00\n#TRANS 3000 {} -100.00\n}\n';
-    await owner.post("/imports/sie").send({ organizationId, content, confirm: false }).expect(201);
-    await owner.post("/imports/sie").send({ organizationId, content, confirm: true }).expect(409);
+    const mapping = { organizationId, content, fiscalYearId: yearId };
+    const preview = await owner.post("/imports/sie").send({ ...mapping, confirm: false }).expect(201);
+    await owner.post("/imports/sie").send({ ...mapping, previewToken: preview.body.previewToken, confirm: true }).expect(409);
     expect(await prisma.journalEntry.count({ where: { organizationId, voucherNumber: 99 } })).toBe(
       0
     );
@@ -204,7 +205,7 @@ describe("calendar locking across accounting POST endpoints", () => {
         where: { organizationId, entityId: periodId, action: "UNLOCK" }
       })
     ).toBe(1);
-    await owner.post(`/journal-entries/${draftId}/post`).expect(201);
+    await owner.post(`/journal-entries/${draftId}/post`).send({ expectedVersion: 1 }).expect(201);
     const periods = await prisma.accountingPeriod.findMany({
       where: { organizationId, fiscalYearId: yearId }
     });

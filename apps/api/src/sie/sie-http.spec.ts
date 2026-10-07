@@ -42,19 +42,19 @@ describe("SIE HTTP transport (real controller, guard, parser and preview; isolat
   afterEach(() => jest.restoreAllMocks());
   afterAll(async () => app?.close());
 
-  it("downloads literal UTF-8 text, never HTML, with a fixed injection-proof filename", async () => {
-    const payload = '#FNAMN "<html>ÅÄÖ<script>alert(1)</script>\r\nX-Injected: yes\u0001"\n';
+  it("downloads exact PC8 bytes, never HTML, with a fixed filename", async () => {
+    const payload = engine.encodeSieBytes('#FNAMN "<html>ÅÄÖ<script>alert(1)</script>"\r\n');
     jest.spyOn(service, "export").mockResolvedValue(payload);
     const result = await request(app.getHttpServer())
       .get("/exports/sie")
       .query({ organizationId, fiscalYear })
       .expect(200);
-    expect(result.headers["content-type"]).toBe("text/plain; charset=utf-8");
+    expect(result.headers["content-type"]).toBe("application/octet-stream");
     expect(result.headers["content-disposition"]).toBe('attachment; filename="ledgerapp.sie"');
     expect(result.headers["x-content-type-options"]).toBe("nosniff");
     expect(result.headers["x-injected"]).toBeUndefined();
-    expect(result.text).toBe(payload);
-    expect(Number(result.headers["content-length"])).toBe(Buffer.byteLength(payload, "utf8"));
+    expect(result.body).toEqual(Buffer.from(payload));
+    expect(Number(result.headers["content-length"])).toBe(payload.length);
   });
   it("retains normal default-preview behavior without database writes", async () => {
     const result = await request(app.getHttpServer())

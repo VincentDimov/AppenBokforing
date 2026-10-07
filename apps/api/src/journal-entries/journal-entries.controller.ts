@@ -9,6 +9,8 @@ import { JournalEntryOptionsQueryDto } from "./dto/journal-entry-options-query.d
 import { ListJournalEntriesQueryDto } from "./dto/list-journal-entries-query.dto";
 import { ReverseJournalEntryDto } from "./dto/reverse-journal-entry.dto";
 import { UpdateJournalEntryDto } from "./dto/update-journal-entry.dto";
+import { PostJournalEntryDto } from "./dto/post-journal-entry.dto";
+import { randomUUID } from "node:crypto";
 import { JournalEntriesOrganizationGuard } from "./journal-entries-organization.guard";
 import { JournalEntriesService } from "./journal-entries.service";
 import { JournalEntryResourceGuard } from "./journal-entry-resource.guard";
@@ -89,6 +91,7 @@ export class JournalEntriesController {
   @ApiOperation({ summary: "Atomically allocate and post a balanced draft" })
   post(
     @Param("id") journalEntryId: string,
+    @Body() dto: PostJournalEntryDto,
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: AuthenticatedRequest
   ) {
@@ -96,7 +99,8 @@ export class JournalEntriesController {
       this.getOrganizationId(request),
       journalEntryId,
       user.id,
-      this.getAuditMetadata(request)
+      this.getAuditMetadata(request),
+      dto.expectedVersion
     );
   }
 
@@ -134,7 +138,7 @@ export class JournalEntriesController {
 
     return {
       ipAddress: request.ip?.slice(0, 64),
-      requestId
+      requestId: requestId || randomUUID()
     };
   }
 }

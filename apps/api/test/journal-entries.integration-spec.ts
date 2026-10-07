@@ -140,7 +140,7 @@ describe("journal entries and double-entry bookkeeping", () => {
       voucherNumber: null
     });
 
-    const posted = await ownerAgent.post(`/journal-entries/${created.id}/post`).expect(201);
+    const posted = await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(201);
 
     expect(posted.body).toMatchObject({
       id: created.id,
@@ -161,13 +161,38 @@ describe("journal entries and double-entry bookkeeping", () => {
     ).resolves.not.toBeNull();
   });
 
+  it("replaces draft rows atomically before posting without duplicate line numbers", async () => {
+    const created = await createDraft(ownerAgent, balancedLines());
+    const lines = [
+      { accountId: accountA, credit: "0.00", debit: "5000.00" },
+      { accountId: revenueAccountA, credit: "5000.00", debit: "0.00" }
+    ];
+    await ownerAgent.patch(`/journal-entries/${created.id}`).send({ expectedVersion: 1, lines }).expect(200);
+    const posted = await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 2 }).expect(201);
+    expect(posted.body.totals).toEqual({ debit: "5000.00", credit: "5000.00", difference: "0.00" });
+    const stored = await prisma.journalLine.findMany({
+      where: { journalEntryId: created.id },
+      orderBy: { lineNumber: "asc" }
+    });
+    expect(
+      stored.map((line) => [
+        line.lineNumber,
+        line.debitAmount.toFixed(2),
+        line.creditAmount.toFixed(2)
+      ])
+    ).toEqual([
+      [1, "5000.00", "0.00"],
+      [2, "0.00", "5000.00"]
+    ]);
+  });
+
   it("rejects an unbalanced draft without allocating a voucher number", async () => {
     const created = await createDraft(ownerAgent, [
       { accountId: accountA, credit: "0.00", debit: "100.00" },
       { accountId: revenueAccountA, credit: "99.99", debit: "0.00" }
     ]);
 
-    await ownerAgent.post(`/journal-entries/${created.id}/post`).expect(400);
+    await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(400);
 
     const unchanged = await ownerAgent.get(`/journal-entries/${created.id}`).expect(200);
     expect(unchanged.body).toMatchObject({ status: "DRAFT", voucherNumber: null });
@@ -184,7 +209,7 @@ describe("journal entries and double-entry bookkeeping", () => {
       data: { status: "LOCKED" }
     });
     expect(created.accountingPeriod.id).toBe(calendarA.lockedPeriodId);
-    await ownerAgent.post(`/journal-entries/${created.id}/post`).expect(409);
+    await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(409);
   });
 
   it("rejects invalid and cross-organization account references", async () => {
@@ -212,13 +237,16 @@ describe("journal entries and double-entry bookkeeping", () => {
   });
 
   it("allocates distinct sequential numbers under concurrent posting", async () => {
+    const seriesBefore = await prisma.voucherSeries.findUniqueOrThrow({
+      where: { id: calendarA.voucherSeriesId }
+    });
     const [first, second] = await Promise.all([
       createDraft(ownerAgent, balancedLines()),
       createDraft(ownerAgent, balancedLines())
     ]);
     const [firstPost, secondPost] = await Promise.all([
-      ownerAgent.post(`/journal-entries/${first.id}/post`),
-      ownerAgent.post(`/journal-entries/${second.id}/post`)
+      ownerAgent.post(`/journal-entries/${first.id}/post`).send({ expectedVersion: 1 }),
+      ownerAgent.post(`/journal-entries/${second.id}/post`).send({ expectedVersion: 1 })
     ]);
 
     expect(firstPost.status).toBe(201);
@@ -227,17 +255,20 @@ describe("journal entries and double-entry bookkeeping", () => {
       (left, right) => left - right
     );
 
-    expect(voucherNumbers).toEqual([2, 3]);
+    expect(voucherNumbers).toEqual([
+      seriesBefore.nextVoucherNumber,
+      seriesBefore.nextVoucherNumber + 1
+    ]);
     expect(new Set(voucherNumbers).size).toBe(2);
   });
 
   it("refuses arbitrary changes after posting and keeps read-only members from writing", async () => {
     const created = await createDraft(ownerAgent, balancedLines());
-    await ownerAgent.post(`/journal-entries/${created.id}/post`).expect(201);
+    await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(201);
 
     await ownerAgent
       .patch(`/journal-entries/${created.id}`)
-      .send({ description: "Tampered description" })
+      .send({ expectedVersion: 1, description: "Tampered description" })
       .expect(409);
     await readOnlyAgent
       .post("/journal-entries")
@@ -488,7 +519,7 @@ describe("journal entries and double-entry bookkeeping", () => {
     transactionDate = "2026-01-15"
   ): Promise<JournalEntryResponse> {
     const draft = await createDraft(agent, lines, transactionDate);
-    const response = await agent.post(`/journal-entries/${draft.id}/post`).expect(201);
+    const response = await agent.post(`/journal-entries/${draft.id}/post`).send({ expectedVersion: 1 }).expect(201);
 
     return response.body as JournalEntryResponse;
   }

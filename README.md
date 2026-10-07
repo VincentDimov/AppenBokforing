@@ -1,9 +1,49 @@
 # LedgerApp
 
+FAS 21–23 har genomförts sammanhängande: riktig PC8-SIE för dokumenterad subset,
+signerad importreview, bevarad IB/dimension/raddatum, versionskontroller och
+samtidighetstestad bokföring, säkerhetshärdning och återställningsverktyg.
+Verifierat: 156 ordinarie tester, 86 PostgreSQL-integrationstester och 13
+Chromium-E2E, lint/typecheck/build samt 14 migrationer från tom testdatabas.
+Databasåterläsning med immutabilitetsskydd och runtime-rollen PASS.
+Full bilageåterläsning och flera produktionsgates återstår; audit har fortfarande
+1 dokumenterad HIGH. Det är **inte** ett produktions-/regelgodkännande.
+Aktuell [status](docs/CURRENT_STATE.md), [SIE-kontrakt](docs/sie.md),
+[samtidighet](docs/concurrency.md), [produktionschecklista](docs/production-readiness.md).
+Tidigare fasnoteringar nedan är historik.
+
+FAS 20: explicit momsunderlag/skattebelopp, fryst VAT-metadata vid postning,
+versionerad begränsad svensk adapter, granskningsavvikelser och uppdaterad
+momsrapport/editor. [Modell, manuellt Golden-facit och begränsningar](docs/vat-reporting.md).
+Migration 12 är endast körd i disponibla tester; äldre bokföring klassificeras
+inte automatiskt. Passing tests är inte regulatorisk efterlevnad.
+FAS 20-kontroller PASS: lint/typecheck/build, 132 ordinarie tester,
+73 PostgreSQL-integration, 11 lokala browserfall och 7 safety-kontrakt.
+
+## FAS 19 — gemensamt rapportkontrakt
+
+Huvudbok inkluderar nu validerad IB. Balansräkning, huvudbok, resultat och ny
+saldobalans läses per anrop i RepeatableRead-snapshot med Decimal-belopp.
+`GET /reports/trial-balance` och `/reports/trial-balance` (även `/app`-alias)
+visar IB, period och UB med debet/kredit och balanserade totalsummor.
+Gemensam Golden-fixtur: bank UB 11 000; resultat 2 000; tillgångar 11 000 =
+EK inklusive resultat 11 000 + skulder 0. Felaktig IB ger 422, inte en lyckad rapport.
+[Kontrakt, manuellt facit och begränsningar](docs/accounting-balances.md).
+P0-06 är klart inom FAS 19; IB-editor/årsöverföring, SIE och moms är inte därmed klara.
+
 Svensk flerorganisationsbaserad bokföringsapplikation under utveckling.
 Next.js-webb, NestJS-API, PostgreSQL/Prisma och S3-kompatibla bilagor i ett
 pnpm/Turborepo-monorepo. Projektet innehåller redan substantiell funktionalitet,
 men är **inte redo för verklig produktionsbokföring**.
+
+FAS 18 lägger till separat Playwright-verifiering genom Chromium → Next-proxy →
+NestJS → disponibel PostgreSQL samt skrivskyddad produktions-smoke.
+Körinstruktioner, täckningsgränser och headerfynd:
+[E2E verification](docs/e2e-verification.md).
+`test:e2e`/`test:e2e:headed` kräver lokal `E2E_DATABASE_URL` med databasnamnet
+`ledgerapp_e2e`; `test:e2e:smoke` är separat och får användas mot publicerad webb.
+Normal `test` startar inte browsers. Ett separat isolerat browserjobb finns i CI;
+en faktisk GitHub-run och produktionscookies utan godkänt testkonto är inte styrkta.
 
 Den kodbaserade granskningen 2026-10-06 beskriver nuläget:
 
@@ -22,6 +62,7 @@ Den kodbaserade granskningen 2026-10-06 beskriver nuläget:
 - Räkenskapsårslista/skapa/stäng, periodlås/upplåsning med bekräftelse och kalendertriggers.
 - Läsbar behandlingshistorik med filter/paging och audit UPDATE/DELETE-spärr.
 - Publik startsida, login/register, arbetsytans skal och flera riktiga API-anslutna vyer.
+- Gemensamt validerat IB-/rapportkontrakt och saldobalans, avstämda mot Golden-fixturer.
 
 Implementerad betyder inte att hela produktflödet är komplett eller utan risker.
 Alla skyddade API-rutter kräver session, organisationsdata också medlemskap.
@@ -29,9 +70,9 @@ Owner/admin/accountant skriver bokföring; member/read-only läser.
 
 ## Partially implemented
 
-- Huvudbok, resultat- och balansräkning samt momsrapport har verkliga POSTED-queries och UI. Huvudboken utelämnar dock IB; momsens tax/base-kontrakt behöver rättas.
+- Huvudbok, resultat- och balansräkning samt momsrapport har verkliga POSTED-queries och UI. GL inkluderar validerad IB; moms har explicit underlag/skatt och begränsad svensk mappning, inte en komplett deklarationsmotor.
 - Balansräkning läser IB och stödjer jämförelsedatum inom samma år. Inget komplett IB-/årsöverföringsflöde finns.
-- SIE har fristående paket, default-preview, confirm-transaktion och text-export. Import tappar IB/dimensioner/raddatum och kan sänka nummercounter. Export är inte verifierad SIE4B-konform och saknar riktig PC8-bytehantering. HTTP-exporten är nu en UTF-8-textdownload med fast filnamn och nosniff.
+- SIE har fristående paket, signerad explicit preview/confirm, IB/dimensioner/raddatum och säkert maximum för nummercounter. Export använder PC8/CP437-bytes och RepeatableRead. Begränsad subset, inte oberoende verifierad full SIE4B-konformitet.
 - Organisation kan väljas i UI men skapande/inställningar kräver API. Nya år får inte automatiskt serie eller kontoplan.
 - Print/CSV finns i vissa rapporter. PDF är webbläsarens printdialog, inte en server-PDF-tjänst; komplett printstylesheet saknas.
 - Kontoplansimport har en licensmedveten adaptergräns, inte en fungerande importprodukt eller full BAS-datamängd.
@@ -39,7 +80,7 @@ Owner/admin/accountant skriver bokföring; member/read-only läser.
 
 FAS 17 rättar sparning före postning och organisationsbunden frontendstate,
 utan att ändra backendguards eller redovisningsregler. Historisk kontometadata
-kan fortfarande omklassificeras; IB/moms/SIE-domänbrister kvarstår.
+kan fortfarande omklassificeras; IB-editor/överföring, ej stödda momsfall och SIE-domänbrister kvarstår.
 Se GAP_ANALYSIS innan användning.
 
 ## SIE HTTP-kontrakt efter FAS 17
@@ -62,7 +103,7 @@ Se [SIE](docs/sie.md) och GAP_ANALYSIS för kvarstående format/domänrisker.
 
 Onboarding/organisation-settings, användarinbjudningar och rolladministration,
 serieadministration, projekt/kostnadsställeregister, konteringsmallar,
-öppningsbalanseditor/överföring, saldobalans, särskild verifikationsrapport,
+öppningsbalanseditor/överföring, särskild verifikationsrapport,
 globalt bilagearkiv, import/export UI och verklig dashboard. Menyernas
 förberedda arbetsytor är placeholders, inte implementerade funktioner.
 
@@ -74,7 +115,7 @@ hjälpare; de är inte färdiga gemensamma domänpaket.
 
 Webben proxar `/api/*` till API_INTERNAL_URL. Riktiga vyer finns på
 `/registers/accounts`, `/bookkeeping/vouchers`, `/bookkeeping/vouchers/new`,
-`/bookkeeping/vouchers/[id]`, de fyra `/reports/...`-rutterna och
+`/bookkeeping/vouchers/[id]`, de fem `/reports/...`-rutterna och
 `/settings/fiscal-years`, `/settings/processing-history`, med `/app/...`-alias.
 `/app` är den mockmärkta dashboarden. API-grupper listas i CURRENT_STATE.
 
@@ -179,6 +220,5 @@ Se [deployment](docs/vercel-deployment.md), [auth](docs/authentication.md),
 CURRENT_STATE/GAP_ANALYSIS; foundation-ADR är historisk.
 
 Backup/restore av både DB och bilagor, privata storagepolicies, runtime-DB-roll,
-observability, riktig CI/E2E och kvalificerad svensk redovisningsgranskning
-måste säkras före produktionsbruk. Nästa etapp är P0-stabilisering, inte nya moduler.
-+
+observability, körverifierad GitHub-CI, bredare E2E och kvalificerad svensk redovisningsgranskning
+måste säkras före produktionsbruk. Nästa etapp är P0-korrekthet, inte nya moduler.

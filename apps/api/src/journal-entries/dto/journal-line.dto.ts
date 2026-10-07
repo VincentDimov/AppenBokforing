@@ -1,5 +1,6 @@
 import { Transform } from "class-transformer";
-import { IsOptional, IsString, IsUUID, Length, Matches, ValidateIf } from "class-validator";
+import { IsEnum, IsOptional, IsString, IsUUID, Length, Matches, ValidateIf } from "class-validator";
+import { VatLineRole } from "@ledgerapp/db";
 
 const MONEY_PATTERN = /^(?:0|[1-9]\d{0,15})(?:\.\d{1,2})?$/;
 
@@ -20,6 +21,15 @@ function normalizeOptionalText(value: unknown): unknown {
  * values. JavaScript number input is not accepted for accounting amounts.
  */
 export class JournalLineDto {
+  @IsOptional()
+  @IsEnum(VatLineRole)
+  vatRole?: VatLineRole;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  vatGroup?: string;
+
   @IsUUID("4")
   accountId!: string;
 

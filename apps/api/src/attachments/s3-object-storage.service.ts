@@ -117,6 +117,8 @@ export class S3ObjectStorageService implements ObjectStorage {
         throw error;
       }
     }
+    if (this.configService.get<string>("NODE_ENV") === "production")
+      throw new Error("Private production bucket must be provisioned by an operator.");
 
     try {
       await this.getObjectClient().send(new CreateBucketCommand({ Bucket: settings.bucket }));
@@ -204,6 +206,8 @@ export class S3ObjectStorageService implements ObjectStorage {
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new Error("Unsupported protocol");
       }
+      if (this.configService.get<string>("NODE_ENV") === "production" && url.protocol !== "https:")
+        throw new Error("Production object storage requires TLS.");
     } catch {
       throw new Error(`${name} must be an http(s) URL.`);
     }

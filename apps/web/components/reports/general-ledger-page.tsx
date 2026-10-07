@@ -173,7 +173,8 @@ function OrganizationGeneralLedgerPage() {
         </div>
       </section>
       <p className="mt-2 text-xs text-[#638292]">
-        Ange räkenskapsårets ID tills inställningsvyn för räkenskapsår är tillgänglig.
+        Ange räkenskapsårets ID. Om året har IB kan projekt/kostnadsställe inte användas: IB saknar
+        dimensionsfördelning. Utan IB filtreras endast bokförda rörelser.
       </p>
       {error ? (
         <p role="alert" className="mt-4 text-sm text-red-700">

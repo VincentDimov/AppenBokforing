@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import {
   AccountType,
   BalanceSide,
@@ -6,15 +11,24 @@ import {
   JournalEntryStatus,
   Prisma
 } from "@ledgerapp/db";
-import { exportSie4, parseSie4, type SieDocument, type SieExportData } from "@ledgerapp/sie";
+import {
+  encodeSieBytes,
+  exportSie4,
+  parseSie4,
+  type SieDocument,
+  type SieExportData
+} from "@ledgerapp/sie";
 import { DatabaseService } from "../database/database.service";
 import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { readAccountingContext } from "../reports/accounting-report-data";
+import { zeroBalance, rawBalance } from "../accounting/accounting-balances";
 
 import { assertSieInputSize } from "./sie-input-boundary";
 
 @Injectable()
 export class SieService {
+  private readonly previewKey = process.env.JWT_ACCESS_SECRET || randomBytes(32).toString("hex");
   constructor(private readonly database: DatabaseService) {}
   preview(content: string) {
     assertSieInputSize(content);
@@ -25,12 +39,49 @@ export class SieService {
     content: string,
     confirm: boolean,
     actorUserId?: string,
-    requestId?: string
+    requestId?: string,
+    options: { previewToken?: string; fiscalYearId?: string; bytes?: Uint8Array } = {}
   ) {
-    assertSieInputSize(content);
-    const document = parseSie4(content);
+    if (!options.bytes) assertSieInputSize(content);
+    const bytes = options.bytes ?? Buffer.from(content, "utf8");
+    if (bytes.length > 131072) assertSieInputSize("x".repeat(bytes.length));
+    const document = parseSie4(options.bytes ?? content);
     const preview = this.previewResult(document);
-    if (!confirm) return { mode: "PREVIEW", ...preview };
+    const fingerprint = createHash("sha256")
+      .update(bytes)
+      .update(
+        JSON.stringify({
+          organizationId,
+          actorUserId,
+          fiscalYearId: options.fiscalYearId ?? null,
+          yearIndex: "0"
+        })
+      )
+      .digest("hex");
+    if (!confirm) {
+      if (options.fiscalYearId && !document.errors.length) {
+        const review = await this.reviewMapping(
+          this.database.prisma,
+          document,
+          organizationId,
+          options.fiscalYearId
+        );
+        preview.warnings.push(...review.warnings);
+        preview.validationErrors.push(...review.conflicts);
+      }
+      return {
+        mode: "PREVIEW",
+        ...preview,
+        fingerprint,
+        previewToken: this.signPreview(fingerprint)
+      };
+    }
+    if (!options.fiscalYearId || !this.validPreview(options.previewToken, fingerprint))
+      throw new ConflictException({
+        code: "SIE_PREVIEW_CONFLICT",
+        message:
+          "Preview must match the same user, organization, bytes and explicit fiscal-year mapping."
+      });
     if (document.errors.length)
       throw new BadRequestException({
         message: "SIE-filen innehåller valideringsfel.",
@@ -42,6 +93,7 @@ export class SieService {
     const fiscalYear = await this.database.prisma.fiscalYear.findFirst({
       where: {
         organizationId,
+        id: options.fiscalYearId,
         startDate: new Date(`${document.fiscalYear.start}T00:00:00.000Z`),
         endDate: new Date(`${document.fiscalYear.end}T00:00:00.000Z`)
       }
@@ -49,133 +101,235 @@ export class SieService {
     if (!fiscalYear)
       throw new NotFoundException("Skapa motsvarande räkenskapsår innan import bekräftas.");
     const importId = randomUUID();
-    await this.database.prisma.$transaction(async (tx) => {
-      await requireOpenCalendar(tx, organizationId, fiscalYear.id);
-      const accounts = new Map(
-        (
-          await tx.account.findMany({
-            where: { organizationId },
-            select: { accountNumber: true, id: true }
-          })
-        ).map((account) => [account.accountNumber, account.id])
-      );
-      for (const account of document.accounts)
-        if (!accounts.has(account.number)) {
-          const created = await tx.account.create({
+    await this.database.prisma.$transaction(
+      async (tx) => {
+        await requireOpenCalendar(tx, organizationId, fiscalYear.id);
+        const review = await this.reviewMapping(tx, document, organizationId, fiscalYear.id);
+        if (review.conflicts.length)
+          throw new ConflictException({
+            code: "SIE_MAPPING_CONFLICT",
+            message: "Import mapping changed or conflicts with existing accounting data.",
+            validationErrors: review.conflicts
+          });
+        const accounts = new Map(
+          (
+            await tx.account.findMany({
+              where: { organizationId },
+              select: { accountNumber: true, id: true }
+            })
+          ).map((account) => [account.accountNumber, account.id])
+        );
+        for (const account of document.accounts)
+          if (!accounts.has(account.number)) {
+            const created = await tx.account.create({
+              data: {
+                organizationId,
+                accountNumber: account.number,
+                name: account.name,
+                type:
+                  account.type === "T"
+                    ? AccountType.ASSET
+                    : account.type === "S"
+                      ? inferAccountType(account.number)
+                      : account.type === "I"
+                        ? AccountType.REVENUE
+                        : account.type === "K"
+                          ? AccountType.EXPENSE
+                          : inferAccountType(account.number),
+                normalBalance: normalBalance(
+                  account.type === "T"
+                    ? AccountType.ASSET
+                    : account.type === "I"
+                      ? AccountType.REVENUE
+                      : account.type === "K"
+                        ? AccountType.EXPENSE
+                        : inferAccountType(account.number)
+                )
+              }
+            });
+            accounts.set(account.number, created.id);
+          }
+        const projects = new Map<string, string>();
+        const costCenters = new Map<string, string>();
+        for (const object of document.objects) {
+          const where = { organizationId, code: object.id };
+          const existing =
+            object.dimension === "6"
+              ? await tx.project.findFirst({ where })
+              : await tx.costCenter.findFirst({ where });
+          if (existing && existing.name !== object.name)
+            throw new ConflictException("SIE object metadata conflicts with an existing object.");
+          const data = { organizationId, code: object.id, name: object.name };
+          const item =
+            existing ??
+            (object.dimension === "6"
+              ? await tx.project.create({ data })
+              : await tx.costCenter.create({ data }));
+          (object.dimension === "6" ? projects : costCenters).set(object.id, item.id);
+        }
+        // Never overwrite reviewed IB or add balances to an already-used year.
+        if (
+          document.openingBalances.length &&
+          ((await tx.openingBalance.count({
+            where: { organizationId, fiscalYearId: fiscalYear.id }
+          })) ||
+            (await tx.journalEntry.count({
+              where: { organizationId, fiscalYearId: fiscalYear.id, status: "POSTED" }
+            })))
+        )
+          throw new ConflictException(
+            "Opening balances can only be imported into an empty accounting year."
+          );
+        for (const balance of document.openingBalances) {
+          const accountId = accounts.get(balance.account);
+          if (!accountId) throw new BadRequestException("Opening balance account is missing.");
+          const account = await tx.account.findFirstOrThrow({
+            where: { organizationId, id: accountId }
+          });
+          if (
+            [AccountType.REVENUE, AccountType.EXPENSE].includes(
+              account.type as "REVENUE" | "EXPENSE"
+            )
+          )
+            throw new BadRequestException("Opening balances on result accounts are forbidden.");
+          const amount = new Prisma.Decimal(balance.amount);
+          await tx.openingBalance.create({
             data: {
               organizationId,
-              accountNumber: account.number,
-              name: account.name,
-              type: inferAccountType(account.number),
-              normalBalance: normalBalance(account.number)
+              fiscalYearId: fiscalYear.id,
+              accountId,
+              createdById: actorUserId,
+              debitAmount: amount.isPositive() ? amount : 0,
+              creditAmount: amount.isNegative() ? amount.abs() : 0
             }
           });
-          accounts.set(account.number, created.id);
         }
-      const periods = await tx.accountingPeriod.findMany({
-        where: { organizationId, fiscalYearId: fiscalYear.id }
-      });
-      for (const voucher of document.vouchers) {
-        const period = periods.find(
-          (candidate) =>
-            candidate.startDate <= new Date(`${voucher.date}T00:00:00.000Z`) &&
-            candidate.endDate >= new Date(`${voucher.date}T00:00:00.000Z`)
-        );
-        if (!period) throw new BadRequestException(`Ingen redovisningsperiod för ${voucher.date}.`);
-        await requireOpenCalendar(tx, organizationId, fiscalYear.id, period.id);
-        const series = await tx.voucherSeries.upsert({
-          where: {
-            organizationId_fiscalYearId_code: {
+        await readAccountingContext(tx, organizationId, fiscalYear.id);
+        const periods = await tx.accountingPeriod.findMany({
+          where: { organizationId, fiscalYearId: fiscalYear.id }
+        });
+        for (const voucher of document.vouchers) {
+          const period = periods.find(
+            (candidate) =>
+              candidate.startDate <= new Date(`${voucher.date}T00:00:00.000Z`) &&
+              candidate.endDate >= new Date(`${voucher.date}T00:00:00.000Z`)
+          );
+          if (!period)
+            throw new BadRequestException(`Ingen redovisningsperiod för ${voucher.date}.`);
+          await requireOpenCalendar(tx, organizationId, fiscalYear.id, period.id);
+          const series = await tx.voucherSeries.upsert({
+            where: {
+              organizationId_fiscalYearId_code: {
+                organizationId,
+                fiscalYearId: fiscalYear.id,
+                code: voucher.series
+              }
+            },
+            create: {
               organizationId,
               fiscalYearId: fiscalYear.id,
-              code: voucher.series
-            }
-          },
-          create: {
-            organizationId,
-            fiscalYearId: fiscalYear.id,
-            code: voucher.series,
-            name: `Importerad serie ${voucher.series}`,
-            nextVoucherNumber: Number(voucher.number) + 1
-          },
-          update: { nextVoucherNumber: { set: Number(voucher.number) + 1 } }
-        });
-        const importedEntry = await tx.journalEntry.create({
-          data: {
-            organizationId,
-            fiscalYearId: fiscalYear.id,
-            accountingPeriodId: period.id,
-            voucherSeriesId: series.id,
-            status: JournalEntryStatus.DRAFT,
-            source: JournalEntrySource.SIE_IMPORT,
-            entryDate: new Date(`${voucher.date}T00:00:00.000Z`),
-            description: voucher.text || "SIE-import",
-            createdById: actorUserId,
-            lines: {
-              create: voucher.transactions.map((line, index) => {
-                const amount = new Prisma.Decimal(line.amount);
-                const accountId = accounts.get(line.account);
-                if (!accountId) throw new BadRequestException(`Konto ${line.account} saknas.`);
-                return {
-                  organizationId,
-                  accountId,
-                  lineNumber: index + 1,
-                  description: line.text ?? null,
-                  debitAmount: amount.isPositive() ? amount : new Prisma.Decimal(0),
-                  creditAmount: amount.isNegative() ? amount.abs() : new Prisma.Decimal(0)
-                };
-              })
+              code: voucher.series,
+              name: `Importerad serie ${voucher.series}`,
+              nextVoucherNumber: Number(voucher.number) + 1
+            },
+            update: {}
+          });
+          await tx.$executeRaw`UPDATE voucher_series SET next_voucher_number = GREATEST(next_voucher_number, ${Number(voucher.number) + 1}, COALESCE((SELECT MAX(voucher_number) + 1 FROM journal_entries WHERE organization_id = ${organizationId}::uuid AND fiscal_year_id = ${fiscalYear.id}::uuid AND voucher_series_id = ${series.id}::uuid), 1)) WHERE id = ${series.id}::uuid AND organization_id = ${organizationId}::uuid`;
+          for (const line of voucher.transactions) {
+            if (line.date) {
+              const date = new Date(`${line.date}T00:00:00Z`);
+              const linePeriod = periods.find((p) => p.startDate <= date && p.endDate >= date);
+              if (!linePeriod) throw new BadRequestException("Line date has no accounting period.");
+              await requireOpenCalendar(tx, organizationId, fiscalYear.id, linePeriod.id);
             }
           }
-        });
-        await tx.journalEntry.update({
-          where: { id: importedEntry.id },
-          data: {
-            status: JournalEntryStatus.POSTED,
-            voucherNumber: Number(voucher.number),
-            postedAt: new Date(),
-            postedById: actorUserId
-          }
-        });
-        await tx.auditEvent.create({
-          data: {
-            organizationId,
-            actorUserId,
-            requestId,
-            action: "CREATE",
-            entityType: "JOURNAL_ENTRY",
-            entityId: importedEntry.id,
-            metadata: { source: "SIE_IMPORT", importId }
-          }
-        });
-        await tx.auditEvent.create({
-          data: {
-            organizationId,
-            actorUserId,
-            requestId,
-            action: "POST",
-            entityType: "JOURNAL_ENTRY",
-            entityId: importedEntry.id,
-            metadata: { source: "SIE_IMPORT", importId, voucherNumber: Number(voucher.number) }
-          }
-        });
-      }
-      await tx.auditEvent.create({
-        data: {
-          organizationId,
-          actorUserId,
-          requestId,
-          action: "IMPORT",
-          entityType: "SIE_IMPORT",
-          entityId: importId,
-          metadata: {
-            fiscalYearId: fiscalYear.id,
-            vouchers: document.vouchers.length,
-            sha256: createHash("sha256").update(content).digest("hex")
-          }
+          const importedEntry = await tx.journalEntry.create({
+            data: {
+              organizationId,
+              fiscalYearId: fiscalYear.id,
+              accountingPeriodId: period.id,
+              voucherSeriesId: series.id,
+              status: JournalEntryStatus.DRAFT,
+              source: JournalEntrySource.SIE_IMPORT,
+              entryDate: new Date(`${voucher.date}T00:00:00.000Z`),
+              description: voucher.text || "SIE-import",
+              createdById: actorUserId,
+              lines: {
+                create: voucher.transactions.map((line, index) => {
+                  const amount = new Prisma.Decimal(line.amount);
+                  const accountId = accounts.get(line.account);
+                  if (!accountId) throw new BadRequestException(`Konto ${line.account} saknas.`);
+                  return {
+                    accountId,
+                    lineNumber: index + 1,
+                    description: line.text ?? null,
+                    transactionDate: line.date ? new Date(`${line.date}T00:00:00Z`) : null,
+                    projectId: projects.get(
+                      line.objects.find((o) => o.dimension === "6")?.object ?? ""
+                    ),
+                    costCenterId: costCenters.get(
+                      line.objects.find((o) => o.dimension === "1")?.object ?? ""
+                    ),
+                    debitAmount: amount.isPositive() ? amount : new Prisma.Decimal(0),
+                    creditAmount: amount.isNegative() ? amount.abs() : new Prisma.Decimal(0)
+                  };
+                })
+              }
+            }
+          });
+          await tx.journalEntry.update({
+            where: { id: importedEntry.id },
+            data: {
+              status: JournalEntryStatus.POSTED,
+              version: { increment: 1 },
+              voucherNumber: Number(voucher.number),
+              postedAt: new Date(),
+              postedById: actorUserId
+            }
+          });
+          await tx.auditEvent.create({
+            data: {
+              organizationId,
+              actorUserId,
+              requestId,
+              action: "CREATE",
+              entityType: "JOURNAL_ENTRY",
+              entityId: importedEntry.id,
+              metadata: { source: "SIE_IMPORT", importId }
+            }
+          });
+          await tx.auditEvent.create({
+            data: {
+              organizationId,
+              actorUserId,
+              requestId,
+              action: "POST",
+              entityType: "JOURNAL_ENTRY",
+              entityId: importedEntry.id,
+              metadata: { source: "SIE_IMPORT", importId, voucherNumber: Number(voucher.number) }
+            }
+          });
         }
-      });
-    });
+        await tx.auditEvent.create({
+          data: {
+            organizationId,
+            actorUserId,
+            requestId,
+            action: "IMPORT",
+            entityType: "SIE_IMPORT",
+            entityId: importId,
+            metadata: {
+              fiscalYearId: fiscalYear.id,
+              vouchers: document.vouchers.length,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              fingerprint,
+              openingBalances: document.openingBalances.length
+            }
+          }
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30000 }
+    );
     return { mode: "CONFIRMED", ...preview };
   }
   async export(
@@ -184,120 +338,228 @@ export class SieService {
     actorUserId?: string,
     requestId?: string
   ) {
-    const fiscalYear = await this.database.prisma.fiscalYear.findFirst({
-      include: { organization: true },
-      where: { id: fiscalYearId, organizationId }
-    });
-    if (!fiscalYear) throw new NotFoundException("Fiscal year not found.");
-    const [accounts, opening, entries, projects, costCenters] = await Promise.all([
-      this.database.prisma.account.findMany({
-        where: { organizationId },
-        orderBy: { accountNumber: "asc" }
-      }),
-      this.database.prisma.openingBalance.findMany({ where: { organizationId, fiscalYearId } }),
-      this.database.prisma.journalEntry.findMany({
-        include: {
-          lines: { include: { account: true, project: true, costCenter: true } },
-          voucherSeries: true
-        },
-        where: { organizationId, fiscalYearId, status: JournalEntryStatus.POSTED },
-        orderBy: [{ entryDate: "asc" }, { voucherNumber: "asc" }]
-      }),
-      this.database.prisma.project.findMany({ where: { organizationId } }),
-      this.database.prisma.costCenter.findMany({ where: { organizationId } })
-    ]);
-    const balances = new Map(
-      accounts.map((account) => [
-        account.id,
-        {
-          account: account.accountNumber,
-          opening: new Prisma.Decimal(0),
-          closing: new Prisma.Decimal(0)
-        }
-      ])
-    );
-    for (const item of opening) {
-      const b = balances.get(item.accountId);
-      if (b) {
-        b.opening = b.opening.plus(item.debitAmount).minus(item.creditAmount);
-        b.closing = b.closing.plus(item.debitAmount).minus(item.creditAmount);
-      }
-    }
-    for (const entry of entries)
-      for (const line of entry.lines) {
-        const b = balances.get(line.accountId);
-        if (b) b.closing = b.closing.plus(line.debitAmount).minus(line.creditAmount);
-      }
-    const data: SieExportData = {
-      organization: {
-        name: fiscalYear.organization.name,
-        number: fiscalYear.organization.organizationNumber ?? undefined
-      },
-      fiscalYear: {
-        start: fiscalYear.startDate.toISOString().slice(0, 10),
-        end: fiscalYear.endDate.toISOString().slice(0, 10)
-      },
-      accounts: accounts.map((a) => ({ number: a.accountNumber, name: a.name })),
-      balances: [...balances.values()].map((b) => ({
-        account: b.account,
-        opening: b.opening.toFixed(2),
-        closing: b.closing.toFixed(2)
-      })),
-      objects: [
-        ...projects.map((p) => ({ dimension: "6", id: p.code, name: p.name })),
-        ...costCenters.map((c) => ({ dimension: "7", id: c.code, name: c.name }))
-      ],
-      vouchers: entries.map((entry) => ({
-        series: entry.voucherSeries?.code ?? "",
-        number: String(entry.voucherNumber ?? 0),
-        date: entry.entryDate.toISOString().slice(0, 10),
-        text: entry.description,
-        transactions: entry.lines.map((line) => ({
-          account: line.account.accountNumber,
-          amount: line.debitAmount.minus(line.creditAmount).toFixed(2),
-          date: entry.entryDate.toISOString().slice(0, 10),
-          text: line.description ?? entry.description,
-          objects: [
-            ...(line.project ? [{ dimension: "6", object: line.project.code }] : []),
-            ...(line.costCenter ? [{ dimension: "7", object: line.costCenter.code }] : [])
-          ]
-        }))
-      }))
-    };
-    const content = exportSie4(data);
-    await this.database.prisma.$transaction(async (tx) => {
-      const job = await tx.sieExport.create({
-        data: {
-          organizationId,
-          fiscalYearId,
-          exportedById: actorUserId,
-          status: "COMPLETED",
-          startedAt: new Date(),
-          completedAt: new Date(),
-          exportedEntryCount: entries.length
-        }
-      });
-      await tx.auditEvent.create({
-        data: {
-          organizationId,
-          actorUserId,
-          requestId,
-          action: "EXPORT",
-          entityType: "SIE_EXPORT",
-          entityId: job.id,
-          metadata: {
-            fiscalYearId,
-            vouchers: entries.length,
-            sha256: createHash("sha256").update(content).digest("hex")
+    return this.database.prisma.$transaction(
+      async (snapshot) => {
+        await readAccountingContext(snapshot, organizationId, fiscalYearId);
+        const fiscalYear = await snapshot.fiscalYear.findFirst({
+          include: { organization: true },
+          where: { id: fiscalYearId, organizationId }
+        });
+        if (!fiscalYear) throw new NotFoundException("Fiscal year not found.");
+        const [accounts, opening, entries, projects, costCenters] = await Promise.all([
+          snapshot.account.findMany({
+            where: { organizationId },
+            orderBy: { accountNumber: "asc" }
+          }),
+          snapshot.openingBalance.findMany({ where: { organizationId, fiscalYearId } }),
+          snapshot.journalEntry.findMany({
+            include: {
+              lines: {
+                include: { account: true, project: true, costCenter: true },
+                orderBy: { lineNumber: "asc" }
+              },
+              voucherSeries: true
+            },
+            where: { organizationId, fiscalYearId, status: JournalEntryStatus.POSTED },
+            orderBy: [{ entryDate: "asc" }, { voucherNumber: "asc" }, { id: "asc" }]
+          }),
+          snapshot.project.findMany({ where: { organizationId } }),
+          snapshot.costCenter.findMany({ where: { organizationId } })
+        ]);
+        const balances = new Map(
+          accounts.map((account) => [
+            account.id,
+            {
+              account: account.accountNumber,
+              opening: zeroBalance(),
+              closing: zeroBalance()
+            }
+          ])
+        );
+        for (const item of opening) {
+          const b = balances.get(item.accountId);
+          if (b) {
+            b.opening = b.opening.plus(item.debitAmount).minus(item.creditAmount);
+            b.closing = b.closing.plus(item.debitAmount).minus(item.creditAmount);
           }
         }
+        for (const entry of entries)
+          for (const line of entry.lines) {
+            const b = balances.get(line.accountId);
+            if (b) b.closing = b.closing.plus(line.debitAmount).minus(line.creditAmount);
+          }
+        const data: SieExportData = {
+          organization: {
+            name: fiscalYear.organization.name,
+            number: fiscalYear.organization.organizationNumber ?? undefined
+          },
+          fiscalYear: {
+            start: fiscalYear.startDate.toISOString().slice(0, 10),
+            end: fiscalYear.endDate.toISOString().slice(0, 10)
+          },
+          accounts: accounts.map((a) => ({
+            number: a.accountNumber,
+            name: a.name,
+            type:
+              a.type === "ASSET"
+                ? "T"
+                : a.type === "REVENUE"
+                  ? "I"
+                  : a.type === "EXPENSE"
+                    ? "K"
+                    : "S"
+          })),
+          balances: [...balances.values()].map((b) => ({
+            account: b.account,
+            opening: b.opening.toFixed(2),
+            closing: b.closing.toFixed(2)
+          })),
+          objects: [
+            ...projects.map((p) => ({ dimension: "6", id: p.code, name: p.name })),
+            ...costCenters.map((c) => ({ dimension: "1", id: c.code, name: c.name }))
+          ],
+          vouchers: entries.map((entry) => ({
+            series: entry.voucherSeries?.code ?? "",
+            number: String(entry.voucherNumber ?? 0),
+            date: entry.entryDate.toISOString().slice(0, 10),
+            text: entry.description,
+            transactions: entry.lines.map((line) => ({
+              account: line.account.accountNumber,
+              amount: rawBalance(line.debitAmount, line.creditAmount).toFixed(2),
+              date: line.transactionDate?.toISOString().slice(0, 10),
+              text: line.description ?? entry.description,
+              objects: [
+                ...(line.project ? [{ dimension: "6", object: line.project.code }] : []),
+                ...(line.costCenter ? [{ dimension: "1", object: line.costCenter.code }] : [])
+              ]
+            }))
+          }))
+        };
+        let content: Uint8Array;
+        try {
+          content = encodeSieBytes(exportSie4(data));
+        } catch (error) {
+          throw new BadRequestException({
+            code: "SIE_EXPORT_UNSUPPORTED",
+            message: (error as Error).message
+          });
+        }
+        const tx = snapshot;
+        const job = await tx.sieExport.create({
+          data: {
+            organizationId,
+            fiscalYearId,
+            exportedById: actorUserId,
+            status: "COMPLETED",
+            startedAt: new Date(),
+            completedAt: new Date(),
+            exportedEntryCount: entries.length
+          }
+        });
+        await tx.auditEvent.create({
+          data: {
+            organizationId,
+            actorUserId,
+            requestId,
+            action: "EXPORT",
+            entityType: "SIE_EXPORT",
+            entityId: job.id,
+            metadata: {
+              fiscalYearId,
+              vouchers: entries.length,
+              sha256: createHash("sha256").update(content).digest("hex")
+            }
+          }
+        });
+        return content;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000 }
+    );
+  }
+  private async reviewMapping(
+    tx: Prisma.TransactionClient,
+    document: SieDocument,
+    organizationId: string,
+    fiscalYearId: string
+  ) {
+    const warnings: string[] = [],
+      conflicts: string[] = [];
+    if (document.accounts.length || document.vouchers.length) {
+      const existing = await tx.account.findMany({ where: { organizationId } });
+      const mapped = new Map(existing.map((account) => [account.accountNumber, account]));
+      const used = new Set(
+        document.vouchers.flatMap((v) => v.transactions.map((line) => line.account))
+      );
+      for (const incoming of document.accounts) {
+        const account = mapped.get(incoming.number);
+        if (!account) continue;
+        if (account.name !== incoming.name)
+          warnings.push(
+            `Account ${incoming.number}: existing name retained; imported name differs.`
+          );
+        const matches =
+          !incoming.type ||
+          (incoming.type === "T" && account.type === "ASSET") ||
+          (incoming.type === "I" && account.type === "REVENUE") ||
+          (incoming.type === "K" && account.type === "EXPENSE") ||
+          (incoming.type === "S" && ["EQUITY", "LIABILITY"].includes(account.type));
+        if (!matches)
+          conflicts.push(`Account ${incoming.number}: existing type conflicts with #KTYP.`);
+      }
+      for (const number of used)
+        if (mapped.get(number)?.isActive === false)
+          conflicts.push(`Account ${number} is inactive.`);
+    }
+    if (
+      document.openingBalances.length &&
+      ((await tx.openingBalance.count({ where: { organizationId, fiscalYearId } })) ||
+        (await tx.journalEntry.count({
+          where: { organizationId, fiscalYearId, status: "POSTED" }
+        })))
+    )
+      conflicts.push(
+        "Opening balances require an empty accounting year; existing IB/history cannot be overwritten."
+      );
+    if (document.vouchers.length) {
+      const identities = await tx.journalEntry.findMany({
+        where: { organizationId, fiscalYearId, voucherNumber: { not: null } },
+        select: { voucherNumber: true, voucherSeries: { select: { code: true } } }
       });
-    });
-    return content;
+      const occupied = new Set(
+        identities.map((entry) => `${entry.voucherSeries?.code}:${entry.voucherNumber}`)
+      );
+      for (const voucher of document.vouchers)
+        if (occupied.has(`${voucher.series}:${voucher.number}`))
+          conflicts.push(`Voucher ${voucher.series}${voucher.number} already exists.`);
+    }
+    for (const object of document.objects) {
+      const where = { organizationId, code: object.id };
+      const existing =
+        object.dimension === "6"
+          ? await tx.project.findFirst({ where })
+          : await tx.costCenter.findFirst({ where });
+      if (existing && existing.name !== object.name)
+        conflicts.push(`Object ${object.dimension}/${object.id} has conflicting metadata.`);
+    }
+    return { warnings, conflicts };
+  }
+  private signPreview(fingerprint: string) {
+    const payload = `${Date.now() + 15 * 60 * 1000}.${fingerprint}`;
+    return `${payload}.${createHmac("sha256", this.previewKey).update(payload).digest("hex")}`;
+  }
+  private validPreview(token: string | undefined, fingerprint: string): boolean {
+    if (!token || !/^\d{13}\.[a-f0-9]{64}\.[a-f0-9]{64}$/.test(token)) return false;
+    const [expires, hash, signature] = token.split(".");
+    if (Number(expires) < Date.now() || hash !== fingerprint) return false;
+    const expected = createHmac("sha256", this.previewKey).update(`${expires}.${hash}`).digest();
+    return timingSafeEqual(Buffer.from(signature!, "hex"), expected);
   }
   private previewResult(document: SieDocument) {
     return {
       fiscalYear: document.fiscalYear ?? null,
+      fiscalYears: document.fiscalYears,
+      openingBalancesFound: document.openingBalances.length,
+      objectsFound: document.objects.length,
       accountsFound: document.accounts.length,
       vouchersFound: document.vouchers.length,
       warnings: document.warnings,
@@ -309,17 +571,15 @@ function inferAccountType(number: string) {
   return number.startsWith("1")
     ? AccountType.ASSET
     : number.startsWith("2")
-      ? AccountType.EQUITY
+      ? /^2[01]/.test(number)
+        ? AccountType.EQUITY
+        : AccountType.LIABILITY
       : number.startsWith("3")
         ? AccountType.REVENUE
         : AccountType.EXPENSE;
 }
-function normalBalance(number: string) {
-  return number.startsWith("1") ||
-    number.startsWith("4") ||
-    number.startsWith("5") ||
-    number.startsWith("6") ||
-    number.startsWith("7")
+function normalBalance(type: AccountType) {
+  return type === AccountType.ASSET || type === AccountType.EXPENSE
     ? BalanceSide.DEBIT
     : BalanceSide.CREDIT;
 }

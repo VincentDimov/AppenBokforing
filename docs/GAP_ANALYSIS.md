@@ -1,5 +1,97 @@
 # LedgerApp — GAP-analys
 
+## Aktuellt efter FAS 21–23 — 2026-10-07
+
+- P0-01 COMPLETE inom byte-/serializer-/inputgränsen: PC8/CP437 och injektionsskydd.
+- P0-09 implementerat inom begränsad SIE-subset: IB/objekt/raddatum, explicit
+  signerad review, befintliga metadata/IB-identitetskonflikter, atomär import,
+  monotont counter. Fulla SIE-varianter och importjobbs-UI återstår.
+- P0-10 PARTIAL: snapshot/export/UB/RES/bytekodning och PG/browser-Golden finns;
+  ingen oberoende läsare eller full officiell sample/certifiering verifierad.
+- P0-11 PARTIAL: versioner och nio riktiga PG-races samt två browserkontexter
+  passerar; återstående samtidighetsmatris i [concurrency](concurrency.md).
+- P0-02 PARTIAL: 15→1 advisory; kvarstående HIGH i Prisma deepmerge-ts, exakt
+  tidsbegränsad exception till 2026-11-07, ingen blind majoruppgradering.
+- P0-03 PARTIAL: originskydd, startupvalidering, headers och loggredaktion finns;
+  parser-/polyglot-/malwaregräns och verklig cloud policy kräver mer verifiering.
+- P0-13 PARTIAL: riktig DB-restore/immutabilitet/least-privilege PASS, men full
+  blob-restore stoppades av lokal lagring. Schema/volymer är inte backupbevis.
+
+86 PG och 13 browser-E2E PASS; [produktionsgates](production-readiness.md).
+Inga öppna gates markeras klara av dessa testresultat. Avsnitten nedan är
+historiska granskningsögonblick; äldre SIE UTF-8/förluststatus är ersatt av ovan.
+
+## FAS 20 — A04 rättat inom explicit omfattning
+
+Underlag är BASE-rader, skatt är TAX-rader; ingen uppskalning från momskonton
+eller bankbelopp. Momskodens version/rate/direction och kontots kodförväntan
+fryses vid postning. Kreditnotor och motposter ger negativa matchande par.
+Tillagd framåtmigration stärker rättelsens metadata-integritet utan historikomskrivning.
+Golden A–G har manuella facit; PG/HTTP och browserkedja verifierar verkliga POSTED.
+P0-08 COMPLETE för dokumenterad arithmetic/limited Swedish adapter, inte compliance.
+[Momsmodell och kvarstående scope](vat-reporting.md).
+Legacy-taggar utan snapshot/roll kräver granskning; ingen automatisk backfill.
+SIE-import bygger ännu inte denna metadata, och allmän kontohistorik P0-07
+är fortfarande öppen. Fältspecifika undantag, avdragsrätt och regel-/sektorval
+är inte automatiskt lösta. Baslinjefynd nedan bevaras som historik.
+Verifiering: lint/typecheck/build PASS; 132 ordinarie, 73 PG, 11 lokala browserfall
+och 7 safety-kontrakt PASS. Alla tolv migrationer körda i disponibla databaser.
+
+## FAS 19 — aktuell rapportstatus 2026-10-07
+
+- A01 rättat: GL läser och validerar hela tenant/årets IB före kontourval och
+  rullar in tidigare POSTED-rörelser.
+- P0-06 COMPLETE inom FAS 19: GL/BS/trial/income stäms av via samma deterministiska
+  Golden-fixtur mot PostgreSQL. [Kontrakt/facit](accounting-balances.md).
+- A10 delvis rättat: verklig saldobalans finns; IB-editor, årsöverföring och
+  bokslutsregler återstår.
+- A16 rättat för GL/BS/trial/income genom RepeatableRead per rapportanrop.
+  SIE-exportens snapshotbrist återstår; separata HTTP-anrop delar inte snapshot.
+- A15 GL har stabila tiebreakers; lexikografiska kontointervall och allmän paging
+  är inte rättade. BS/trial använder SQL-groupBy, inga per-kontoqueries.
+- Felaktig/obalanserad IB stoppas med 422. IB på resultatkonto avvisas.
+  Dimensions-GL med IB stoppas uttryckligen eftersom IB saknar dimensioner.
+- Alla 59 PG-integrationstester passerar. Inga nya index/migrationer eller
+  försvagade immutability-/tenant-/låsregler.
+- Slutlig kontroll: lint/typecheck/build PASS, 109 unit-/kontraktstester,
+  59 PG och 10 browserfall PASS; separat local-only guard 7 PASS.
+
+A03/historisk metadata, A04/moms, A05–08/SIE, concurrency, bokslut/carry-forward,
+backups/privilegier och produktionssäkerhet är inte lösta av detta.
+Baslinjefynd längre ned är historiska; denna uppföljning anger de rättade delarna.
+
+## FAS 18 — senare verifiering än baslinjen
+
+Separat Playwright, fail-closed lokal mutationstestmiljö, en produktionbyggd
+Next-webb och verklig API/PostgreSQL-kedja är tillagda. Publik skrivskyddad
+smoke har **4 PASS, 1 auth SKIPPED**; Next→Nest-health fungerar och API-Helmet
+bevaras. HTML-sidorna saknar CSP/nosniff/frame/referrer-headers: kvarstående
+P0/P1 release-härdning. Cookie Secure i drift är ännu inte styrkt.
+Se [exakt täckning och driftfynd](e2e-verification.md).
+
+Browsern hittade två runtimebuggar utöver tidigare mockade tester:
+
+- Draft-PATCH med ersättningsrader: Prisma nested create/deleteMany gav P2002.
+  Explicit tenant-scopad line deletion före create inom samma transaktion löser
+  felet utan försvagade balans-/immutability-/låsregler. Ny PG-integration PASS.
+- Logout: anonymous-effekten kunde vinna över home-navigation. Explicit
+  logoutavsikt löser den reproducerade redirectkapplöpningen. S06:s separata
+  logout-serverfel och refreshfamilje-/multifliksrisk är **inte** därmed lösta.
+
+P0-04:s lokala synliga-belopp→DB-flöde, dubbelklick och hotkey är browserstyrkta;
+fleranvändar-versionering A02 återstår. Orgbyte/reset och sena rapportsvar är
+browserstyrkta för den testade matrisen, inte för alla moduler/browsers.
+IB/VAT/SIE/historisk metadata/races i redovisningsmotorn kvarstår oförändrade.
+Rapportfixture utan IB är inte bevis för full rapportkorrekthet.
+
+Backend-errorstatus är verkliga för 401/403/404/400/409; rapport-500 och
+nätverksfel är kontrollerad browser-felinjektion. Ingen full säkerhets-/
+CSRF-granskning eller produktionsbokföringstest har gjorts. GitHub Actions-run,
+rent checkout, verklig S3-browserkedja och godkänt live-testkonto återstår.
+Normal testpipeline: 99 PASS + 50 integration PASS. Lokala guard-kontrakt: 7 PASS.
+Slutlig sammanhängande browser→API→PostgreSQL-körning: **9 PASS**, utan retries.
+Ursprungliga fynd nedan är historiska; uppföljningarna anger rättade delar.
+
 Datum: 2026-10-06. Granskad kod: `0b2f11a` på `master`.
 Omfattning: båda apparna, alla fem paket, schema, tio migrationer, seed,
 controllers/guards/DTO:er, centrala tjänster, större frontendkomponenter,

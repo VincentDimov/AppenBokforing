@@ -1,5 +1,66 @@
 # LedgerApp — roadmap från nuvarande implementation
 
+## Aktuell status efter FAS 21–23 — 2026-10-07
+
+Sammanhängande genomförande utan faspauser: begränsad förlustmedveten SIE,
+verifikationsversioner och samtidighetskontroll, säkerhet och restoreverktyg.
+Se [CURRENT_STATE](CURRENT_STATE.md) och [releasechecklistan](production-readiness.md).
+Nästa P0-arbete: oberoende SIE-verifiering, återstående race-matris, Prisma HIGH,
+malformed/polyglot-uploadgräns, fungerande privat S3 och full blob-restore,
+verkliga cloud roller/backup/monitorering och kvalificerad redovisningsgranskning.
+P0-02/03/10/11/13 är PARTIAL. P1 kan planeras, men full P0 releasegate är inte
+stängd och systemet är inte produktionsgodkänt. Inga orelaterade P1-funktioner
+har lagts till. Statusavsnitten nedan är bevarad historik.
+
+## Status efter FAS 20 — 2026-10-07
+
+P0-08 COMPLETE inom explicit BASE/TAX-modell, negativa matchande par, fryst
+VAT-metadata, anomalier och begränsad versionerad svensk fältmappning.
+Golden-facit: utgående 490, ingående 250, netto 240; underlagen redovisas separat.
+Historisk klassificering och SIE-metadata gissas inte. Momsadministration,
+fler regelversioner och ej stödda skattefall kvarstår; se [scope](vat-reporting.md).
+P0-07 allmän kontohistorik och P0-09/10 SIE är inte levererade av denna fas.
+FAS 21 har inte påbörjats. Redovisningsgranskning och releasegates gäller fortsatt.
+Kontroller PASS: lint/typecheck/build, 132 ordinarie tester, 73 PG-integration,
+11 lokala browserfall och 7 safety-kontrakt. Ingen produktionsrelease utförd.
+
+## Status efter FAS 19 — 2026-10-07
+
+**P0-06 COMPLETE inom FAS 19:** validerad IB i GL, gemensamt teckenkontrakt,
+RepeatableRead för GL/BS/trial/income, tydlig IB-dimensionspolicy och verklig
+saldobalans. Samma Golden-fixtur ger identiska manuellt förväntade avstämningar
+i PG/HTTP; 59 integrationstester passerar.
+Slutligt: lint/typecheck/build PASS, 109 ordinarie tester och 10 lokala browserfall PASS.
+[Kontrakt och exakt facit](accounting-balances.md).
+Legacy-acceptansen nedan nämner även SIE; dess återstående snapshots/format/IB
+hanteras separat under P0-09/10, inte som ett obestyrkt avslut i denna fas.
+P1-05 är delvis levererat (saldobalans + print); särskild verifikationsrapport
+och övrig export återstår. P1-03 IB-editor/årsöverföring är inte levererat.
+
+Nästa avgränsade fas i underlaget är FAS 20 momsmodell, men den har inte startats.
+P0-07 metadatahistorik, P0-09/10 SIE, P0-11 concurrency/DB samt releasegränser
+kvarstår. Att rapporterna balanserar ersätter inte redovisningsgranskning.
+
+## Status efter FAS 18
+
+Playwright-infrastruktur och lokala browser→Next→Nest→PostgreSQL-flöden är
+implementerade med separat CI-jobb. Root-kontroller passerar (99 ordinarie,
+50 integration). Publik read-only smoke 4 PASS/1 SKIPPED, healthrewrite styrkt.
+[Verifiering och begränsningar](e2e-verification.md).
+
+P0-04 har nu browserbevis för osparade synliga belopp, dubbelklick och hotkey;
+fleranvändar-versionering är fortsatt PARTIAL. P0-05:s utvalda tenantvyer och
+sent rapport-svar har lokala browserbevis; matrisen är inte alla moduler.
+P0-12 har browserjobbsdefinition; faktisk Actions-run/rent checkout återstår.
+Frontend-orgskapande/serieadministration är inte infört i verifieringsfasen.
+
+Nästa fas bör vara avgränsad **accounting correctness**, först med dokumenterade
+manuella facit: IB i huvudbok/balans, rapport-snapshot/metadata och konkurrens
+kring journalversionering. Separata därefter beslutade leveranser för momsbaser
+och SIE PC8/IB/import/export. P0-fynd får inte stängas för att denna browserfixture
+passerar. Härdning av publika HTML-headers, säkert drift-testkonto,
+hemlighetsrotation/backup/arkivering och Actions-bevis är releaseblockers.
+
 Baslinje 2026-10-06, commit `0b2f11a`. Detta är en plan, inte redan genomförda
 ändringar. Se [CURRENT_STATE](CURRENT_STATE.md) och [GAP_ANALYSIS](GAP_ANALYSIS.md).
 Behåll monorepo, Nest/Next-gränsen, Decimal, tenant-FK, journalimmutability och

@@ -30,6 +30,7 @@ import {
   postJournalEntry,
   reverseJournalEntry,
   updateJournalEntry,
+  JournalEntriesApiError,
   type JournalEntry,
   type JournalEntryInput,
   type JournalEntryOptions
@@ -45,6 +46,8 @@ interface EditableLine {
   description: string;
   projectCode: string;
   vatCode: string;
+  vatRole: "UNCLASSIFIED" | "BASE" | "TAX" | "NONE";
+  vatGroup: string;
 }
 
 interface VoucherEditorProps {
@@ -88,6 +91,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   const [voucherSeriesId, setVoucherSeriesId] = useState("");
   const nextLineToFocus = useRef<string | null>(null);
   const mutationInFlight = useRef(false);
+  const [versionConflict, setVersionConflict] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -111,7 +115,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     lines.length > 0 &&
     lines.every((line) => line.account !== null && isValidJournalAmountLine(line));
   const canSave =
-    isEditable &&
+    isEditable && !versionConflict &&
     !optionsLoading &&
     Boolean(activeOrganizationId && voucherSeriesId && description.trim() && transactionDate) &&
     hasValidLines;
@@ -294,7 +298,9 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         debit: line.debit,
         description: line.description ?? "",
         projectCode: line.project?.code ?? "",
-        vatCode: line.vatCode?.code ?? ""
+        vatCode: line.vatCode?.code ?? "",
+        vatRole: line.vatRole ?? (line.vatCode ? "UNCLASSIFIED" : "NONE"),
+        vatGroup: line.vatGroup ?? ""
       }))
     );
     setTransactionDate(nextEntry.transactionDate);
@@ -350,7 +356,9 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         debit: normalizeMoney(line.debit),
         description: line.description.trim() || null,
         projectCode: cleanOptionalCode(line.projectCode),
-        vatCode: cleanOptionalCode(line.vatCode)
+        vatCode: cleanOptionalCode(line.vatCode),
+        vatRole: line.vatRole,
+        ...(line.vatGroup.trim() ? { vatGroup: line.vatGroup.trim() } : {})
       })),
       transactionDate,
       voucherSeriesId
@@ -376,7 +384,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     setError(null);
     try {
       const saved = entry
-        ? await updateJournalEntry(entry.id, input)
+        ? await updateJournalEntry(entry.id, { ...input, expectedVersion: entry.version })
         : await createJournalEntry({ ...input, organizationId: activeOrganizationId });
       // Abort the continuation if the user left this organization while saving.
       if (!mounted.current) return null;
@@ -389,7 +397,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
       }
       applyEntry(saved);
       if (postAfterSave) {
-        const posted = await postJournalEntry(saved.id);
+        const posted = await postJournalEntry(saved.id, saved.version);
         if (!mounted.current) return null;
         applyEntry(posted);
         router.replace(`/app/bookkeeping/vouchers/${posted.id}`);
@@ -398,6 +406,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
       if (navigateAfterSave && !entry) router.replace(`/app/bookkeeping/vouchers/${saved.id}`);
       return saved;
     } catch (caughtError) {
+      if (mounted.current && caughtError instanceof JournalEntriesApiError && caughtError.status === 409 && caughtError.code === "JOURNAL_ENTRY_VERSION_CONFLICT") setVersionConflict(true);
       if (mounted.current)
         setError(
           caughtError instanceof Error
@@ -413,6 +422,16 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
 
   async function handlePost() {
     await persistDraft(false, true);
+  }
+  async function reloadLatest() {
+    if (!entry || mutationInFlight.current) return;
+    mutationInFlight.current = true; setIsSaving(true);
+    try {
+      const latest = await getJournalEntry(entry.id);
+      if (!mounted.current || latest.organizationId !== activeOrganizationId) return;
+      applyEntry(latest); setVersionConflict(false); setError(null);
+    } catch (caught) { if (mounted.current) setError(caught instanceof Error ? caught.message : "Senaste version kunde inte laddas."); }
+    finally { mutationInFlight.current = false; if (mounted.current) setIsSaving(false); }
   }
 
   function openReversalConfirmation() {
@@ -540,6 +559,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         >
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <p>{error}</p>
+          {versionConflict ? <Button type="button" disabled={isSaving} onClick={() => void reloadLatest()}>Ladda senaste och kasta lokala ändringar</Button> : null}
         </div>
       ) : null}
 
@@ -811,6 +831,29 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                       placeholder="Kod"
                       value={line.vatCode}
                     />
+                    <select
+                      aria-label={`Momsroll rad ${index + 1}`}
+                      disabled={!isEditable}
+                      value={line.vatRole}
+                      onChange={(event) => updateLine(line.clientId, "vatRole", event.target.value)}
+                      className="mt-1 w-full rounded border p-1"
+                    >
+                      <option value="NONE">Ingen momsroll</option>
+                      <option value="BASE">Underlag</option>
+                      <option value="TAX">Momsbelopp</option>
+                      <option value="UNCLASSIFIED">Ej klassificerad</option>
+                    </select>
+                    <input
+                      aria-label={`Momsgrupp rad ${index + 1}`}
+                      disabled={!isEditable}
+                      maxLength={64}
+                      placeholder="Grupp (valfri)"
+                      value={line.vatGroup}
+                      onChange={(event) =>
+                        updateLine(line.clientId, "vatGroup", event.target.value)
+                      }
+                      className="mt-1 w-full rounded border p-1"
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <TableInput
@@ -1066,7 +1109,9 @@ function createLine(): EditableLine {
     debit: "0,00",
     description: "",
     projectCode: "",
-    vatCode: ""
+    vatCode: "",
+    vatRole: "NONE",
+    vatGroup: ""
   };
 }
 
