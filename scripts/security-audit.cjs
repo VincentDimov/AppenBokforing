@@ -38,7 +38,7 @@ for (const advisory of Object.values(audit.advisories)) {
 process.stdout.write(
   JSON.stringify({
     vulnerabilities: audit.metadata.vulnerabilities,
-    gate: blocked ? "FAIL" : "PASS_WITH_DOCUMENTED_EXCEPTIONS"
+    gate: blocked ? "FAIL" : Object.keys(audit.advisories).length ? "PASS_WITH_DOCUMENTED_EXCEPTIONS" : "PASS"
   }) + "\n"
 );
 process.exitCode = blocked ? 1 : 0;

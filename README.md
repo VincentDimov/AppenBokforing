@@ -1,5 +1,16 @@
 # LedgerApp
 
+## FAS 24 release gate — current
+
+Decision: **GO FOR P1 WITH EXPLICIT P0 BLOCKERS**, not production/legal approval.
+Raw production audit now zero; independent SIE/Golden report equivalence,
+real private S3 restore and runtime LOGIN checks pass locally. Remote verify
+passed, but browser job cancelled during apt; no claim of green CI.
+See [complete evidence, counts and every P0 disposition](docs/fas24-release-gate.md)
+and [current production checklist](docs/production-readiness.md).
+Changes remain local/uncommitted/unpushed; no P1 feature added.
+Earlier phase descriptions below are historical snapshots.
+
 FAS 23.1 CI-hotfix: Node-side E2E använder nu deklarerade workspace-
 devDependencies `@ledgerapp/sie`/`@ledgerapp/db` i stället för relativa
 genererade dist-/src-importer. Ren källkopia klarar frozen install, Prisma

@@ -129,16 +129,17 @@ export class AuthService {
       throw this.invalidRefreshToken();
     }
 
+    // Possession of a session UUID is not proof of possession of its credential.
+    // Authenticate even rotated tokens before any family-wide side effect.
+    if (!(await this.verifyRefreshToken(refreshToken, session.refreshTokenHash))) {
+      throw this.invalidRefreshToken();
+    }
+
     if (session.revokedAt) {
       if (session.revocationReason === SessionRevocationReason.ROTATED) {
         await this.revokeSessionFamily(session.familyId, SessionRevocationReason.REUSE_DETECTED);
       }
 
-      throw this.invalidRefreshToken();
-    }
-
-    if (!(await this.verifyRefreshToken(refreshToken, session.refreshTokenHash))) {
-      await this.revokeSessionFamily(session.familyId, SessionRevocationReason.REUSE_DETECTED);
       throw this.invalidRefreshToken();
     }
 

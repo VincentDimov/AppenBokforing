@@ -1,5 +1,16 @@
 # LedgerApp — GAP-analys
 
+## FAS 24 — updated gap disposition
+
+See [every P0 item, evidence and remaining risk](fas24-release-gate.md).
+P0-02 remediated locally; independent SIE subset and complete disposable DB/blob
+restore demonstrated. P0-03/07/10/11/12/13 retain explicit boundaries/blockers.
+Actual HEAD verify succeeds; browser CI cancellation is apt mirror/network
+stall, not the old TS error. Narrow fix/new recovery gate require remote proof.
+Decision: GO FOR P1 WITH EXPLICIT P0 BLOCKERS, not accounting release approval.
+Earlier findings below are historical; do not treat superseded HIGH/storage
+failure/remote-uninspected statements as current.
+
 ## FAS 23.1 — avgränsad CI-hotfix
 
 Bekräftat Linux-CI-paketeringsfel: E2E importerade relativ genererad SIE-dist

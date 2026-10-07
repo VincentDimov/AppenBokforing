@@ -27,6 +27,8 @@ export function securityPolicy(req: PolicyRequest, res: PolicyResponse, next: ()
   const requestId = supplied && /^[A-Za-z0-9_.-]{1,100}$/.test(supplied) ? supplied : randomUUID();
   req.headers["x-request-id"] = requestId;
   res.setHeader("X-Request-Id", requestId);
+  // Authenticated accounting responses must never enter shared/browser caches.
+  res.setHeader("Cache-Control", "no-store");
   if (process.env.NODE_ENV === "production") {
     const started = Date.now();
     res.once("finish", () =>
@@ -57,13 +59,11 @@ export function securityPolicy(req: PolicyRequest, res: PolicyResponse, next: ()
     site === "cross-site" ||
     (requiresOrigin && !origin)
   ) {
-    res
-      .status(403)
-      .json({
-        code: "UNTRUSTED_ORIGIN",
-        message: "A trusted browser origin is required.",
-        requestId
-      });
+    res.status(403).json({
+      code: "UNTRUSTED_ORIGIN",
+      message: "A trusted browser origin is required.",
+      requestId
+    });
     return;
   }
   return next();

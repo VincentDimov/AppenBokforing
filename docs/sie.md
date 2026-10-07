@@ -1,5 +1,17 @@
 # SIE 4B limited loss-aware subset (FAS 21)
 
+## FAS 24 independent test path
+
+Four separate-reader tests plus one real Golden export/import comparison now
+verify the implemented subset. The test-only reader imports no production parser,
+encoder or money helper. Manual CC0 spec-derived PC8 fixture provenance is in
+`tests/fixtures/sie-spec-derived.LICENSE.md`; actual Swedish bytes and negative
+balance/UTF8 cases tested. Clean-org import preserves IB and financial values
+of trial balance, GL, income and balance sheet. Minimal reader only supports
+ASCII plus six Swedish letters; this is not full interoperability/certification.
+See [release evidence](fas24-release-gate.md); P0-10 remains PARTIAL beyond this
+verified subset. Existing specification/implementation contract below retained.
+
 Authoritative reference: [SIE-Gruppen edition 4B specification](https://sie.se/wp-content/uploads/2020/05/SIE_filformat_ver_4B_ENGLISH.pdf).
 The implementation is standalone `packages/sie`, not controller parsing logic.
 It is not certified, a complete SIE implementation or independently validated

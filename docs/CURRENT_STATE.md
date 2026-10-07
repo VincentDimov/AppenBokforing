@@ -1,5 +1,15 @@
 # LedgerApp — faktiskt nuläge
 
+## FAS 24 — authoritative current update, 2026-10-07
+
+[Final release gate](fas24-release-gate.md) supersedes earlier phase statuses/counts.
+HEAD 4188ca6b; actual GitHub verify SUCCESS / browser CANCELLED, Vercel READY.
+Local 166 ordinary tests, 94 PG integrations and 13 Chromium tests pass;
+raw audit zero; independent SIE and full DB/blob restore pass. All P0 dispositions
+and remaining gaps are explicit. No production auth/accounting mutation,
+commit/push/deploy or P1 implementation performed.
+Earlier sections below are dated historical snapshots, not new FAS 24 claims.
+
 ## FAS 23.1 — CI-paketeringshotfix, 2026-10-07
 
 Linux-CI på 5147fad föll på webbens E2E-import av genererad relativ

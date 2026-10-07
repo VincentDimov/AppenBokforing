@@ -60,6 +60,8 @@ jobs:
 
       - name: Test
         run: pnpm test
+      - name: Scoped Prisma config dependency compatibility
+        run: node --test tests/prisma-config-compatibility.test.cjs
       - name: Restore tooling syntax and report-only reconciliation contract
         run: |
           node --check scripts/restore-drill.cjs
@@ -77,7 +79,7 @@ jobs:
         run: pnpm build
 
   browser-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -100,7 +102,20 @@ jobs:
           node-version: 22
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      # The 4188ca6 run exhausted its job timeout while apt's Azure mirror hung.
+      # Use Ubuntu's canonical HTTPS archive and bound apt network attempts;
+      # dependency or browser installation failure still fails the job.
+      - name: Install browser OS dependencies from canonical Ubuntu archive
+        timeout-minutes: 5
+        run: |
+          sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|https://archive.ubuntu.com/ubuntu|g; s|mirror+file:/etc/apt/apt-mirrors-security.txt|https://security.ubuntu.com/ubuntu|g; s|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
+          printf 'Acquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::Retries "1";\n' | sudo tee /etc/apt/apt.conf.d/99-ledgerapp-network-timeouts
+          pnpm exec playwright install-deps chromium
+      - name: Install pinned Chromium
+        timeout-minutes: 5
+        env:
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
+        run: pnpm exec playwright install chromium
       - run: node --test scripts/e2e-safety.test.cjs
       - name: Browser to local API to disposable PostgreSQL
         env:
@@ -108,3 +123,50 @@ jobs:
         run: pnpm test:e2e
       # No production smoke or production credentials in PR CI.
       # Disposable cookie traces are deliberately not uploaded as public artifacts.
+
+  recovery-runtime-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Build recovery dependencies
+        run: pnpm --filter @ledgerapp/db build && pnpm --filter @ledgerapp/sie build && pnpm --filter @ledgerapp/api build
+      - name: Start dedicated disposable recovery services
+        run: |
+          docker run -d --name ledgerapp-fas24-pg-20261007 -p 127.0.0.1:15440:5432 -e POSTGRES_USER=ledgerapp_test -e POSTGRES_PASSWORD=local_disposable_test_only -e POSTGRES_DB=ledgerapp_drill postgres:16-alpine
+          docker run -d --name ledgerapp-fas24-restore-20261007 -p 127.0.0.1:15441:5432 -e POSTGRES_USER=ledgerapp_test -e POSTGRES_PASSWORD=local_disposable_test_only -e POSTGRES_DB=ledgerapp_restore postgres:16-alpine
+          docker run -d --name ledgerapp-fas24-storage-20261007 -p 127.0.0.1:19500:9000 -e RUSTFS_ACCESS_KEY=disposable_drill_user -e RUSTFS_SECRET_KEY=disposable_drill_secret_only -e RUSTFS_CONSOLE_ENABLE=false rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+          for container in ledgerapp-fas24-pg-20261007 ledgerapp-fas24-restore-20261007; do
+            ready=false
+            for attempt in $(seq 1 20); do
+              if docker exec "$container" pg_isready -U ledgerapp_test; then ready=true; break; fi
+              sleep 2
+            done
+            test "$ready" = true
+          done
+          docker exec ledgerapp-fas24-pg-20261007 createdb -U ledgerapp_test ledgerapp_upgrade_24
+      - name: Apply full migrations to empty source
+        env:
+          DATABASE_URL: postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/ledgerapp_drill
+        run: pnpm --filter @ledgerapp/db exec prisma migrate deploy --schema prisma/schema.prisma
+      - name: DB and private blob restore with negative reconciliation fixtures
+        env:
+          RUN_DISPOSABLE_RESTORE_DRILL: "yes"
+        run: node scripts/restore-drill.cjs
+      - name: Actual runtime LOGIN and restored protections
+        env:
+          RUN_DISPOSABLE_RESTORE_DRILL: "yes"
+        run: node scripts/verify-runtime-login.cjs
+      - name: Real S3 upload versus posting, locking and calendar move
+        env:
+          RUN_DISPOSABLE_RESTORE_DRILL: "yes"
+        run: node scripts/verify-storage-races.cjs
+      - name: Older schema forward upgrade preserves ordinary records
+        env:
+          RUN_DISPOSABLE_RESTORE_DRILL: "yes"
+        run: node scripts/verify-migration-upgrade.cjs

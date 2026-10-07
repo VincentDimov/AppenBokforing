@@ -42,6 +42,17 @@ export class AuthSettingsService {
     this.argon2Parallelism = this.getPositiveInteger(configService, "ARGON2_PARALLELISM", 1);
     this.argon2TimeCost = this.getPositiveInteger(configService, "ARGON2_TIME_COST", 3);
 
+    if (
+      this.isProduction &&
+      (this.accessTokenTtlSeconds > 900 ||
+        this.refreshTokenTtlSeconds > 7 * 24 * 60 * 60 ||
+        this.refreshAbsoluteTtlSeconds > 30 * 24 * 60 * 60)
+    ) {
+      throw new Error(
+        "Production session lifetimes must not exceed 15 minutes / 7 days / 30 days."
+      );
+    }
+
     if (this.refreshAbsoluteTtlSeconds < this.refreshTokenTtlSeconds) {
       throw new Error(
         "REFRESH_TOKEN_ABSOLUTE_TTL_SECONDS must not be shorter than the refresh TTL."

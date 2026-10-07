@@ -1,5 +1,16 @@
 # Dependency triage — 2026-10-07
 
+## FAS 24 remediation — current
+
+Before this phase: 1 HIGH, deepmerge-ts 7.1.5. After: 0 advisories in raw
+production audit and fail-closed gate. Scoped @prisma/config@6.17.1 override
+uses deepmerge-ts 8.0.0. Actual trusted TS config and cyclic-graph regression,
+generator, migrations and build pass; no Prisma/framework major upgrade.
+Exact expiring HIGH exception removed, not extended. [Path/reachability/
+compatibility evidence](fas24-release-gate.md#dependency-remediation).
+The triage table and residual-exception paragraph below are historical FAS 23
+findings; the exception is no longer active and P0-02 is locally COMPLETE.
+
 `pnpm audit --prod --json` before: 15 advisories, 1 low / 4 moderate /
 9 high / 1 critical. All paths below are transitive production-install paths.
 After compatible overrides: **1 high, 0 critical, 0 moderate, 0 low**.

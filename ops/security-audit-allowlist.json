@@ -1,9 +1,1 @@
-[
-  {
-    "id": "GHSA-ggr8-5vv4-36mx",
-    "package": "deepmerge-ts",
-    "version": "7.1.5",
-    "expires": "2026-11-07",
-    "reason": "Prisma 6 CLI config dependency; likely not reachable from HTTP runtime (generated Prisma Client only, trusted static schema/config). Fix requires reviewed Prisma/deepmerge major compatibility work. No attacker-controlled configuration merge permitted. See docs/security-dependencies.md."
-  }
-]
+[]

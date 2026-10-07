@@ -10,6 +10,11 @@ for (const route of ["/", "/login", "/register"]) {
     await expect(page.locator("body")).not.toContainText(/Application error|Internal Server Error/);
     expect(errors).toEqual([]);
     const headers = response!.headers();
+    expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(headers["strict-transport-security"]).toMatch(/max-age=\d+/);
     console.log(
       route,
       Object.fromEntries(

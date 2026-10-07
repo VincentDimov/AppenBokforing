@@ -7,6 +7,7 @@ import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { configureHttpApp } from "../src/http/app-setup";
 import { goldenAccounting as golden } from "../../../tests/fixtures/accounting-golden";
+import { validateIndependent } from "../../../tests/sie-independent.cjs";
 
 jest.setTimeout(60_000);
 type Agent = ReturnType<typeof request.agent>;
@@ -79,7 +80,11 @@ describe("Golden accounting truth (real PostgreSQL / HTTP)", () => {
         ]
       })
       .expect(201);
-    if (post) await owner.post("/journal-entries/" + draft.body.id + "/post").send({ expectedVersion: 1 }).expect(201);
+    if (post)
+      await owner
+        .post("/journal-entries/" + draft.body.id + "/post")
+        .send({ expectedVersion: 1 })
+        .expect(201);
     return draft.body.id as string;
   }
   const interval = (
@@ -123,6 +128,85 @@ describe("Golden accounting truth (real PostgreSQL / HTTP)", () => {
   });
   afterAll(async () => {
     await app?.close();
+  });
+
+  it("independently validates exported Golden bytes then reconciles imported IB and all four reports", async () => {
+    const exported = await owner
+      .get("/exports/sie")
+      .query({ organizationId: fixture.organizationId, fiscalYear: fixture.fiscalYear })
+      .expect(200);
+    const bytes = Buffer.from(exported.body);
+    const independent = validateIndependent(bytes);
+    expect(independent.opening.get("1930")).toBe(1000000n);
+    expect(independent.closing.get("1930")).toBe(1100000n);
+    const target = await provision(owner, false);
+    const input = {
+      organizationId: target.organizationId,
+      fiscalYearId: target.fiscalYear,
+      contentBase64: bytes.toString("base64")
+    };
+    const preview = await owner.post("/imports/sie").send(input).expect(201);
+    await owner
+      .post("/imports/sie")
+      .send({ ...input, confirm: true, previewToken: preview.body.previewToken })
+      .expect(201);
+    const openings = async (f: Fixture) =>
+      (
+        await prisma.openingBalance.findMany({
+          where: { organizationId: f.organizationId },
+          include: { account: true },
+          orderBy: { account: { accountNumber: "asc" } }
+        })
+      ).map((row) => [
+        row.account.accountNumber,
+        row.debitAmount.toFixed(2),
+        row.creditAmount.toFixed(2)
+      ]);
+    expect(await openings(target)).toEqual(await openings(fixture));
+    // Physical IDs and import provenance differ; financial fields must not.
+    const financial = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(financial);
+      if (value && typeof value === "object")
+        return Object.fromEntries(
+          Object.entries(value)
+            .filter(
+              ([key]) =>
+                !/(^id$|Id$|^organization$|^fiscalYear$|^generatedAt$|^reversesEntry|^reversedByEntry)/.test(
+                  key
+                )
+            )
+            .map(([key, item]) => [key, financial(item)])
+        );
+      return value;
+    };
+    for (const endpoint of [
+      "trial-balance",
+      "general-ledger",
+      "income-statement",
+      "balance-sheet"
+    ]) {
+      const query = (f: Fixture) =>
+        endpoint === "balance-sheet"
+          ? {
+              organizationId: f.organizationId,
+              fiscalYear: f.fiscalYear,
+              reportDate: golden.year.endDate
+            }
+          : interval(f);
+      const original = (
+        await owner
+          .get("/reports/" + endpoint)
+          .query(query(fixture))
+          .expect(200)
+      ).body;
+      const imported = (
+        await owner
+          .get("/reports/" + endpoint)
+          .query(query(target))
+          .expect(200)
+      ).body;
+      expect(financial(imported)).toEqual(financial(original));
+    }
   });
 
   it("reconciles all six account rows and every total across GL / trial / BS / income", async () => {
@@ -401,7 +485,10 @@ describe("Golden accounting truth (real PostgreSQL / HTTP)", () => {
         ]
       })
       .expect(201);
-    await owner.post("/journal-entries/" + draft.body.id + "/post").send({ expectedVersion: 1 }).expect(201);
+    await owner
+      .post("/journal-entries/" + draft.body.id + "/post")
+      .send({ expectedVersion: 1 })
+      .expect(201);
     const gl = (
       await owner
         .get("/reports/general-ledger")

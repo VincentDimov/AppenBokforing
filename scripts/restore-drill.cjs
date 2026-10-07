@@ -8,16 +8,19 @@ const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
 const sourceDatabase = process.env.RESTORE_DRILL_SOURCE_DB || "ledgerapp_drill";
+const targetDatabase = process.env.RESTORE_DRILL_TARGET_DB || "ledgerapp_restore";
 if (!/^ledgerapp_drill(?:_[a-z0-9]+)?$/.test(sourceDatabase))
   throw new Error("Invalid disposable source database name.");
+if (!/^ledgerapp_restore(?:_[a-z0-9]+)?$/.test(targetDatabase))
+  throw new Error("Invalid disposable restore target name.");
 const source =
-  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15438/" + sourceDatabase;
+  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/" + sourceDatabase;
 const target =
-  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15439/ledgerapp_restore";
+  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15441/" + targetDatabase;
 if (process.env.RUN_DISPOSABLE_RESTORE_DRILL !== "yes")
   throw new Error("Explicit RUN_DISPOSABLE_RESTORE_DRILL=yes is required.");
-const sourceContainer = "ledgerapp-fas21-23-20261007",
-  targetContainer = "ledgerapp-fas23-restore-20261007";
+const sourceContainer = "ledgerapp-fas24-pg-20261007",
+  targetContainer = "ledgerapp-fas24-restore-20261007";
 const suffix = randomUUID().slice(0, 8),
   bucket = "ledgerapp-drill-source-" + suffix,
   restoredBucket = "ledgerapp-drill-restored-" + suffix;
@@ -40,6 +43,7 @@ const { Test } = apiRequire("@nestjs/testing"),
 const { S3Client, CreateBucketCommand, GetObjectCommand, PutObjectCommand } =
   apiRequire("@aws-sdk/client-s3");
 const { PrismaClient } = require("../packages/db/dist");
+const { getSignedUrl } = apiRequire("@aws-sdk/s3-request-presigner");
 const { AppModule } = require("../apps/api/dist/app.module");
 const { configureHttpApp } = require("../apps/api/dist/http/app-setup");
 const { reconcile } = require("./reconcile-storage.cjs");
@@ -105,7 +109,8 @@ async function main() {
     for (const [number, accountType] of [
       ["1930", "ASSET"],
       ["2080", "EQUITY"],
-      ["3010", "REVENUE"]
+      ["3010", "REVENUE"],
+      ["2611", "LIABILITY"]
     ])
       accountIds.push(
         (
@@ -115,6 +120,23 @@ async function main() {
             .expect(201)
         ).body.id
       );
+    await db.vatCode.create({
+      data: {
+        organizationId: org.id,
+        code: "VAT25",
+        name: "VAT25",
+        rate: "25",
+        type: "OUTPUT",
+        configurationVersion: "SE-DOMESTIC-2026-01",
+        reportingCategory: "DOMESTIC_STANDARD",
+        effectiveFrom: new Date("2026-01-01"),
+        effectiveTo: new Date("2026-12-31")
+      }
+    });
+    await db.project.create({ data: { organizationId: org.id, code: "P1", name: "Projekt" } });
+    await db.costCenter.create({
+      data: { organizationId: org.id, code: "K1", name: "Kostnadsställe" }
+    });
     await db.openingBalance.createMany({
       data: [
         {
@@ -142,8 +164,29 @@ async function main() {
           transactionDate: "2026-01-10",
           description: "Restore accounting",
           lines: [
-            { accountId: accountIds[0], debit: "10.01", credit: "0" },
-            { accountId: accountIds[2], debit: "0", credit: "10.01" }
+            {
+              accountId: accountIds[0],
+              debit: "12.50",
+              credit: "0",
+              projectCode: "P1",
+              costCenterCode: "K1"
+            },
+            {
+              accountId: accountIds[2],
+              debit: "0",
+              credit: "10.00",
+              vatCode: "VAT25",
+              vatRole: "BASE",
+              vatGroup: "sale"
+            },
+            {
+              accountId: accountIds[3],
+              debit: "0",
+              credit: "2.50",
+              vatCode: "VAT25",
+              vatRole: "TAX",
+              vatGroup: "sale"
+            }
           ]
         })
         .expect(201)
@@ -162,6 +205,20 @@ async function main() {
       .post(`/journal-entries/${entry.id}/post`)
       .send({ expectedVersion: entry.version })
       .expect(201);
+    const correction = (
+      await agent
+        .post(`/journal-entries/${entry.id}/reverse`)
+        .send({
+          voucherSeriesId: series.id,
+          transactionDate: "2026-02-01",
+          description: "Restore correction"
+        })
+        .expect(201)
+    ).body;
+    await agent
+      .get("/exports/sie")
+      .query({ organizationId: org.id, fiscalYear: fiscal.id })
+      .expect(200);
     const period = await db.accountingPeriod.findFirstOrThrow({
       where: { organizationId: org.id, fiscalYearId: fiscal.id, periodNumber: 1 }
     });
@@ -173,6 +230,24 @@ async function main() {
     const signed = await fetch(download.downloadUrl);
     assert.equal(signed.status, 200);
     assert.deepEqual(Buffer.from(await signed.arrayBuffer()), png);
+    const originalRecord = await db.attachment.findUniqueOrThrow({ where: { id: attachment.id } });
+    assert.equal(
+      (await fetch(`${process.env.S3_ENDPOINT}/${bucket}/${originalRecord.storageKey}`)).status,
+      403,
+      "Bucket must deny anonymous reads"
+    );
+    const shortUrl = await getSignedUrl(
+      s3,
+      new GetObjectCommand({ Bucket: bucket, Key: originalRecord.storageKey }),
+      { expiresIn: 1 }
+    );
+    assert.equal((await fetch(shortUrl)).status, 200);
+    assert.equal(
+      (await fetch(shortUrl.replace(originalRecord.storageKey, "wrong-key"))).status,
+      403
+    );
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    assert.equal((await fetch(shortUrl)).status, 403, "Expired signature must fail");
     const sourceReport = await reconcile(db, s3, bucket);
     assert.deepEqual(sourceReport, {
       checked: 1,
@@ -201,7 +276,7 @@ async function main() {
         "-U",
         "ledgerapp_test",
         "-d",
-        "ledgerapp_restore",
+        targetDatabase,
         "--no-owner",
         "--no-acl",
         "--exit-on-error"
@@ -236,9 +311,37 @@ async function main() {
       "journalLine",
       "openingBalance",
       "auditEvent",
-      "attachment"
+      "attachment",
+      "sieExport",
+      "sieImport",
+      "vatCode",
+      "project",
+      "costCenter"
     ])
-      assert.equal(await restored[model].count(), await db[model].count(), model + " row count");
+      assert.deepEqual(
+        await restored[model].findMany({ orderBy: { id: "asc" } }),
+        await db[model].findMany({ orderBy: { id: "asc" } }),
+        model + " complete rows"
+      );
+    assert.equal(
+      (await restored.journalEntry.findUniqueOrThrow({ where: { id: correction.id } }))
+        .reversesEntryId,
+      entry.id
+    );
+    const taxLines = await restored.journalLine.findMany({ where: { vatRole: "TAX" } });
+    assert.equal(taxLines.length, 2);
+    assert.ok(
+      taxLines.every((line) => line.vatSnapshot?.configurationVersion === "SE-DOMESTIC-2026-01")
+    );
+    const restoredUrl = await getSignedUrl(
+      s3,
+      new GetObjectCommand({ Bucket: restoredBucket, Key: record.storageKey }),
+      { expiresIn: 60 }
+    );
+    const restoredBytes = Buffer.from(await (await fetch(restoredUrl)).arrayBuffer());
+    assert.deepEqual(restoredBytes, png);
+    assert.equal(BigInt(restoredBytes.length), record.size);
+    assert.equal(createHash("sha256").update(restoredBytes).digest("hex"), record.sha256);
     assert.equal(
       (await restored.accountingPeriod.findUniqueOrThrow({ where: { id: period.id } })).status,
       "LOCKED"
@@ -272,6 +375,32 @@ async function main() {
         }
       })
     );
+    const existingRoles = await restored.$queryRawUnsafe(
+      "SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname IN ('ledgerapp_runtime', 'ledgerapp_migrator')"
+    );
+    assert.ok(
+      existingRoles.length === 0 || existingRoles.length === 2,
+      "Both reviewed role groups must exist or neither"
+    );
+    assert.ok(
+      existingRoles.every(
+        (role) =>
+          !role.rolcanlogin &&
+          !role.rolsuper &&
+          !role.rolcreatedb &&
+          !role.rolcreaterole &&
+          !role.rolbypassrls
+      )
+    );
+    let grantScript = fs.readFileSync(
+      path.resolve(__dirname, "../ops/database-runtime-role.sql"),
+      "utf8"
+    );
+    if (existingRoles.length)
+      grantScript = grantScript.replace(
+        /^CREATE ROLE (ledgerapp_runtime|ledgerapp_migrator) .*;$/gm,
+        ""
+      );
     execFileSync(
       "docker",
       [
@@ -282,15 +411,20 @@ async function main() {
         "-U",
         "ledgerapp_test",
         "-d",
-        "ledgerapp_restore",
+        targetDatabase,
         "-v",
         "ON_ERROR_STOP=1"
       ],
-      { input: fs.readFileSync(path.resolve(__dirname, "../ops/database-runtime-role.sql")) }
+      { input: grantScript }
     );
     for (const sql of [
       "DROP TABLE audit_events",
+      "ALTER TABLE accounts ADD COLUMN unauthorized text",
+      "CREATE TABLE public.unauthorized(id int)",
+      "CREATE SCHEMA unauthorized",
       "ALTER TABLE journal_lines DISABLE TRIGGER ALL",
+      "UPDATE _prisma_migrations SET migration_name='unauthorized'",
+      `DELETE FROM audit_events WHERE id='${audit.id}'`,
       `UPDATE audit_events SET metadata='{}' WHERE id='${audit.id}'`
     ])
       await assert.rejects(
@@ -301,6 +435,27 @@ async function main() {
       );
     const restoredReport = await reconcile(restored, s3, restoredBucket);
     assert.deepEqual(restoredReport, sourceReport);
+    // Separate negative buckets: never delete/change the correct restored evidence.
+    for (const kind of ["missing", "orphan", "checksum", "size"]) {
+      const negativeBucket = `ledgerapp-drill-${kind}-${suffix}`;
+      await s3.send(new CreateBucketCommand({ Bucket: negativeBucket }));
+      if (kind !== "missing") {
+        const body = kind === "size" ? Buffer.concat([blob, Buffer.from([0])]) : Buffer.from(blob);
+        if (kind === "checksum") body[0] ^= 1;
+        await s3.send(
+          new PutObjectCommand({ Bucket: negativeBucket, Key: record.storageKey, Body: body })
+        );
+      }
+      if (kind === "orphan")
+        await s3.send(
+          new PutObjectCommand({ Bucket: negativeBucket, Key: "unreferenced", Body: "fixture" })
+        );
+      const negative = await reconcile(restored, s3, negativeBucket);
+      assert.equal(negative.mode, "REPORT_ONLY");
+      if (kind === "missing") assert.deepEqual(negative.missing, [attachment.id]);
+      else if (kind === "orphan") assert.deepEqual(negative.orphans, ["unreferenced"]);
+      else assert.deepEqual(negative.mismatched, [attachment.id]);
+    }
     process.stdout.write(
       JSON.stringify({
         drill: "PASS",

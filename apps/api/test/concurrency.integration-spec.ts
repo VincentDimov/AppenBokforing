@@ -212,4 +212,107 @@ describe("Version / numbering / calendar races (real concurrent PostgreSQL reque
     const next = await post(await draft("2026-04-12")).expect(201);
     expect(next.body.voucherNumber).toBe(counter);
   });
+  it("two distinct members reversing concurrently create exactly one balanced inverse", async () => {
+    const second = request.agent(app.getHttpServer());
+    await second
+      .post("/auth/register")
+      .send({
+        email: randomUUID() + "@example.test",
+        displayName: "Second accountant",
+        password: "Long-second-accountant-password!"
+      })
+      .expect(201);
+    const userId = (await second.get("/auth/me").expect(200)).body.user.id as string;
+    await prisma.organizationMember.create({
+      data: { organizationId, userId, role: "ACCOUNTANT" }
+    });
+    const entry = await draft("2026-05-01");
+    await post(entry).expect(201);
+    const before = (await prisma.voucherSeries.findUniqueOrThrow({ where: { id: seriesId } }))
+      .nextVoucherNumber;
+    const results = await Promise.all(
+      [owner, second].map((agent) =>
+        agent
+          .post(`/journal-entries/${entry.id}/reverse`)
+          .send({ voucherSeriesId: seriesId, transactionDate: "2026-05-02" })
+      )
+    );
+    expect(results.map((result) => result.status).sort()).toEqual([201, 409]);
+    const corrections = await prisma.journalEntry.findMany({
+      where: { reversesEntryId: entry.id },
+      include: { lines: true }
+    });
+    expect(corrections).toHaveLength(1);
+    expect(
+      corrections[0]!.lines.map((line) => [
+        line.debitAmount.toFixed(2),
+        line.creditAmount.toFixed(2)
+      ])
+    ).toEqual([
+      ["0.00", "10.01"],
+      ["10.01", "0.00"]
+    ]);
+    expect(
+      (await prisma.voucherSeries.findUniqueOrThrow({ where: { id: seriesId } })).nextVoucherNumber
+    ).toBe(before + 1);
+  });
+  it("repeated reversal versus period lock never leaves a partial inverse or counter increment", async () => {
+    for (const month of [6, 7, 8]) {
+      const date = `2026-${String(month).padStart(2, "0")}-10`;
+      const entry = await draft("2026-05-03");
+      await post(entry).expect(201);
+      const period = await prisma.accountingPeriod.findFirstOrThrow({
+        where: { fiscalYearId, periodNumber: month }
+      });
+      const before = (await prisma.voucherSeries.findUniqueOrThrow({ where: { id: seriesId } }))
+        .nextVoucherNumber;
+      const [reversal, lock] = await Promise.all([
+        owner
+          .post(`/journal-entries/${entry.id}/reverse`)
+          .send({ voucherSeriesId: seriesId, transactionDate: date }),
+        owner.post(`/accounting-periods/${period.id}/lock`).send({ organizationId, confirm: true })
+      ]);
+      expect(lock.status).toBe(201);
+      expect([201, 409]).toContain(reversal.status);
+      expect(await prisma.journalEntry.count({ where: { reversesEntryId: entry.id } })).toBe(
+        reversal.status === 201 ? 1 : 0
+      );
+      expect(
+        (await prisma.voucherSeries.findUniqueOrThrow({ where: { id: seriesId } }))
+          .nextVoucherNumber
+      ).toBe(before + (reversal.status === 201 ? 1 : 0));
+    }
+  });
+  it("repeated import versus period lock commits the entire voucher or nothing", async () => {
+    for (const month of [9, 10, 11]) {
+      const number = 600 + month;
+      const compact = `2026${String(month).padStart(2, "0")}10`;
+      const content = `#SIETYP 4\n#RAR 0 20260101 20261231\n#VER "A" ${number} ${compact} "Race"\n{\n#TRANS 1930 {} 0.01\n#TRANS 3010 {} -0.01\n}\n`;
+      const input = { organizationId, fiscalYearId, content };
+      const preview = await owner.post("/imports/sie").send(input).expect(201);
+      const period = await prisma.accountingPeriod.findFirstOrThrow({
+        where: { fiscalYearId, periodNumber: month }
+      });
+      const before = (await prisma.voucherSeries.findUniqueOrThrow({ where: { id: seriesId } }))
+        .nextVoucherNumber;
+      const [imported, lock] = await Promise.all([
+        owner
+          .post("/imports/sie")
+          .send({ ...input, confirm: true, previewToken: preview.body.previewToken }),
+        owner.post(`/accounting-periods/${period.id}/lock`).send({ organizationId, confirm: true })
+      ]);
+      expect(lock.status).toBe(201);
+      expect([201, 409]).toContain(imported.status);
+      const rows = await prisma.journalEntry.findMany({
+        where: { organizationId, voucherSeriesId: seriesId, voucherNumber: number },
+        include: { lines: true }
+      });
+      expect(rows).toHaveLength(imported.status === 201 ? 1 : 0);
+      if (rows.length) expect(rows[0]!.lines).toHaveLength(2);
+      expect(
+        (await prisma.voucherSeries.findUniqueOrThrow({ where: { id: seriesId } }))
+          .nextVoucherNumber
+      ).toBe(imported.status === 201 ? Math.max(before, number + 1) : before);
+    }
+  });
 });

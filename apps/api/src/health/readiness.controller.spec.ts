@@ -5,12 +5,10 @@ import { ReadinessController } from "./readiness.controller";
 const send = jest.fn(),
   destroy = jest.fn();
 jest.mock("@aws-sdk/client-s3", () => ({
-  S3Client: jest
-    .fn()
-    .mockImplementation(() => ({
-      send: (...args: unknown[]) => send(...args),
-      destroy: () => destroy()
-    })),
+  S3Client: jest.fn().mockImplementation(() => ({
+    send: (...args: unknown[]) => send(...args),
+    destroy: () => destroy()
+  })),
   HeadBucketCommand: jest.fn()
 }));
 describe("bounded public readiness", () => {
@@ -48,4 +46,22 @@ describe("bounded public readiness", () => {
       }
     }
   );
+  it("bounds a hanging dependency and returns only a redacted unavailable response", async () => {
+    jest.useFakeTimers();
+    try {
+      const db = { prisma: { $queryRaw: jest.fn(() => new Promise(() => {})) } };
+      const result = new ReadinessController(db as unknown as DatabaseService, new ConfigService())
+        .ready()
+        .catch((error: ServiceUnavailableException) => error);
+      await jest.advanceTimersByTimeAsync(2501);
+      const failure = await result;
+      expect(failure).toBeInstanceOf(ServiceUnavailableException);
+      expect((failure as ServiceUnavailableException).getResponse()).toEqual({
+        status: "unavailable"
+      });
+      expect(destroy).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

@@ -1,0 +1,28 @@
+#FLAGGA 0
+#PROGRAM "Independent manual fixture" "1"
+#FORMAT PC8
+#SIETYP 4
+#GEN 20260131 "Fixture"
+#FNAMN "\x8f\x8e\x99 \x86\x84\x94 AB"
+#RAR 0 20260101 20261231
+#KONTO 1930 "Bank"
+#KTYP 1930 T
+#KONTO 2080 "Eget kapital"
+#KTYP 2080 S
+#KONTO 3010 "F\x94rs\x84ljning"
+#KTYP 3010 I
+#IB 0 1930 1000.00
+#IB 0 2080 -1000.00
+#UB 0 1930 1010.01
+#UB 0 2080 -1000.00
+#RES 0 3010 -10.01
+#DIM 1 "Kostnadsst\x84lle"
+#DIM 6 "Projekt"
+#OBJEKT 1 "K1" "\x99rebro"
+#OBJEKT 6 "P1" "\x8fret"
+#VER "A" 1 20260110 "Oberoende"
+{
+#TRANS 1930 {1 "K1" 6 "P1"} 10.02 20260111 "Debet"
+#TRANS 1930 {} -0.01 20260112 "Kredit"
+#TRANS 3010 {6 "P1"} -10.01 20260110 "Int\x84kt"
+}

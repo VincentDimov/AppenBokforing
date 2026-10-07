@@ -1,5 +1,17 @@
 # Concurrency contract and threat model (FAS 22)
 
+## FAS 24 evidence update
+
+12 real PG concurrency cases now pass (subset of 94 PG integration tests),
+including two distinct members reversing, three iterations of reverse/period
+lock and three import/period-lock iterations with counter/no-partial-row checks.
+Standalone real S3/PG drill adds upload/post, upload/lock and upload/calendar-move:
+real PUT completes, state changes, upload rejects with 409 and new object cleanup
+plus zero attachment/audit rows are verified. No in-memory storage race mock.
+Fiscal-close combinations, concurrent separate-tenant counters and deliberately
+induced transient retry failures remain untested, so P0-11 stays PARTIAL.
+Earlier FAS 22 counts below are historical. [Full evidence](fas24-release-gate.md).
+
 Implementation plan recorded before the concurrency changes. Accounting values
 must never be merged or overwritten on behalf of a stale editor.
 

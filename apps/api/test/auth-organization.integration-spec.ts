@@ -7,6 +7,7 @@ import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import type { Response } from "supertest";
+import { AuthService } from "../src/auth/auth.service";
 
 interface TestUser {
   id: string;
@@ -151,6 +152,68 @@ describe("authentication and organization authorization", () => {
     });
 
     await ownerAgent.get("/auth/me").expect(200);
+  });
+
+  // Service calls retain real Argon2/JWT/PostgreSQL and avoid sharing route
+  // throttling quotas with the unrelated authorization fixtures above.
+  it("wrong refresh secret cannot revoke active or rotated session families", async () => {
+    const auth = app.get(AuthService);
+    const session = await auth.login({ email: `owner-${runId}@example.test`, password }, {});
+    const fake = session.tokens.refreshToken.split(".")[0] + "." + "x".repeat(64);
+    await expect(auth.refresh(fake, {})).rejects.toMatchObject({ status: 401 });
+    await expect(auth.authenticateAccessToken(session.tokens.accessToken)).resolves.toMatchObject({
+      id: owner.id
+    });
+    const next = await auth.refresh(session.tokens.refreshToken, {});
+    await expect(auth.refresh(fake, {})).rejects.toMatchObject({ status: 401 });
+    await expect(auth.authenticateAccessToken(next.tokens.accessToken)).resolves.toMatchObject({
+      id: owner.id
+    });
+  });
+  it("proven old-token reuse revokes the rotated family, not another login", async () => {
+    const auth = app.get(AuthService);
+    const old = await auth.login({ email: `owner-${runId}@example.test`, password }, {});
+    const independent = await auth.login({ email: `owner-${runId}@example.test`, password }, {});
+    const next = await auth.refresh(old.tokens.refreshToken, {});
+    await expect(auth.refresh(old.tokens.refreshToken, {})).rejects.toMatchObject({ status: 401 });
+    await expect(auth.authenticateAccessToken(next.tokens.accessToken)).rejects.toMatchObject({
+      status: 401
+    });
+    await expect(
+      auth.authenticateAccessToken(independent.tokens.accessToken)
+    ).resolves.toMatchObject({ id: owner.id });
+  });
+  it("simultaneous refresh has one winner and leaves no usable family after proven reuse", async () => {
+    const auth = app.get(AuthService);
+    const old = await auth.login({ email: `owner-${runId}@example.test`, password }, {});
+    const results = await Promise.allSettled([
+      auth.refresh(old.tokens.refreshToken, {}),
+      auth.refresh(old.tokens.refreshToken, {})
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    const family = await prisma.session.findUniqueOrThrow({
+      where: { id: old.tokens.refreshToken.split(".")[0] }
+    });
+    expect(
+      await prisma.session.count({ where: { familyId: family.familyId, revokedAt: null } })
+    ).toBe(0);
+  });
+  it("logout after repeated rotation invalidates access immediately and is idempotent", async () => {
+    const auth = app.get(AuthService);
+    const old = await auth.login({ email: `owner-${runId}@example.test`, password }, {});
+    const next = await auth.refresh(
+      (await auth.refresh(old.tokens.refreshToken, {})).tokens.refreshToken,
+      {}
+    );
+    await auth.logout(next.tokens.refreshToken, next.tokens.accessToken);
+    await expect(auth.authenticateAccessToken(next.tokens.accessToken)).rejects.toMatchObject({
+      status: 401
+    });
+    await expect(auth.refresh(next.tokens.refreshToken, {})).rejects.toMatchObject({ status: 401 });
+    await expect(
+      auth.logout(next.tokens.refreshToken, next.tokens.accessToken)
+    ).resolves.toBeUndefined();
   });
 });
 

@@ -1,5 +1,15 @@
 # LedgerApp — roadmap från nuvarande implementation
 
+## FAS 24 — release decision and next step
+
+**GO FOR P1 WITH EXPLICIT P0 BLOCKERS.** No P1 implementation in this phase.
+Review and obtain a complete remote CI run for the local FAS 24 patch first.
+Continue closure of historical account metadata, fiscal-close/cross-tenant/retry
+races, deployed security/secret rotation and cloud least-privilege/backup gates.
+Independent SIE subset and real disposable DB/blob recovery now have evidence;
+raw production audit is zero. [Exact dispositions](fas24-release-gate.md).
+Older phase notes/statuses below are historical, not the current release gate.
+
 ## Aktuell status efter FAS 21–23 — 2026-10-07
 
 Sammanhängande genomförande utan faspauser: begränsad förlustmedveten SIE,

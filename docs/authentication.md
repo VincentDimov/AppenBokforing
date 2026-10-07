@@ -1,5 +1,16 @@
 # Authentication and organization authorization
 
+## FAS 24 security update
+
+Production caps: access 900s, refresh 7 days, absolute refresh 30 days.
+Both __Host cookies are HttpOnly/Secure/Lax/path=/ without Domain.
+Refresh secret verified before any family revocation: wrong secret cannot revoke
+an active or rotated session. Correct old-token replay revokes only that family;
+separate login remains valid. Concurrent refresh and logout after rotation have
+real PostgreSQL tests. All API responses now Cache-Control: no-store.
+Issued signed attachment URLs remain capabilities until expiry, even on logout;
+new signing is denied to foreign/logged-out callers. [Current release boundary](fas24-release-gate.md).
+
 ## Session model
 
 LedgerApp uses an access token plus an opaque, persisted refresh session.
