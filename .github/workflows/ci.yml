@@ -149,7 +149,7 @@ jobs:
             done
             test "$ready" = true
           done
-          docker exec ledgerapp-fas24-pg-20261007 createdb -U ledgerapp_test ledgerapp_upgrade_24
+          docker exec ledgerapp-fas24-pg-20261007 createdb -U ledgerapp_test ledgerapp_upgrade_2529
       - name: Apply full migrations to empty source
         env:
           DATABASE_URL: postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/ledgerapp_drill
@@ -161,7 +161,9 @@ jobs:
       - name: Actual runtime LOGIN and restored protections
         env:
           RUN_DISPOSABLE_RESTORE_DRILL: "yes"
-        run: node scripts/verify-runtime-login.cjs
+        run: |
+          node scripts/verify-runtime-login.cjs
+          node scripts/verify-restored-guards.cjs
       - name: Real S3 upload versus posting, locking and calendar move
         env:
           RUN_DISPOSABLE_RESTORE_DRILL: "yes"

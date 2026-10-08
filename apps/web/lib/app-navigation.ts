@@ -143,6 +143,12 @@ export const navigationGroups: NavigationGroup[] = [
         label: "Räkenskapsår"
       },
       {
+        description: "Hantera ingående balans och explicit årsöverföring.",
+        href: "/app/settings/opening-balances",
+        icon: "landmark",
+        label: "Ingående balans"
+      },
+      {
         description: "Hantera serie och numrering för verifikationer.",
         href: "/app/settings/voucher-series",
         icon: "settings-2",

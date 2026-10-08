@@ -1,12 +1,28 @@
 # LedgerApp — GAP-analys
 
-## FAS 24 — updated gap disposition
+## FAS 25–29 — current gap update
+
+See [current evidence and remaining P0/P1 gaps](fas25-29-release-gate.md).
+
+Product flows now use real APIs: company/year/starter setup, member management,
+series, whole balanced IB, reviewed carry and dimensions. Identity/classification
+and posted dimension snapshots narrow P0-07 but account/company presentation
+names and historical exports remain unversioned. No general P0-07 closure.
+Production invitation mail/verified-email/outbox, friendly shared report-year
+selectors, dimensional IB, complete annual closing and cloud policies remain
+explicit P1/production gaps. No fake emailed success, BAS licence or compliance.
+Expanded PG/Chromium/restore/runtime evidence is recorded in the current release
+report; local evidence is not a new remote release approval.
+
+## FAS 24 — corrected remote disposition
 
 See [every P0 item, evidence and remaining risk](fas24-release-gate.md).
 P0-02 remediated locally; independent SIE subset and complete disposable DB/blob
 restore demonstrated. P0-03/07/10/11/12/13 retain explicit boundaries/blockers.
-Actual HEAD verify succeeds; browser CI cancellation is apt mirror/network
-stall, not the old TS error. Narrow fix/new recovery gate require remote proof.
+Commit `96f131e` has verify, browser-e2e and recovery-runtime-gate SUCCESS in
+[run 37679581119](https://github.com/VincentDimov/AppenBokforing/actions/runs/37679581119).
+Its Vercel production deployment is READY. The old browser cancellation and
+uncommitted FAS 24 status are superseded; new local FAS 25–29 still need remote CI.
 Decision: GO FOR P1 WITH EXPLICIT P0 BLOCKERS, not accounting release approval.
 Earlier findings below are historical; do not treat superseded HIGH/storage
 failure/remote-uninspected statements as current.

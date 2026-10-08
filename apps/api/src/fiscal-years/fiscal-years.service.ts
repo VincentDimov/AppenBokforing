@@ -26,8 +26,8 @@ export function monthlyPeriods(startDate: string, endDate: string) {
   const periods: { periodNumber: number; startDate: Date; endDate: Date }[] = [];
   let cursor = start;
   while (cursor <= end) {
-    if (periods.length >= 24)
-      throw new BadRequestException("Application limit: 24 monthly periods per fiscal year.");
+    if (periods.length >= 13)
+      throw new BadRequestException("Application limit: 13 monthly periods per fiscal year.");
     const next = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
     periods.push({
       periodNumber: periods.length + 1,

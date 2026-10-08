@@ -1,9 +1,21 @@
 # LedgerApp — roadmap från nuvarande implementation
 
-## FAS 24 — release decision and next step
+## After FAS 25–29
+
+See [completion and recommended next work](fas25-29-release-gate.md).
+
+The P1 workspace flows are implemented locally; see the focused contracts in
+CURRENT_STATE. Obtain review and full remote CI for this new working tree.
+Next proposed phase (not started): close general historical metadata P0-07 and
+remaining concurrency/operator/cloud release gates. Production mail needs a
+reviewed delivery adapter/outbox and verified identity policy, not a fake UI.
+
+## FAS 24 — corrected baseline decision
 
 **GO FOR P1 WITH EXPLICIT P0 BLOCKERS.** No P1 implementation in this phase.
-Review and obtain a complete remote CI run for the local FAS 24 patch first.
+The FAS 24 patch is committed as `96f131e`; all three release jobs succeeded in
+[run 37679581119](https://github.com/VincentDimov/AppenBokforing/actions/runs/37679581119)
+and Vercel is READY. This does not certify production accounting.
 Continue closure of historical account metadata, fiscal-close/cross-tenant/retry
 races, deployed security/secret rotation and cloud least-privilege/backup gates.
 Independent SIE subset and real disposable DB/blob recovery now have evidence;

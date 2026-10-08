@@ -17,6 +17,10 @@ export interface AuthenticatedUser {
 }
 
 export interface OrganizationSummary {
+  organizationNumber?: string | null;
+  countryCode?: string;
+  address?: string | null;
+  defaultVoucherSeriesCode?: string;
   defaultCurrency: string;
   id: string;
   name: string;
@@ -27,6 +31,7 @@ export interface OrganizationSummary {
 type AuthenticationStatus = "anonymous" | "authenticated" | "error" | "loading";
 
 interface AuthContextValue {
+  reloadOrganizations: () => Promise<void>;
   activeOrganization: OrganizationSummary | null;
   activeOrganizationId: string;
   organizations: OrganizationSummary[];
@@ -217,6 +222,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       organizations,
       organizationsStatus,
       refresh,
+      reloadOrganizations: loadOrganizations,
       setActiveOrganizationId,
       signOut,
       status,
@@ -227,6 +233,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       organizations,
       organizationsStatus,
       refresh,
+      loadOrganizations,
       setActiveOrganizationId,
       signOut,
       status,

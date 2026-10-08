@@ -148,44 +148,63 @@ export class AuthService {
       familyId: session.familyId
     });
     const rotatedAt = new Date();
-    const rotated = await this.database.prisma.$transaction(async (transaction) => {
-      // The old session's replacedById has a real foreign key. Insert the child
-      // first, then atomically claim and revoke the presented session below.
-      await transaction.session.create({
-        data: sessionBundle.session
-      });
-
-      const replaced = await transaction.session.updateMany({
-        where: {
-          id: session.id,
-          refreshTokenHash: session.refreshTokenHash,
-          revokedAt: null
-        },
-        data: {
-          lastSeenAt: rotatedAt,
-          replacedById: sessionBundle.session.id,
-          revocationReason: SessionRevocationReason.ROTATED,
-          revokedAt: rotatedAt
+    const rotated = await this.database.prisma.$transaction(
+      async (transaction) => {
+        // Serialize every rotation/revocation of a credential family before any
+        // child INSERT. Re-read after waiting: a pre-lock snapshot is not proof
+        // that the presented parent remains active.
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${session.familyId}, 0))`;
+        const current = await transaction.session.findUnique({ where: { id: session.id } });
+        if (!current || current.revokedAt) {
+          if (current?.revocationReason === SessionRevocationReason.ROTATED)
+            await transaction.session.updateMany({
+              where: { familyId: session.familyId, revokedAt: null },
+              data: {
+                revocationReason: SessionRevocationReason.REUSE_DETECTED,
+                revokedAt: rotatedAt
+              }
+            });
+          return false;
         }
-      });
+        // The old session's replacedById has a real foreign key. Insert the child
+        // first, then atomically claim and revoke the presented session below.
+        await transaction.session.create({
+          data: sessionBundle.session
+        });
 
-      if (replaced.count !== 1) {
-        await transaction.session.updateMany({
+        const replaced = await transaction.session.updateMany({
           where: {
-            familyId: session.familyId,
+            id: session.id,
+            refreshTokenHash: session.refreshTokenHash,
             revokedAt: null
           },
           data: {
-            revocationReason: SessionRevocationReason.REUSE_DETECTED,
+            lastSeenAt: rotatedAt,
+            replacedById: sessionBundle.session.id,
+            revocationReason: SessionRevocationReason.ROTATED,
             revokedAt: rotatedAt
           }
         });
 
-        return false;
-      }
+        if (replaced.count !== 1) {
+          await transaction.session.updateMany({
+            where: {
+              familyId: session.familyId,
+              revokedAt: null
+            },
+            data: {
+              revocationReason: SessionRevocationReason.REUSE_DETECTED,
+              revokedAt: rotatedAt
+            }
+          });
 
-      return true;
-    });
+          return false;
+        }
+
+        return true;
+      },
+      { maxWait: 10_000, timeout: 10_000 }
+    );
 
     if (!rotated) {
       throw this.invalidRefreshToken();
@@ -357,15 +376,18 @@ export class AuthService {
     familyId: string,
     reason: SessionRevocationReason
   ): Promise<void> {
-    await this.database.prisma.session.updateMany({
-      where: {
-        familyId,
-        revokedAt: null
-      },
-      data: {
-        revocationReason: reason,
-        revokedAt: new Date()
-      }
+    await this.database.prisma.$transaction(async (transaction) => {
+      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${familyId}, 0))`;
+      await transaction.session.updateMany({
+        where: {
+          familyId,
+          revokedAt: null
+        },
+        data: {
+          revocationReason: reason,
+          revokedAt: new Date()
+        }
+      });
     });
   }
 

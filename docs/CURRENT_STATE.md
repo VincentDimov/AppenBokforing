@@ -1,13 +1,34 @@
 # LedgerApp — faktiskt nuläge
 
-## FAS 24 — authoritative current update, 2026-10-07
+## FAS 25–29 — current local development, 2026-10-07
+
+The [current release report](fas25-29-release-gate.md) records phase contracts,
+exact verification counts and explicit remaining production/release gaps.
+
+Existing architecture extended with real onboarding and organization settings,
+email-bound hashed invitations/soft membership removal/last-owner constraints,
+managed series, atomic fingerprinted IB and explicit equity carry-forward,
+project/cost-centre registers and database-frozen journal dimension labels.
+Five forward migrations bring the total to 19; no historical migration edits.
+Contracts: [onboarding](onboarding.md), [members](members-and-permissions.md),
+[series](voucher-series.md), [IB and carry](opening-balances-and-carry-forward.md),
+[dimensions](dimensions.md). Production email is intentionally unavailable until
+a real provider is configured. General historical presentation metadata P0-07,
+operator controls, full SIE interoperability and real-cloud recovery remain open.
+New work is local/uncommitted/unpushed; no production mutation or FAS 30.
+
+## FAS 24 — verified remote baseline, 2026-10-07
 
 [Final release gate](fas24-release-gate.md) supersedes earlier phase statuses/counts.
-HEAD 4188ca6b; actual GitHub verify SUCCESS / browser CANCELLED, Vercel READY.
+HEAD/master `96f131e8def14831b2f4000666d35584087fe242`;
+[GitHub run 37679581119](https://github.com/VincentDimov/AppenBokforing/actions/runs/37679581119)
+verify SUCCESS, browser-e2e SUCCESS and recovery-runtime-gate SUCCESS. Vercel
+production READY for the same commit, deployment `dpl_4uDN9stKMr9r7b9yyrpVZyHyvBNs`.
 Local 166 ordinary tests, 94 PG integrations and 13 Chromium tests pass;
 raw audit zero; independent SIE and full DB/blob restore pass. All P0 dispositions
 and remaining gaps are explicit. No production auth/accounting mutation,
-commit/push/deploy or P1 implementation performed.
+production mutation was performed by this verification. FAS 25–29 local changes
+are distinct from this committed/deployed FAS 24 baseline.
 Earlier sections below are dated historical snapshots, not new FAS 24 claims.
 
 ## FAS 23.1 — CI-paketeringshotfix, 2026-10-07

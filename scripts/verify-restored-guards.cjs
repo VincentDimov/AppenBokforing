@@ -5,7 +5,13 @@ if (process.env.RUN_DISPOSABLE_RESTORE_DRILL !== "yes")
   throw new Error("Disposable restore opt-in required.");
 const db = new PrismaClient({
   datasourceUrl:
-    "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15439/ledgerapp_restore"
+    "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15441/" +
+    (() => {
+      const name = process.env.RESTORE_DRILL_TARGET_DB || "ledgerapp_restore";
+      if (!/^ledgerapp_restore(?:_[a-z0-9]+)?$/.test(name))
+        throw new Error("Disposable restore target required");
+      return name;
+    })()
 });
 async function main() {
   const locked = await db.accountingPeriod.findFirstOrThrow({

@@ -1,14 +1,28 @@
 # LedgerApp
 
-## FAS 24 release gate — current
+## FAS 25–29 — current development
+
+See the [complete local release report, exact counts and remaining blockers](docs/fas25-29-release-gate.md).
+
+Real onboarding/settings, invitations/permissions, voucher-series management,
+atomic IB/explicit year carry-forward and project/cost-centre registers extend
+the existing Nest/Next architecture. See [onboarding](docs/onboarding.md),
+[members](docs/members-and-permissions.md), [series](docs/voucher-series.md),
+[IB/carry](docs/opening-balances-and-carry-forward.md) and [dimensions](docs/dimensions.md).
+These changes are local, uncommitted and not deployed; no FAS 30 work is started.
+Production email delivery is fail-closed until a real reviewed adapter is configured.
+
+## FAS 24 — verified remote baseline
 
 Decision: **GO FOR P1 WITH EXPLICIT P0 BLOCKERS**, not production/legal approval.
 Raw production audit now zero; independent SIE/Golden report equivalence,
-real private S3 restore and runtime LOGIN checks pass locally. Remote verify
-passed, but browser job cancelled during apt; no claim of green CI.
+real private S3 restore and runtime LOGIN checks pass locally. Commit
+`96f131e8def14831b2f4000666d35584087fe242` has all three remote jobs SUCCESS
+([run 37679581119](https://github.com/VincentDimov/AppenBokforing/actions/runs/37679581119));
+Vercel production is READY for the same commit. This is FAS 24 evidence, not CI
+or deployment evidence for the new FAS 25–29 working tree.
 See [complete evidence, counts and every P0 disposition](docs/fas24-release-gate.md)
 and [current production checklist](docs/production-readiness.md).
-Changes remain local/uncommitted/unpushed; no P1 feature added.
 Earlier phase descriptions below are historical snapshots.
 
 FAS 23.1 CI-hotfix: Node-side E2E använder nu deklarerade workspace-

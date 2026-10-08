@@ -7,21 +7,16 @@ performed. New changes must receive a complete remote CI run before merging.
 
 ## Remote evidence, not inferred from local tests
 
-HEAD/master: `4188ca6b6c506f6206abb73e075e0e9155713ba2`.
-[GitHub run 37665799633](https://github.com/VincentDimov/AppenBokforing/actions/runs/37665799633):
-verify SUCCESS; browser-e2e CANCELLED. Job 112944566150 exhausted its 20-minute
-budget in `playwright install --with-deps chromium`: Ubuntu/Azure apt mirrors
-stalled. Browser safety/test steps were skipped, not passed. The earlier type
-error is fixed: this HEAD's verify typecheck succeeded remotely.
+Remote baseline/master: `96f131e8def14831b2f4000666d35584087fe242`.
+[GitHub run 37679581119](https://github.com/VincentDimov/AppenBokforing/actions/runs/37679581119):
+verify SUCCESS (job 112991816280), browser-e2e SUCCESS (112991816505), and
+recovery-runtime-gate SUCCESS (112991815942), verified read-only on 2026-10-07.
+The old apt cancellation and local-only FAS 24 state are superseded. Browser
+installation remains bounded without test exclusions; recovery includes fresh
+migration, complete DB/blob restore, actual runtime LOGIN and real storage races.
 
-Local correction pins browser runner Ubuntu 24.04, uses canonical HTTPS Ubuntu
-archives, bounds apt requests and separates OS dependency/browser installation.
-No continue-on-error, exclusions or bypass. Added hard-failing recovery job
-executes fresh migration, DB/blob restore, runtime LOGIN, real storage races
-and older-schema upgrade. **Neither new workflow path has run remotely yet.**
-
-Vercel deployment `dpl_3qZswQ2MQhx5gRCSUXdfmgSR6VXX` is READY, target production,
-same master SHA. Alias: https://bokforingsappen.vercel.app . Four read-only
+Vercel deployment `dpl_4uDN9stKMr9r7b9yyrpVZyHyvBNs` is READY, target production,
+same master SHA. Alias: https://bokforingsappen.vercel.app . Historical four read-only
 browser smoke checks passed: /, /login, /register and /api/health. Authenticated
 smoke was intentionally skipped: no explicitly approved isolated account.
 Public CSP/nosniff/frame/referrer/HSTS asserted; health proxy no-store observed.
@@ -30,21 +25,21 @@ latency remains an operational concern, not an application readiness guarantee.
 
 ## Every P0 item
 
-| Item  | Status                                    | Evidence                                                                                                  | Remaining risk / release blocker                                                                                                                                        |
-| ----- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P0-01 | COMPLETE within implemented boundary      | Actual PC8 transport, injection/disposition/nosniff tests retained                                        | Not general document malware safety or SIE certification                                                                                                                |
-| P0-02 | COMPLETE locally                          | Raw audit zero; scoped config override; real CLI loader/cycle tests, migrations/build                     | New lockfile/security gate still needs remote execution                                                                                                                 |
-| P0-03 | PARTIAL                                   | Bounded production cookies; secret before revocation; 9 auth PG cases; Origin/headers/readiness/redaction | Rotate exposed values; deployed auth/log review; shared limiter/proxy policy; upload safety                                                                             |
-| P0-04 | COMPLETE within reviewed workflow         | Visible-value save/post, version conflicts, 13 browser tests                                              | No guarantee for unimplemented workflows                                                                                                                                |
-| P0-05 | COMPLETE within reviewed views            | Browser org switches/pending response reset, tenant API tests                                             | New P1 views must maintain same tenant contract                                                                                                                         |
-| P0-06 | COMPLETE within Golden contract           | IB/trial/GL/income/BS literal fixtures and clean-org SIE equivalence                                      | Dimension-unallocated IB intentionally fails closed; qualified review remains                                                                                           |
-| P0-07 | PARTIAL                                   | VAT snapshots frozen; account metadata audit retained                                                     | General account number/type/normal-balance/name history not frozen/versioned; historical reports can change with account edits. Must fix before real accounting release |
-| P0-08 | COMPLETE within explicit BASE/TAX model   | Manual VAT fixtures, snapshots and browser flow                                                           | Supported Swedish mapping only; external VAT review, not declaration compliance                                                                                         |
-| P0-09 | COMPLETE within documented limited subset | Preview fingerprint/explicit confirm; IB/objects/date/counter conflicts and atomic PG tests               | Unsupported variants rejected/warned; external import review needed                                                                                                     |
-| P0-10 | PARTIAL; independent subset gate PASS     | 4 independent byte tests + Golden export/import/report PG case                                            | Separate reader is deliberately limited, no official validator/certification or external product interoperability proof                                                 |
-| P0-11 | PARTIAL                                   | 12 concurrent PG cases and 3 real-S3 upload races                                                         | Fiscal close combinations, simultaneous cross-org numbering and forced transient retry fixtures still missing                                                           |
-| P0-12 | PARTIAL / remote BLOCKED                  | Existing remote verify SUCCESS; local lint/typecheck/tests/build/E2E                                      | Remote browser cancelled; new recovery job and hotfix require clean GitHub run                                                                                          |
-| P0-13 | PARTIAL; local recovery PASS              | Full fresh DB/blob, complete rows, signed restored bytes, 4 negative buckets, actual runtime LOGIN        | Real cloud grants/encryption/backup/retention/alerts/RPO-RTO not established; complete restricted-role SIE/upload and new-target balance-bypass proof remain            |
+| Item  | Status                                      | Evidence                                                                                                  | Remaining risk / release blocker                                                                                                                                        |
+| ----- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0-01 | COMPLETE within implemented boundary        | Actual PC8 transport, injection/disposition/nosniff tests retained                                        | Not general document malware safety or SIE certification                                                                                                                |
+| P0-02 | COMPLETE for reviewed FAS 24 dependency set | Raw audit zero; scoped config override; CLI regression tests and remote verify SUCCESS                    | New dependency changes require their own audit/remote gates                                                                                                             |
+| P0-03 | PARTIAL                                     | Bounded production cookies; secret before revocation; 9 auth PG cases; Origin/headers/readiness/redaction | Rotate exposed values; deployed auth/log review; shared limiter/proxy policy; upload safety                                                                             |
+| P0-04 | COMPLETE within reviewed workflow           | Visible-value save/post, version conflicts, 13 browser tests                                              | No guarantee for unimplemented workflows                                                                                                                                |
+| P0-05 | COMPLETE within reviewed views              | Browser org switches/pending response reset, tenant API tests                                             | New P1 views must maintain same tenant contract                                                                                                                         |
+| P0-06 | COMPLETE within Golden contract             | IB/trial/GL/income/BS literal fixtures and clean-org SIE equivalence                                      | Dimension-unallocated IB intentionally fails closed; qualified review remains                                                                                           |
+| P0-07 | PARTIAL                                     | VAT snapshots frozen; account metadata audit retained                                                     | General account number/type/normal-balance/name history not frozen/versioned; historical reports can change with account edits. Must fix before real accounting release |
+| P0-08 | COMPLETE within explicit BASE/TAX model     | Manual VAT fixtures, snapshots and browser flow                                                           | Supported Swedish mapping only; external VAT review, not declaration compliance                                                                                         |
+| P0-09 | COMPLETE within documented limited subset   | Preview fingerprint/explicit confirm; IB/objects/date/counter conflicts and atomic PG tests               | Unsupported variants rejected/warned; external import review needed                                                                                                     |
+| P0-10 | PARTIAL; independent subset gate PASS       | 4 independent byte tests + Golden export/import/report PG case                                            | Separate reader is deliberately limited, no official validator/certification or external product interoperability proof                                                 |
+| P0-11 | PARTIAL                                     | 12 concurrent PG cases and 3 real-S3 upload races                                                         | Fiscal close combinations, simultaneous cross-org numbering and forced transient retry fixtures still missing                                                           |
+| P0-12 | COMPLETE for committed FAS 24 baseline      | All three remote release jobs SUCCESS for 96f131e, Vercel READY                                           | New local FAS 25–29 changes need their own reviewed remote run                                                                                                          |
+| P0-13 | PARTIAL; local recovery PASS                | Full fresh DB/blob, complete rows, signed restored bytes, 4 negative buckets, actual runtime LOGIN        | Real cloud grants/encryption/backup/retention/alerts/RPO-RTO not established; complete restricted-role SIE/upload and new-target balance-bypass proof remain            |
 
 ## Dependency remediation
 
@@ -153,14 +148,14 @@ full historical accounting corpus. No db push or historical migration edits.
 ## External release requirements and next step
 
 Close P0-07 historical account metadata, remaining P0-11 races/retries,
-P0-12 complete remote jobs, P0-03 operator controls, and P0-13 actual cloud
+new-change remote jobs, P0-03 operator controls, and P0-13 actual cloud
 recovery/least privilege/backup controls before real accounting release.
 Obtain qualified review of Swedish VAT mappings, corrections, calendar closing,
 accounting retention/legal holds, GDPR interaction and supported SIE semantics.
 No Bokföringslagen/VAT/SIE/production compliance or certification is claimed.
 
-Recommended next step: review/commit/push these scoped FAS 24 changes and obtain
-complete GitHub evidence, then schedule the explicit residual P0 closure work
+FAS 24 remote evidence is now complete. Review/commit/push the separately scoped
+FAS 25–29 changes and obtain their own complete CI, then schedule residual P0 closure
 alongside isolated P1 planning. This phase stops here, without P1 implementation.
 
 The three newly created FAS 24 disposable containers were stopped after testing,

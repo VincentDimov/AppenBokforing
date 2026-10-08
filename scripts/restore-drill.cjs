@@ -91,6 +91,38 @@ async function main() {
         .send({ name: "Restore fixture", slug: "restore-" + suffix })
         .expect(201)
     ).body;
+    await agent
+      .patch(`/organizations/${org.id}`)
+      .send({
+        organizationNumber: "556123-4567",
+        address: "Testgatan 1, Sverige",
+        countryCode: "SE"
+      })
+      .expect(200);
+    await agent
+      .post(`/organizations/${org.id}/invitations`)
+      .send({ email: "pending-" + suffix + "@example.test", role: "ACCOUNTANT" })
+      .expect(201);
+    const acceptedEmail = "accepted-" + suffix + "@example.test";
+    const invited = (
+      await agent
+        .post(`/organizations/${org.id}/invitations`)
+        .send({ email: acceptedEmail, role: "READ_ONLY" })
+        .expect(201)
+    ).body;
+    const invitedAgent = request.agent(app.getHttpServer());
+    await invitedAgent
+      .post("/auth/register")
+      .send({
+        email: acceptedEmail,
+        displayName: "Accepted restore member",
+        password: "Disposable-restore-fixture-password!"
+      })
+      .expect(201);
+    await invitedAgent
+      .post("/invitations/accept")
+      .send({ token: new URL(invited.developmentInvitationUrl).hash.slice(1) })
+      .expect(201);
     const fiscal = (
       await agent
         .post("/fiscal-years")
@@ -103,7 +135,13 @@ async function main() {
         .expect(201)
     ).body;
     const series = await db.voucherSeries.create({
-      data: { organizationId: org.id, fiscalYearId: fiscal.id, code: "A", name: "Restore" }
+      data: {
+        organizationId: org.id,
+        fiscalYearId: fiscal.id,
+        code: "A",
+        name: "Restore",
+        description: "Managed series restore fixture"
+      }
     });
     const accountIds = [];
     for (const [number, accountType] of [
@@ -226,6 +264,42 @@ async function main() {
       .post(`/accounting-periods/${period.id}/lock`)
       .send({ organizationId: org.id, confirm: true })
       .expect(201);
+    for (const item of await db.accountingPeriod.findMany({
+      where: { fiscalYearId: fiscal.id, status: "OPEN" }
+    }))
+      await agent
+        .post(`/accounting-periods/${item.id}/lock`)
+        .send({ organizationId: org.id, confirm: true })
+        .expect(201);
+    await agent
+      .post(`/fiscal-years/${fiscal.id}/close`)
+      .send({ organizationId: org.id, confirm: true })
+      .expect(201);
+    const nextYear = (
+      await agent
+        .post("/fiscal-years")
+        .send({
+          organizationId: org.id,
+          name: "2027",
+          startDate: "2027-01-01",
+          endDate: "2027-12-31"
+        })
+        .expect(201)
+    ).body;
+    const carry = (
+      await agent
+        .post(`/organizations/${org.id}/carry-forward/preview`)
+        .send({
+          sourceFiscalYearId: fiscal.id,
+          targetFiscalYearId: nextYear.id,
+          resultAccountId: accountIds[1]
+        })
+        .expect(201)
+    ).body;
+    await agent
+      .post(`/organizations/${org.id}/carry-forward/confirm`)
+      .send({ previewId: carry.previewId })
+      .expect(201);
     const download = (await agent.get(`/attachments/${attachment.id}/download`).expect(200)).body;
     const signed = await fetch(download.downloadUrl);
     assert.equal(signed.status, 200);
@@ -303,6 +377,8 @@ async function main() {
       "session",
       "organization",
       "organizationMember",
+      "organizationInvitation",
+      "yearCarryForward",
       "account",
       "fiscalYear",
       "accountingPeriod",
@@ -350,8 +426,24 @@ async function main() {
       (await restored.journalEntry.findUniqueOrThrow({ where: { id: entry.id } })).status,
       "POSTED"
     );
-    assert.equal(await restored.openingBalance.count(), 2);
-    assert.equal(await restored.user.count(), 1);
+    assert.equal(await restored.openingBalance.count(), 4);
+    assert.equal(await restored.user.count(), 2);
+    assert.equal(
+      await restored.organizationInvitation.count({ where: { acceptedAt: { not: null } } }),
+      1
+    );
+    assert.equal(
+      await restored.organizationInvitation.count({ where: { acceptedAt: null, revokedAt: null } }),
+      1
+    );
+    assert.equal(
+      await restored.yearCarryForward.count({ where: { confirmedAt: { not: null } } }),
+      1
+    );
+    assert.ok(
+      (await restored.journalLine.findFirstOrThrow({ where: { projectId: { not: null } } }))
+        .projectSnapshot
+    );
     assert.ok(user.body);
     const audit = await restored.auditEvent.findFirstOrThrow({ where: { organizationId: org.id } });
     for (const sql of [

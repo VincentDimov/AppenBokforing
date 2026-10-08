@@ -31,7 +31,7 @@ export class JournalEntriesAccessService {
       }
     });
 
-    if (!membership) {
+    if (!membership || membership.removedAt) {
       // Keep foreign organization and resource IDs non-enumerable to callers.
       throw new NotFoundException("Organization not found.");
     }

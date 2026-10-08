@@ -20,6 +20,7 @@ import {
   type AccountChoice
 } from "@/components/journal-entries/account-typeahead";
 import { VoucherAttachments } from "@/components/journal-entries/voucher-attachments";
+import { DimensionTypeahead } from "@/components/journal-entries/dimension-typeahead";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,8 @@ interface EditableLine {
   debit: string;
   description: string;
   projectCode: string;
+  projectName?: string;
+  costCenterName?: string;
   vatCode: string;
   vatRole: "UNCLASSIFIED" | "BASE" | "TAX" | "NONE";
   vatGroup: string;
@@ -115,7 +118,8 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
     lines.length > 0 &&
     lines.every((line) => line.account !== null && isValidJournalAmountLine(line));
   const canSave =
-    isEditable && !versionConflict &&
+    isEditable &&
+    !versionConflict &&
     !optionsLoading &&
     Boolean(activeOrganizationId && voucherSeriesId && description.trim() && transactionDate) &&
     hasValidLines;
@@ -208,7 +212,13 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
             return current;
           }
 
-          return loadedOptions.voucherSeries[0]?.id ?? "";
+          return (
+            loadedOptions.voucherSeries.find(
+              (series) => series.code === loadedOptions.defaultVoucherSeriesCode
+            )?.id ??
+            loadedOptions.voucherSeries[0]?.id ??
+            ""
+          );
         });
       })
       .catch((caughtError: unknown) => {
@@ -251,7 +261,13 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
             return current;
           }
 
-          return loadedOptions.voucherSeries[0]?.id ?? "";
+          return (
+            loadedOptions.voucherSeries.find(
+              (series) => series.code === loadedOptions.defaultVoucherSeriesCode
+            )?.id ??
+            loadedOptions.voucherSeries[0]?.id ??
+            ""
+          );
         });
       })
       .catch((caughtError: unknown) => {
@@ -298,6 +314,8 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         debit: line.debit,
         description: line.description ?? "",
         projectCode: line.project?.code ?? "",
+        projectName: line.project?.name,
+        costCenterName: line.costCenter?.name,
         vatCode: line.vatCode?.code ?? "",
         vatRole: line.vatRole ?? (line.vatCode ? "UNCLASSIFIED" : "NONE"),
         vatGroup: line.vatGroup ?? ""
@@ -406,7 +424,13 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
       if (navigateAfterSave && !entry) router.replace(`/app/bookkeeping/vouchers/${saved.id}`);
       return saved;
     } catch (caughtError) {
-      if (mounted.current && caughtError instanceof JournalEntriesApiError && caughtError.status === 409 && caughtError.code === "JOURNAL_ENTRY_VERSION_CONFLICT") setVersionConflict(true);
+      if (
+        mounted.current &&
+        caughtError instanceof JournalEntriesApiError &&
+        caughtError.status === 409 &&
+        caughtError.code === "JOURNAL_ENTRY_VERSION_CONFLICT"
+      )
+        setVersionConflict(true);
       if (mounted.current)
         setError(
           caughtError instanceof Error
@@ -425,13 +449,21 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   }
   async function reloadLatest() {
     if (!entry || mutationInFlight.current) return;
-    mutationInFlight.current = true; setIsSaving(true);
+    mutationInFlight.current = true;
+    setIsSaving(true);
     try {
       const latest = await getJournalEntry(entry.id);
       if (!mounted.current || latest.organizationId !== activeOrganizationId) return;
-      applyEntry(latest); setVersionConflict(false); setError(null);
-    } catch (caught) { if (mounted.current) setError(caught instanceof Error ? caught.message : "Senaste version kunde inte laddas."); }
-    finally { mutationInFlight.current = false; if (mounted.current) setIsSaving(false); }
+      applyEntry(latest);
+      setVersionConflict(false);
+      setError(null);
+    } catch (caught) {
+      if (mounted.current)
+        setError(caught instanceof Error ? caught.message : "Senaste version kunde inte laddas.");
+    } finally {
+      mutationInFlight.current = false;
+      if (mounted.current) setIsSaving(false);
+    }
   }
 
   function openReversalConfirmation() {
@@ -559,7 +591,11 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         >
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <p>{error}</p>
-          {versionConflict ? <Button type="button" disabled={isSaving} onClick={() => void reloadLatest()}>Ladda senaste och kasta lokala ändringar</Button> : null}
+          {versionConflict ? (
+            <Button type="button" disabled={isSaving} onClick={() => void reloadLatest()}>
+              Ladda senaste och kasta lokala ändringar
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -710,6 +746,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
               disabled={!isEditable || optionsLoading}
               onChange={(event) => setVoucherSeriesId(event.target.value)}
               value={voucherSeriesId}
+              aria-label="Serie"
             >
               <option value="">{optionsLoading ? "Laddar serier…" : "Välj serie"}</option>
               {options?.voucherSeries.map((series) => (
@@ -803,22 +840,28 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <TableInput
+                    <DimensionTypeahead
+                      org={activeOrganizationId}
+                      kind="cost-centers"
+                      label={`Kostnadsställe rad ${index + 1}`}
+                      displayName={entry?.status === "POSTED" ? line.costCenterName : undefined}
                       disabled={!isEditable}
                       onChange={(value) =>
                         updateLine(line.clientId, "costCenterCode", value.toUpperCase())
                       }
-                      placeholder="Kod"
                       value={line.costCenterCode}
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <TableInput
+                    <DimensionTypeahead
+                      org={activeOrganizationId}
+                      kind="projects"
+                      label={`Projekt rad ${index + 1}`}
+                      displayName={entry?.status === "POSTED" ? line.projectName : undefined}
                       disabled={!isEditable}
                       onChange={(value) =>
                         updateLine(line.clientId, "projectCode", value.toUpperCase())
                       }
-                      placeholder="Kod"
                       value={line.projectCode}
                     />
                   </td>

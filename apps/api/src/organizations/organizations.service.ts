@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { AuditAction, AuditEntityType, OrganizationMemberRole, Prisma } from "@ledgerapp/db";
 
 import { DatabaseService } from "../database/database.service";
@@ -18,6 +23,7 @@ export class OrganizationsService {
     const memberships = await this.database.prisma.organizationMember.findMany({
       where: {
         userId,
+        removedAt: null,
         organization: { isActive: true }
       },
       include: { organization: true },
@@ -103,6 +109,7 @@ export class OrganizationsService {
   ) {
     try {
       const organization = await this.database.prisma.$transaction(async (transaction) => {
+        await transaction.$queryRaw`SELECT id FROM organizations WHERE id = ${organizationId}::uuid FOR UPDATE`;
         const before = await transaction.organization.findUnique({
           where: { id: organizationId }
         });
@@ -111,13 +118,43 @@ export class OrganizationsService {
           throw new NotFoundException("Organization not found.");
         }
 
+        // Serialize with accounting posting/locking before checking identity changes.
+        await transaction.$queryRaw`SELECT id FROM fiscal_years WHERE organization_id = ${organizationId}::uuid ORDER BY id FOR UPDATE`;
+        const identityChanged =
+          (dto.organizationNumber !== undefined &&
+            dto.organizationNumber.replace("-", "") !==
+              before.organizationNumber?.replace("-", "")) ||
+          (dto.defaultCurrency !== undefined && dto.defaultCurrency !== before.defaultCurrency) ||
+          (dto.countryCode !== undefined && dto.countryCode !== before.countryCode);
+        if (
+          identityChanged &&
+          ((await transaction.journalEntry.count({
+            where: { organizationId, status: "POSTED" }
+          })) ||
+            (await transaction.openingBalance.count({ where: { organizationId } })))
+        )
+          throw new ConflictException({
+            code: "ORGANIZATION_IDENTITY_IN_USE",
+            message: "Organisationens identitet och valuta är låsta efter bokföringsstart."
+          });
+        if (
+          dto.defaultVoucherSeriesCode &&
+          !(await transaction.voucherSeries.findFirst({
+            where: { organizationId, code: dto.defaultVoucherSeriesCode, isActive: true }
+          }))
+        )
+          throw new BadRequestException("Default series must be an active organization series.");
+
         const updated = await transaction.organization.update({
           where: { id: organizationId },
           data: {
             defaultCurrency: dto.defaultCurrency,
             isActive: dto.isActive,
             name: dto.name,
-            organizationNumber: dto.organizationNumber
+            organizationNumber: dto.organizationNumber?.replace("-", ""),
+            countryCode: dto.countryCode,
+            address: dto.address,
+            defaultVoucherSeriesCode: dto.defaultVoucherSeriesCode
           }
         });
 
@@ -160,6 +197,9 @@ export class OrganizationsService {
     slug: string;
     createdAt: Date;
     updatedAt: Date;
+    countryCode: string;
+    address: string | null;
+    defaultVoucherSeriesCode: string;
   }) {
     return {
       createdAt: organization.createdAt,
@@ -169,19 +209,28 @@ export class OrganizationsService {
       name: organization.name,
       organizationNumber: organization.organizationNumber,
       slug: organization.slug,
-      updatedAt: organization.updatedAt
+      updatedAt: organization.updatedAt,
+      countryCode: organization.countryCode,
+      address: organization.address,
+      defaultVoucherSeriesCode: organization.defaultVoucherSeriesCode
     };
   }
 
   private toAuditData(organization: {
+    address: string | null;
+    countryCode: string;
     defaultCurrency: string;
+    defaultVoucherSeriesCode: string;
     isActive: boolean;
     name: string;
     organizationNumber: string | null;
     slug: string;
   }): Prisma.InputJsonValue {
     return {
+      address: organization.address,
+      countryCode: organization.countryCode,
       defaultCurrency: organization.defaultCurrency,
+      defaultVoucherSeriesCode: organization.defaultVoucherSeriesCode,
       isActive: organization.isActive,
       name: organization.name,
       organizationNumber: organization.organizationNumber,

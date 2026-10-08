@@ -102,6 +102,7 @@ export interface JournalEntryInput {
 }
 
 export interface JournalEntryOptions {
+  defaultVoucherSeriesCode?: string;
   accountingPeriod: JournalEntry["accountingPeriod"];
   fiscalYear: JournalEntry["fiscalYear"];
   voucherSeries: VoucherSeriesSummary[];
@@ -189,8 +190,13 @@ export function updateJournalEntry(
   return requestJournalEntry(`/api/journal-entries/${journalEntryId}`, "PATCH", input);
 }
 
-export function postJournalEntry(journalEntryId: string, expectedVersion: number): Promise<JournalEntry> {
-  return requestJournalEntry(`/api/journal-entries/${journalEntryId}/post`, "POST", { expectedVersion });
+export function postJournalEntry(
+  journalEntryId: string,
+  expectedVersion: number
+): Promise<JournalEntry> {
+  return requestJournalEntry(`/api/journal-entries/${journalEntryId}/post`, "POST", {
+    expectedVersion
+  });
 }
 
 export function reverseJournalEntry(
@@ -217,7 +223,11 @@ async function requestJournalEntry(
   const payload = await parsePayload(response);
 
   if (!response.ok) {
-    throw new JournalEntriesApiError(getErrorMessage(payload), response.status, payload && typeof payload === "object" && "code" in payload ? String(payload.code) : undefined);
+    throw new JournalEntriesApiError(
+      getErrorMessage(payload),
+      response.status,
+      payload && typeof payload === "object" && "code" in payload ? String(payload.code) : undefined
+    );
   }
 
   if (!payload || typeof payload !== "object" || !("id" in payload)) {

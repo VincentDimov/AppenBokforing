@@ -31,7 +31,7 @@ export class AccountsAccessService {
       }
     });
 
-    if (!membership) {
+    if (!membership || membership.removedAt) {
       // Match the existing organization behavior and do not turn an ID into an oracle.
       throw new NotFoundException("Organization not found.");
     }

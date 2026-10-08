@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 type AuthMode = "login" | "register";
 
@@ -32,6 +32,11 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [invitationToken, setInvitationToken] = useState("");
+  useEffect(() => {
+    const candidate = location.hash.replace(/^#invitation=/, "");
+    if (/^[A-Za-z0-9_-]{43}$/.test(candidate)) setInvitationToken(candidate);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,7 +64,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         return;
       }
 
-      router.replace("/app");
+      router.replace(invitationToken ? `/invitations/accept#${invitationToken}` : "/app");
       router.refresh();
     } catch {
       setError("Kunde inte ansluta till tjänsten. Försök igen.");
@@ -133,7 +138,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         {isRegister ? "Har du redan ett konto?" : "Saknar du ett konto?"}{" "}
         <Link
           className="font-semibold text-[#1d6557] hover:underline"
-          href={isRegister ? "/login" : "/register"}
+          href={`${isRegister ? "/login" : "/register"}${invitationToken ? `#invitation=${invitationToken}` : ""}`}
         >
           {isRegister ? "Logga in" : "Registrera dig"}
         </Link>

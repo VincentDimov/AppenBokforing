@@ -51,7 +51,7 @@ export class OrganizationMembershipGuard implements CanActivate {
       }
     });
 
-    if (!membership) {
+    if (!membership || membership.removedAt) {
       throw new NotFoundException("Organization not found.");
     }
 

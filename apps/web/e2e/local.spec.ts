@@ -135,15 +135,15 @@ async function provision(name: string): Promise<Organization> {
   });
   expect(fiscalResponse.status()).toBe(201);
   const fiscal = (await fiscalResponse.json()) as { id: string };
-  // No voucher-series write API exists. Test-only metadata is provisioned in the disposable DB.
-  const series = await db.voucherSeries.create({
+  const seriesResponse = await api.post(`/api/organizations/${org.id}/voucher-series`, {
     data: {
-      organizationId: org.id,
       fiscalYearId: fiscal.id,
       code: "A",
       name: "E2E"
     }
   });
+  expect(seriesResponse.status()).toBe(201);
+  const series = await seriesResponse.json();
   const accounts: Record<string, string> = {};
   for (const [number, accountType] of [
     ["1930", "ASSET"],
@@ -197,7 +197,7 @@ async function open(page: Page, org: Organization, route: string) {
 }
 async function fillVoucher(page: Page, amount: string) {
   for (const [index, number] of ["1930", "3000"].entries()) {
-    const input = page.getByRole("table").locator('input[role="combobox"]').nth(index);
+    const input = page.getByRole("table").locator('input[id^="voucher-account-"]').nth(index);
     await input.fill(number);
     await page.getByRole("option", { name: new RegExp("^" + number) }).click();
   }
@@ -239,6 +239,208 @@ test.afterAll(async () => {
 });
 test.beforeEach(async ({ context }) => {
   await context.addCookies(cookies);
+});
+
+async function onboardWorkspace(name: string): Promise<Organization> {
+  const response = await api.post("/api/onboarding", {
+    data: { setupKey: randomUUID(), name, startDate: year + "-01-01", endDate: year + "-12-31" }
+  });
+  expect(response.status()).toBe(201);
+  const fixture = await response.json();
+  const accounts = Object.fromEntries(
+    (await db.account.findMany({ where: { organizationId: fixture.organization.id } })).map(
+      (account) => [account.accountNumber, account.id]
+    )
+  );
+  const series = await db.voucherSeries.findFirstOrThrow({
+    where: { organizationId: fixture.organization.id }
+  });
+  return {
+    id: fixture.organization.id,
+    name,
+    yearId: fixture.fiscalYear.id,
+    seriesId: series.id,
+    accounts
+  };
+}
+test("invitation UI → new user's registration → acceptance → read-only boundary", async ({
+  page,
+  browser
+}) => {
+  const org = await onboardWorkspace("Browser members");
+  const email = randomUUID() + "@example.test";
+  await open(page, org, "settings/members");
+  await page.getByLabel("E-post", { exact: true }).fill(email);
+  await page.getByLabel("Roll", { exact: true }).selectOption("READ_ONLY");
+  await page.getByRole("button", { name: "Bjud in", exact: true }).click();
+  const link = page.getByLabel("Endast utveckling/test: inbjudningslänk");
+  await expect(link).toHaveValue(/#.{43}$/);
+  const invitationPath = new URL(await link.inputValue());
+  const context = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const recipient = await context.newPage();
+    await recipient.goto(invitationPath.pathname + invitationPath.hash);
+    await recipient.getByRole("link", { name: "Registrera dig" }).click();
+    await recipient.getByLabel("Namn", { exact: true }).fill("Invited browser user");
+    await recipient.getByLabel("E-postadress").fill(email);
+    await recipient.locator('input[type="password"]').fill(password);
+    await recipient.getByRole("button", { name: "Skapa konto", exact: true }).click();
+    await recipient.getByRole("button", { name: "Acceptera inbjudan", exact: true }).click();
+    await expect(recipient).toHaveURL(/\/app$/);
+    await recipient.goto("/settings/members");
+    await expect(recipient.getByRole("table")).toContainText(email);
+    await expect(recipient.getByRole("button", { name: "Bjud in", exact: true })).toHaveCount(0);
+    const denied = await context.request.post(`/api/organizations/${org.id}/projects`, {
+      data: { code: "DENIED", name: "Denied" }
+    });
+    expect(denied.status()).toBe(403);
+    await page.reload();
+    await expect(page.getByRole("table")).toContainText(email);
+  } finally {
+    await context.close();
+  }
+});
+test("managed series UI → new voucher → sequential B1", async ({ page }) => {
+  const org = await onboardWorkspace("Browser series");
+  await open(page, org, "settings/voucher-series");
+  await page.getByLabel("Seriekod").fill("B");
+  await page.getByLabel("Serienamn").fill("Browser manual B");
+  await page.getByRole("button", { name: "Spara serie", exact: true }).click();
+  await expect(page.getByRole("table")).toContainText("Browser manual B");
+  await page.goto("/bookkeeping/vouchers/new");
+  await fillVoucher(page, "100");
+  await page.getByLabel("Serie", { exact: true }).selectOption({ label: "B — Browser manual B" });
+  const posting = page.waitForResponse((r) => /\/journal-entries\/[^/]+\/post$/.test(r.url()));
+  await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  const result = await posting;
+  expect(result.status()).toBe(201);
+  expect(await result.json()).toMatchObject({ voucherNumber: 1, voucherSeries: { code: "B" } });
+});
+test("balanced IB UI → authoritative trial balance and balance sheet", async ({ page }) => {
+  const org = await onboardWorkspace("Browser IB");
+  await open(page, org, "settings/opening-balances");
+  await page.getByLabel("IB debet 1930").fill("1000,00");
+  await page.getByLabel("IB kredit 2091").fill("1000,00");
+  await page.getByRole("button", { name: "Spara ingående balans" }).click();
+  await expect(page.getByText("IB sparad atomiskt.")).toBeVisible();
+  await page.goto("/reports/trial-balance");
+  await page.getByLabel("Räkenskapsår", { exact: true }).fill(org.yearId);
+  await page.getByLabel("Från datum").fill(year + "-01-01");
+  await page.getByLabel("Till datum").fill(year + "-12-31");
+  await page.getByRole("button", { name: "Visa rapport", exact: true }).click();
+  await expect(page.getByRole("table")).toContainText("1000.00");
+  const response = await api.get(
+    `/api/reports/balance-sheet?organizationId=${org.id}&fiscalYear=${org.yearId}&reportDate=${year}-12-31`
+  );
+  expect(response.status()).toBe(200);
+  expect((await response.json()).totals.assets).toBe("1000.00");
+});
+test("carry-forward UI preview and confirmation → balanced target IB", async ({ page }) => {
+  const org = await onboardWorkspace("Browser carry");
+  const base = `/api/organizations/${org.id}`;
+  const current = await (await api.get(`${base}/opening-balances?fiscalYear=${org.yearId}`)).json();
+  expect(
+    (
+      await api.post(`${base}/opening-balances`, {
+        data: {
+          fiscalYearId: org.yearId,
+          expectedFingerprint: current.fingerprint,
+          rows: [
+            { accountId: org.accounts["1930"], debit: "1000", credit: "0" },
+            { accountId: org.accounts["2091"], debit: "0", credit: "1000" }
+          ]
+        }
+      })
+    ).status()
+  ).toBe(201);
+  await posted(org, "100");
+  for (const period of await db.accountingPeriod.findMany({ where: { fiscalYearId: org.yearId } }))
+    expect(
+      (
+        await api.post(`/api/accounting-periods/${period.id}/lock`, {
+          data: { organizationId: org.id, confirm: true }
+        })
+      ).status()
+    ).toBe(201);
+  expect(
+    (
+      await api.post(`/api/fiscal-years/${org.yearId}/close`, {
+        data: { organizationId: org.id, confirm: true }
+      })
+    ).status()
+  ).toBe(201);
+  const next = String(Number(year) + 1);
+  const target = await (
+    await api.post("/api/fiscal-years", {
+      data: {
+        organizationId: org.id,
+        name: next,
+        startDate: next + "-01-01",
+        endDate: next + "-12-31"
+      }
+    })
+  ).json();
+  await open(page, org, "settings/opening-balances");
+  await page.getByLabel("Källår").selectOption(org.yearId);
+  await page.getByLabel("Målår").selectOption(target.id);
+  await page.getByLabel("Resultatkonto i eget kapital").selectOption(org.accounts["2091"]!);
+  await page.getByRole("button", { name: "Förhandsgranska årsöverföring" }).click();
+  await expect(page.getByText("Totalt debet 1100.00 · kredit 1100.00")).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Bekräfta årsöverföring", exact: true }).click();
+  await expect(page.getByText(/Årsöverföringen är bekräftad/)).toBeVisible();
+  const tb = await api.get(
+    `/api/reports/trial-balance?organizationId=${org.id}&fiscalYear=${target.id}&fromDate=${next}-01-01&toDate=${next}-12-31`
+  );
+  expect(tb.status()).toBe(200);
+  expect((await tb.json()).totals.closingDebit).toBe("1100.00");
+});
+test("dimension register UI → typeahead → posted snapshots → report and SIE", async ({ page }) => {
+  const org = await onboardWorkspace("Browser dimensions");
+  for (const [kind, code, name] of [
+    ["projects", "P_UI", "Östprojekt"],
+    ["cost-centers", "K_UI", "Ängelholm"]
+  ]) {
+    await open(page, org, `registers/${kind}`);
+    await page.getByLabel("Kod", { exact: true }).fill(code!);
+    await page.getByLabel("Namn", { exact: true }).fill(name!);
+    await page.getByRole("button", { name: "Spara registerpost" }).click();
+    await expect(page.getByRole("table")).toContainText(name!);
+  }
+  await page.goto("/bookkeeping/vouchers/new");
+  await fillVoucher(page, "100");
+  await page.getByLabel("Projekt rad 1").fill("Öst");
+  await page.getByRole("option", { name: "P_UI · Östprojekt" }).click();
+  await page.getByLabel("Kostnadsställe rad 1").fill("Ängel");
+  await page.getByRole("option", { name: "K_UI · Ängelholm" }).click();
+  const posting = page.waitForResponse((r) => /\/journal-entries\/[^/]+\/post$/.test(r.url()));
+  await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  const response = await posting;
+  expect(response.status()).toBe(201);
+  const entry = await response.json();
+  expect((await storedEntry(entry.id)).lines[0]?.projectSnapshot).toMatchObject({
+    code: "P_UI",
+    name: "Östprojekt"
+  });
+  await page.goto("/reports/general-ledger");
+  await page.getByLabel("Räkenskapsår", { exact: true }).fill(org.yearId);
+  await page.getByLabel("Från datum").fill(year + "-01-01");
+  await page.getByLabel("Till datum").fill(year + "-12-31");
+  await page.getByLabel("Projekt", { exact: true }).fill("P_UI");
+  await page.getByRole("button", { name: "Visa rapport", exact: true }).click();
+  await expect(
+    page.getByRole("article").filter({ hasText: "1930 — Bank" }).getByRole("table")
+  ).toContainText("100.00");
+  const sie = await api.get(`/api/exports/sie?organizationId=${org.id}&fiscalYear=${org.yearId}`);
+  expect(sie.status()).toBe(200);
+  const parsed = parseSie4(await sie.body());
+  expect(parsed.errors).toEqual([]);
+  expect(parsed.objects).toEqual(
+    expect.arrayContaining([
+      { dimension: "6", id: "P_UI", name: "Östprojekt" },
+      { dimension: "1", id: "K_UI", name: "Ängelholm" }
+    ])
+  );
 });
 
 test("explicit VAT roles → browser posting → frozen DB → base/tax report", async ({ page }) => {
@@ -463,6 +665,11 @@ test("browser registration, persisted cookies, logout home and protected redirec
   await page.getByLabel("E-postadress").fill(randomUUID() + "@example.test");
   await page.locator('input[type="password"]').fill(password);
   await page.getByRole("button", { name: "Skapa konto", exact: true }).click();
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await page.reload();
+  await page.getByLabel("Företagsnamn").fill("Browser starter company");
+  await page.getByLabel("Organisationsnummer").fill("556123-4567");
+  await page.getByRole("button", { name: "Skapa arbetsyta" }).click();
   await expect(page).toHaveURL(/\/app$/);
   const authCookies = (await context.cookies()).filter((cookie) =>
     cookie.name.includes("ledgerapp")
@@ -474,7 +681,10 @@ test("browser registration, persisted cookies, logout home and protected redirec
   await expect(page.getByRole("button", { name: "Öppna användarmeny" })).toBeVisible();
   expect(
     await page.evaluate(() => ({
-      local: Object.keys(localStorage).filter((key) => key !== "ledgerapp:active-organization"),
+      local: Object.keys(localStorage).filter(
+        (key) =>
+          key !== "ledgerapp:active-organization" && !key.startsWith("ledgerapp:fiscal-year:")
+      ),
       session: Object.keys(sessionStorage)
     }))
   ).toEqual({ local: [], session: [] });
@@ -715,6 +925,14 @@ test("real 400 / 403 / 404 boundaries plus explicit injected 500 and network UX"
   expect((await api.get("/api/journal-entries/" + randomUUID())).status()).toBe(404);
   const ownerId = ((await (await api.get("/api/auth/me")).json()) as { user: { id: string } }).user
     .id;
+  // A read-only fixture must retain another real owner; never bypass the
+  // database's last-owner invariant to manufacture authorization tests.
+  const remainingOwner = await db.user.create({
+    data: { email: `${randomUUID()}@example.test`, displayName: "Remaining browser fixture owner" }
+  });
+  await db.organizationMember.create({
+    data: { organizationId: b.id, userId: remainingOwner.id, role: "OWNER" }
+  });
   await db.organizationMember.update({
     where: { organizationId_userId: { organizationId: b.id, userId: ownerId } },
     data: { role: "READ_ONLY" }

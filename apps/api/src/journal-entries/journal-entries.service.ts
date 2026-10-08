@@ -17,6 +17,7 @@ import {
 } from "@ledgerapp/db";
 
 import { DatabaseService } from "../database/database.service";
+import { dimensionLabel } from "../organizations/dimension-snapshot";
 import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
 import { CreateJournalEntryDto } from "./dto/create-journal-entry.dto";
 import { JournalEntryOptionsQueryDto } from "./dto/journal-entry-options-query.dto";
@@ -166,6 +167,12 @@ export class JournalEntriesService {
     ]);
 
     return {
+      defaultVoucherSeriesCode: (
+        await this.database.prisma.organization.findUniqueOrThrow({
+          where: { id: organizationId },
+          select: { defaultVoucherSeriesCode: true }
+        })
+      ).defaultVoucherSeriesCode,
       accountingPeriod: {
         endDate: this.toDateOnly(accountingPeriod.endDate),
         id: accountingPeriod.id,
@@ -244,8 +251,11 @@ export class JournalEntriesService {
     const entry = await this.database.prisma.$transaction(async (transaction) => {
       const initial = await this.findDetailed(transaction, organizationId, journalEntryId);
       if (!initial) throw new NotFoundException("Journal entry not found.");
-      const target = dto.transactionDate ? await this.resolveCalendar(transaction, organizationId, dto.transactionDate) : { fiscalYearId: initial.fiscalYearId, accountingPeriodId: initial.accountingPeriodId };
-      for (const yearId of [...new Set([initial.fiscalYearId, target.fiscalYearId])].sort()) await requireOpenCalendar(transaction, organizationId, yearId);
+      const target = dto.transactionDate
+        ? await this.resolveCalendar(transaction, organizationId, dto.transactionDate)
+        : { fiscalYearId: initial.fiscalYearId, accountingPeriodId: initial.accountingPeriodId };
+      for (const yearId of [...new Set([initial.fiscalYearId, target.fiscalYearId])].sort())
+        await requireOpenCalendar(transaction, organizationId, yearId);
       await this.lockJournalEntry(transaction, organizationId, journalEntryId);
       const before = await this.findDetailed(transaction, organizationId, journalEntryId);
 
@@ -283,7 +293,15 @@ export class JournalEntriesService {
       );
 
       // Prisma does not guarantee deleteMany runs before nested create.
-      const changed = await transaction.journalEntry.updateMany({ where: { id: journalEntryId, organizationId, version: dto.expectedVersion, status: "DRAFT" }, data: { version: { increment: 1 } } });
+      const changed = await transaction.journalEntry.updateMany({
+        where: {
+          id: journalEntryId,
+          organizationId,
+          version: dto.expectedVersion,
+          status: "DRAFT"
+        },
+        data: { version: { increment: 1 } }
+      });
       if (changed.count !== 1) this.versionConflict();
       // Free the draft's tenant-scoped line numbers explicitly, inside this
       // same transaction. Any failed replacement rolls the deletion back.
@@ -431,7 +449,12 @@ export class JournalEntriesService {
     metadata: JournalEntryAuditMetadata
   ): Promise<JournalEntryWithRelations> {
     const target = await this.resolveCalendar(transaction, organizationId, dto.transactionDate);
-    await requireOpenCalendar(transaction, organizationId, target.fiscalYearId, target.accountingPeriodId);
+    await requireOpenCalendar(
+      transaction,
+      organizationId,
+      target.fiscalYearId,
+      target.accountingPeriodId
+    );
     await this.lockJournalEntry(transaction, organizationId, journalEntryId);
 
     const original = await this.findDetailed(transaction, organizationId, journalEntryId);
@@ -556,9 +579,17 @@ export class JournalEntriesService {
     metadata: JournalEntryAuditMetadata,
     options: { requireActiveReferences?: boolean; expectedVersion?: number } = {}
   ): Promise<JournalEntryWithRelations> {
-    const initial = await transaction.journalEntry.findFirst({ where: { id: journalEntryId, organizationId }, select: { fiscalYearId: true, accountingPeriodId: true } });
+    const initial = await transaction.journalEntry.findFirst({
+      where: { id: journalEntryId, organizationId },
+      select: { fiscalYearId: true, accountingPeriodId: true }
+    });
     if (!initial) throw new NotFoundException("Journal entry not found.");
-    await requireOpenCalendar(transaction, organizationId, initial.fiscalYearId, initial.accountingPeriodId);
+    await requireOpenCalendar(
+      transaction,
+      organizationId,
+      initial.fiscalYearId,
+      initial.accountingPeriodId
+    );
     await this.lockJournalEntry(transaction, organizationId, journalEntryId);
 
     const before = await this.findDetailed(transaction, organizationId, journalEntryId);
@@ -568,11 +599,44 @@ export class JournalEntriesService {
     }
 
     this.requireDraft(before.status);
-    if (options.expectedVersion !== undefined) this.requireVersion(before.version, options.expectedVersion);
-    if (before.fiscalYearId !== initial.fiscalYearId || before.accountingPeriodId !== initial.accountingPeriodId) this.versionConflict();
+    if (options.expectedVersion !== undefined)
+      this.requireVersion(before.version, options.expectedVersion);
+    if (
+      before.fiscalYearId !== initial.fiscalYearId ||
+      before.accountingPeriodId !== initial.accountingPeriodId
+    )
+      this.versionConflict();
     await this.requireOpenPostingCalendar(transaction, organizationId, before);
+    // Series management holds the same year lock: reject before draft-line
+    // metadata updates can hit a lower-level inactive-series constraint.
+    const activeSeries = before.voucherSeriesId
+      ? await transaction.voucherSeries.findFirst({
+          where: {
+            id: before.voucherSeriesId,
+            organizationId,
+            fiscalYearId: before.fiscalYearId,
+            isActive: true
+          },
+          select: { id: true }
+        })
+      : null;
+    if (!activeSeries)
+      throw new ConflictException({
+        code: "VOUCHER_SERIES_INACTIVE",
+        message: "Verifikationsserien är inaktiv eller otillgänglig."
+      });
     this.requirePostableLines(before.lines);
     if (options.requireActiveReferences !== false) {
+      // Keep classification stable against account updates until posting commits.
+      await transaction.$queryRaw`SELECT id FROM accounts WHERE organization_id = ${organizationId}::uuid AND id IN (${Prisma.join(before.lines.map((line) => Prisma.sql`${line.accountId}::uuid`))}) ORDER BY id FOR SHARE`;
+      const projectIds = before.lines.flatMap((line) => (line.projectId ? [line.projectId] : []));
+      const costCenterIds = before.lines.flatMap((line) =>
+        line.costCenterId ? [line.costCenterId] : []
+      );
+      if (projectIds.length)
+        await transaction.$queryRaw`SELECT id FROM projects WHERE organization_id = ${organizationId}::uuid AND id IN (${Prisma.join(projectIds.map((id) => Prisma.sql`${id}::uuid`))}) ORDER BY id FOR SHARE`;
+      if (costCenterIds.length)
+        await transaction.$queryRaw`SELECT id FROM cost_centers WHERE organization_id = ${organizationId}::uuid AND id IN (${Prisma.join(costCenterIds.map((id) => Prisma.sql`${id}::uuid`))}) ORDER BY id FOR SHARE`;
       await this.requireActivePersistedReferences(transaction, organizationId, before);
       // Freeze tenant-owned metadata at posting. Reversals copy the original snapshot.
       const codes = await transaction.vatCode.findMany({
@@ -635,7 +699,10 @@ export class JournalEntriesService {
     `;
 
     if (allocated.length !== 1 || allocated[0].voucherNumber < 1) {
-      throw new ConflictException("Voucher series is inactive or unavailable.");
+      throw new ConflictException({
+        code: "VOUCHER_SERIES_INACTIVE",
+        message: "Verifikationsserien är inaktiv eller otillgänglig."
+      });
     }
 
     const posted = await transaction.journalEntry.update({
@@ -997,6 +1064,16 @@ export class JournalEntriesService {
       })
     ]);
 
+    if (projects !== projectIds.length)
+      throw new ConflictException({
+        code: "PROJECT_INACTIVE",
+        message: "Ett projekt är inte längre aktivt i organisationen."
+      });
+    if (costCenters !== costCenterIds.length)
+      throw new ConflictException({
+        code: "COST_CENTRE_INACTIVE",
+        message: "Ett kostnadsställe är inte längre aktivt i organisationen."
+      });
     if (
       accounts !== accountIds.length ||
       vatCodes !== vatCodeIds.length ||
@@ -1092,7 +1169,7 @@ export class JournalEntriesService {
           name: line.account.name,
           number: line.account.accountNumber
         },
-        costCenter: line.costCenter,
+        costCenter: dimensionLabel(line.costCenterSnapshot, line.costCenter),
         credit: this.toMoneyString(line.creditAmount),
         debit: this.toMoneyString(line.debitAmount),
         description: line.description,
@@ -1101,7 +1178,7 @@ export class JournalEntriesService {
         vatRole: line.vatRole,
         vatGroup: line.vatGroup,
         vatSnapshot: line.vatSnapshot as unknown,
-        project: line.project,
+        project: dimensionLabel(line.projectSnapshot, line.project),
         vatCode: line.vatCode
           ? {
               ...line.vatCode,
@@ -1249,7 +1326,10 @@ export class JournalEntriesService {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
   }
   private versionConflict(): never {
-    throw new ConflictException({ code: "JOURNAL_ENTRY_VERSION_CONFLICT", message: "Verifikationen har ändrats av en annan användare." });
+    throw new ConflictException({
+      code: "JOURNAL_ENTRY_VERSION_CONFLICT",
+      message: "Verifikationen har ändrats av en annan användare."
+    });
   }
   private requireVersion(actual: number, expected: number) {
     if (!Number.isInteger(expected) || actual !== expected) this.versionConflict();

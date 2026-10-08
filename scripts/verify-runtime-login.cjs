@@ -89,6 +89,98 @@ async function main() {
       })
       .expect(201);
     await agent.post("/auth/refresh").expect(200);
+    const setup = (
+      await agent
+        .post("/onboarding")
+        .send({
+          setupKey: require("node:crypto").randomUUID(),
+          name: "Runtime new workspace",
+          startDate: "2026-01-01",
+          endDate: "2026-12-31"
+        })
+        .expect(201)
+    ).body;
+    const workspace = `/organizations/${setup.organization.id}`;
+    await agent
+      .post(`${workspace}/invitations`)
+      .send({ email: `runtime-pending-${suffix}@example.test`, role: "READ_ONLY" })
+      .expect(201);
+    await agent
+      .post(`${workspace}/projects`)
+      .send({ code: "P1", name: "Runtime project" })
+      .expect(201);
+    await agent
+      .post(`${workspace}/cost-centers`)
+      .send({ code: "K1", name: "Runtime center" })
+      .expect(201);
+    await agent
+      .post(`${workspace}/voucher-series`)
+      .send({ fiscalYearId: setup.fiscalYear.id, code: "B", name: "Runtime B" })
+      .expect(201);
+    const workspaceAccounts = await db.account.findMany({
+      where: { organizationId: setup.organization.id }
+    });
+    const bank = workspaceAccounts.find((account) => account.accountNumber === "1930"),
+      equity = workspaceAccounts.find((account) => account.type === "EQUITY");
+    for (let repetition = 0; repetition < 2; repetition++) {
+      const current = (
+        await agent
+          .get(`${workspace}/opening-balances?fiscalYear=${setup.fiscalYear.id}`)
+          .expect(200)
+      ).body;
+      await agent
+        .post(`${workspace}/opening-balances`)
+        .send({
+          fiscalYearId: setup.fiscalYear.id,
+          expectedFingerprint: current.fingerprint,
+          rows: [
+            { accountId: bank.id, debit: "100", credit: "0" },
+            { accountId: equity.id, debit: "0", credit: "100" }
+          ]
+        })
+        .expect(201);
+    }
+    for (const item of await db.accountingPeriod.findMany({
+      where: { fiscalYearId: setup.fiscalYear.id }
+    }))
+      await agent
+        .post(`/accounting-periods/${item.id}/lock`)
+        .send({ organizationId: setup.organization.id, confirm: true })
+        .expect(201);
+    await agent
+      .post(`/fiscal-years/${setup.fiscalYear.id}/close`)
+      .send({ organizationId: setup.organization.id, confirm: true })
+      .expect(201);
+    const nextYear = (
+      await agent
+        .post("/fiscal-years")
+        .send({
+          organizationId: setup.organization.id,
+          name: "2027",
+          startDate: "2027-01-01",
+          endDate: "2027-12-31"
+        })
+        .expect(201)
+    ).body;
+    const carry = (
+      await agent
+        .post(`${workspace}/carry-forward/preview`)
+        .send({
+          sourceFiscalYearId: setup.fiscalYear.id,
+          targetFiscalYearId: nextYear.id,
+          resultAccountId: equity.id
+        })
+        .expect(201)
+    ).body;
+    await agent
+      .post(`${workspace}/carry-forward/confirm`)
+      .send({ previewId: carry.previewId })
+      .expect(201);
+    await assert.rejects(db.$executeRawUnsafe("DELETE FROM organization_invitations"));
+    await assert.rejects(db.$executeRawUnsafe("UPDATE organization_invitations SET role='OWNER'"));
+    await assert.rejects(
+      db.$executeRawUnsafe("UPDATE year_carry_forwards SET fingerprint=repeat('0',64)")
+    );
     const org = (
       await agent
         .post("/organizations")
@@ -185,7 +277,8 @@ async function main() {
         tenantConstraint: true,
         legitimateAuthCalendarAccountPostingReversalReporting: true,
         lockedPostingRejected: true,
-        migratorMembership: false
+        migratorMembership: false,
+        workspaceOnboardingInvitationsSeriesDimensionsOpeningBalancesCarry: true
       })
     );
   } finally {

@@ -192,6 +192,7 @@ describe("authentication and organization authorization", () => {
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({ reason: { status: 401 } });
     const family = await prisma.session.findUniqueOrThrow({
       where: { id: old.tokens.refreshToken.split(".")[0] }
     });

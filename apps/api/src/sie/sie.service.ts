@@ -19,6 +19,7 @@ import {
   type SieExportData
 } from "@ledgerapp/sie";
 import { DatabaseService } from "../database/database.service";
+import { dimensionLabel } from "../organizations/dimension-snapshot";
 import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { readAccountingContext } from "../reports/accounting-report-data";
@@ -181,6 +182,10 @@ export class SieService {
             "Opening balances can only be imported into an empty accounting year."
           );
         for (const balance of document.openingBalances) {
+          // SIE permits explicit zero #IB records; our accounting model stores
+          // only single-sided, non-zero opening balances.
+          const amount = new Prisma.Decimal(balance.amount);
+          if (amount.isZero()) continue;
           const accountId = accounts.get(balance.account);
           if (!accountId) throw new BadRequestException("Opening balance account is missing.");
           const account = await tx.account.findFirstOrThrow({
@@ -192,7 +197,6 @@ export class SieService {
             )
           )
             throw new BadRequestException("Opening balances on result accounts are forbidden.");
-          const amount = new Prisma.Decimal(balance.amount);
           await tx.openingBalance.create({
             data: {
               organizationId,
@@ -388,6 +392,31 @@ export class SieService {
             const b = balances.get(line.accountId);
             if (b) b.closing = b.closing.plus(line.debitAmount).minus(line.creditAmount);
           }
+        // SIE has one name per object code, not versioned object labels. Prefer
+        // the first historical snapshot in this deterministic export interval.
+        const objects = new Map<string, { dimension: string; id: string; name: string }>([
+          ...projects.map(
+            (p) => [`6:${p.code}`, { dimension: "6", id: p.code, name: p.name }] as const
+          ),
+          ...costCenters.map(
+            (c) => [`1:${c.code}`, { dimension: "1", id: c.code, name: c.name }] as const
+          )
+        ]);
+        const historicalObjects = new Set<string>();
+        for (const entry of entries)
+          for (const line of entry.lines) {
+            for (const [dimension, label] of [
+              ["6", dimensionLabel(line.projectSnapshot, line.project)],
+              ["1", dimensionLabel(line.costCenterSnapshot, line.costCenter)]
+            ] as const) {
+              if (!label) continue;
+              const key = `${dimension}:${label.code}`;
+              if (!historicalObjects.has(key)) {
+                objects.set(key, { dimension, id: label.code, name: label.name });
+                historicalObjects.add(key);
+              }
+            }
+          }
         const data: SieExportData = {
           organization: {
             name: fiscalYear.organization.name,
@@ -414,10 +443,9 @@ export class SieService {
             opening: b.opening.toFixed(2),
             closing: b.closing.toFixed(2)
           })),
-          objects: [
-            ...projects.map((p) => ({ dimension: "6", id: p.code, name: p.name })),
-            ...costCenters.map((c) => ({ dimension: "1", id: c.code, name: c.name }))
-          ],
+          objects: [...objects.values()].sort(
+            (a, b) => a.dimension.localeCompare(b.dimension) || a.id.localeCompare(b.id)
+          ),
           vouchers: entries.map((entry) => ({
             series: entry.voucherSeries?.code ?? "",
             number: String(entry.voucherNumber ?? 0),
@@ -467,6 +495,8 @@ export class SieService {
             metadata: {
               fiscalYearId,
               vouchers: entries.length,
+              dimensionLabelPolicy: "first-posted-snapshot-per-code",
+              dimensionLabelVersioning: "SIE4-single-label-loss-boundary",
               sha256: createHash("sha256").update(content).digest("hex")
             }
           }

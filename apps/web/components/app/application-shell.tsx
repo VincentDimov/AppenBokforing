@@ -30,6 +30,13 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
     }
   }, [pathname, router, status]);
 
+  useEffect(() => {
+    if (status === "authenticated" && organizationsStatus === "ready") {
+      if (!organizations.length && pathname !== "/onboarding") router.replace("/onboarding");
+      else if (organizations.length && pathname === "/onboarding") router.replace("/app");
+    }
+  }, [status, organizationsStatus, organizations.length, pathname, router]);
+
   if (status === "loading") {
     return <LoadingScreen message="Återställer din säkra session…" />;
   }
@@ -43,6 +50,9 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
   if (status === "anonymous" || !user) {
     return <LoadingScreen message="Tar dig till inloggningen…" />;
   }
+  if (pathname === "/onboarding") return <main className="mx-auto max-w-2xl p-8">{children}</main>;
+  if (organizationsStatus === "ready" && !organizations.length)
+    return <LoadingScreen message="Förbereder din arbetsyta…" />;
 
   async function handleSignOut() {
     signingOut.current = true;

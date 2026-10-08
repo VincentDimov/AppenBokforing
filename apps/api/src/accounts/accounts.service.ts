@@ -136,6 +136,18 @@ export class AccountsService {
             ? undefined
             : await this.resolveVatCodeId(transaction, organizationId, dto.vatCode);
         const accountType = dto.accountType ?? before.type;
+        if (
+          ((dto.number !== undefined && dto.number !== before.accountNumber) ||
+            (dto.accountType !== undefined && dto.accountType !== before.type)) &&
+          ((await transaction.openingBalance.count({ where: { organizationId, accountId } })) ||
+            (await transaction.journalLine.count({
+              where: { organizationId, accountId, journalEntry: { status: "POSTED" } }
+            })))
+        )
+          throw new ConflictException({
+            code: "ACCOUNT_CLASSIFICATION_IN_USE",
+            message: "Kontonummer och klassificering är låsta efter IB eller bokföring."
+          });
         const updated = await transaction.account.update({
           data: {
             accountNumber: dto.number,

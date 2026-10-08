@@ -27,14 +27,19 @@ erDiagram
   ORGANIZATION {
     uuid id PK
     string slug UK
-    string organization_number UK
+    string organization_number
     string default_currency
+    string country_code
+    string address
+    uuid setup_key UK
+    string default_voucher_series_code
   }
   ORGANIZATION_MEMBER {
     uuid id PK
     uuid organization_id FK
     uuid user_id FK
     enum role
+    timestamp removed_at
   }
   FISCAL_YEAR {
     uuid id PK
@@ -337,3 +342,49 @@ contains only `POSTED` rows. This keeps draft activity out of both report
 results and the primary report access path. Journal-line dimensions remain
 tenant-bound foreign keys, so project and cost-center filters cannot cross an
 organization boundary.
+
+## FAS 25–29 extension (forward migrations 15–19)
+
+Company number is deliberately not globally unique. SetupKey is retry identity,
+not tenant authorization. Invitation and carry records use UUIDs, organization
+FKs, restrictive actor/account/year references and indexed tenant access paths.
+Invitation tokens are hashes; pending org/email and confirmed target-year
+uniqueness are partial PostgreSQL indexes. Used account/series/dimension identity,
+last active owner, IB freeze and posted dimension snapshots have SQL guards.
+No casual accounting cascade delete or fabricated legacy snapshot backfill.
+
+```mermaid
+erDiagram
+  ORGANIZATION ||--o{ ORGANIZATION_INVITATION : invites
+  USER ||--o{ ORGANIZATION_INVITATION : invited_by
+  ORGANIZATION_INVITATION {
+    uuid id PK
+    uuid organization_id FK
+    uuid invited_by_user_id FK
+    string email
+    enum role
+    string token_hash UK
+    timestamp expires_at
+    timestamp accepted_at
+    timestamp revoked_at
+  }
+  ORGANIZATION ||--o{ YEAR_CARRY_FORWARD : owns
+  FISCAL_YEAR ||--o{ YEAR_CARRY_FORWARD : source_or_target
+  ACCOUNT ||--o{ YEAR_CARRY_FORWARD : result_equity
+  USER ||--o{ YEAR_CARRY_FORWARD : created_by
+  YEAR_CARRY_FORWARD {
+    uuid id PK
+    uuid organization_id FK
+    uuid source_fiscal_year_id FK
+    uuid target_fiscal_year_id FK
+    uuid result_account_id FK
+    string fingerprint
+    timestamp expires_at
+    timestamp confirmed_at
+  }
+  JOURNAL_LINE {
+    uuid id PK
+    json project_snapshot
+    json cost_center_snapshot
+  }
+```

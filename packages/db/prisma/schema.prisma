@@ -94,6 +94,7 @@ enum AuditAction {
 }
 
 enum AuditEntityType {
+  INVITATION
   USER
   ORGANIZATION
   ORGANIZATION_MEMBER
@@ -125,6 +126,8 @@ model User {
 
   sessions                Session[]
   organizationMemberships OrganizationMember[]
+  sentInvitations          OrganizationInvitation[]
+  createdCarryForwards      YearCarryForward[]
   closedFiscalYears       FiscalYear[]         @relation("FiscalYearClosedBy")
   lockedAccountingPeriods AccountingPeriod[]   @relation("AccountingPeriodLockedBy")
   createdJournalEntries   JournalEntry[]       @relation("JournalEntryCreatedBy")
@@ -169,13 +172,19 @@ model Organization {
   id                 String   @id @default(uuid()) @db.Uuid
   name               String   @db.VarChar(160)
   slug               String   @unique @db.VarChar(80)
-  organizationNumber String?  @unique @map("organization_number") @db.VarChar(32)
+  organizationNumber String?  @map("organization_number") @db.VarChar(32)
+  countryCode        String   @default("SE") @map("country_code") @db.Char(2)
+  address            String?  @db.VarChar(500)
+  setupKey           String?  @unique @map("setup_key") @db.Uuid
+  defaultVoucherSeriesCode String @default("A") @map("default_voucher_series_code") @db.VarChar(16)
   defaultCurrency    String   @default("SEK") @map("default_currency") @db.VarChar(3)
   isActive           Boolean  @default(true) @map("is_active")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   members              OrganizationMember[]
+  invitations          OrganizationInvitation[]
+  carryForwards        YearCarryForward[]
   fiscalYears          FiscalYear[]
   accountingPeriods    AccountingPeriod[]
   accounts             Account[]
@@ -197,6 +206,7 @@ model Organization {
 }
 
 model OrganizationMember {
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
   id             String                 @id @default(uuid()) @db.Uuid
   organizationId String                 @map("organization_id") @db.Uuid
   userId         String                 @map("user_id") @db.Uuid
@@ -213,7 +223,27 @@ model OrganizationMember {
   @@map("organization_members")
 }
 
+model OrganizationInvitation {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  email String @db.VarChar(320)
+  role OrganizationMemberRole
+  tokenHash String @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  invitedByUserId String @map("invited_by_user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  invitedBy User @relation(fields: [invitedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@index([organizationId, email, createdAt])
+  @@map("organization_invitations")
+}
+
 model FiscalYear {
+  carryForwardSources YearCarryForward[] @relation("CarryForwardSource")
+  carryForwardTargets YearCarryForward[] @relation("CarryForwardTarget")
   id             String           @id @default(uuid()) @db.Uuid
   organizationId String           @map("organization_id") @db.Uuid
   name           String           @db.VarChar(80)
@@ -306,6 +336,7 @@ model VatCode {
 }
 
 model Account {
+  carryForwards YearCarryForward[]
   id             String      @id @default(uuid()) @db.Uuid
   organizationId String      @map("organization_id") @db.Uuid
   accountNumber  String      @map("account_number") @db.VarChar(16)
@@ -332,6 +363,7 @@ model Account {
 }
 
 model VoucherSeries {
+  description       String?  @db.VarChar(500)
   id                String   @id @default(uuid()) @db.Uuid
   organizationId    String   @map("organization_id") @db.Uuid
   fiscalYearId      String   @map("fiscal_year_id") @db.Uuid
@@ -353,6 +385,7 @@ model VoucherSeries {
 }
 
 model Project {
+  description    String? @db.VarChar(500)
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   code           String   @db.VarChar(32)
@@ -372,6 +405,7 @@ model Project {
 }
 
 model CostCenter {
+  description    String? @db.VarChar(500)
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   code           String   @db.VarChar(32)
@@ -464,6 +498,8 @@ model JournalEntry {
 }
 
 model JournalLine {
+  projectSnapshot Json? @map("project_snapshot") @db.JsonB
+  costCenterSnapshot Json? @map("cost_center_snapshot") @db.JsonB
   id             String      @id @default(uuid()) @db.Uuid
   organizationId String      @map("organization_id") @db.Uuid
   journalEntryId String      @map("journal_entry_id") @db.Uuid
@@ -596,6 +632,26 @@ model OpeningBalance {
   @@unique([id, organizationId])
   @@index([organizationId, fiscalYearId])
   @@map("opening_balances")
+}
+
+model YearCarryForward {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  sourceFiscalYearId String @map("source_fiscal_year_id") @db.Uuid
+  targetFiscalYearId String @map("target_fiscal_year_id") @db.Uuid
+  resultAccountId String @map("result_account_id") @db.Uuid
+  createdById String @map("created_by_id") @db.Uuid
+  fingerprint String @db.Char(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceFiscalYear FiscalYear @relation("CarryForwardSource", fields: [sourceFiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  targetFiscalYear FiscalYear @relation("CarryForwardTarget", fields: [targetFiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  resultAccount Account @relation(fields: [resultAccountId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@index([organizationId, targetFiscalYearId])
+  @@map("year_carry_forwards")
 }
 
 model AuditEvent {

@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { demoFiscalYears } from "@/lib/mock-data/dashboard";
+import { useFiscalYears } from "@/lib/use-fiscal-years";
 
 interface AppTopbarProps {
   activeOrganization: OrganizationSummary | null;
@@ -43,7 +43,7 @@ export function AppTopbar({
   organizationsStatus,
   user
 }: Readonly<AppTopbarProps>) {
-  const currentFiscalYear = demoFiscalYears[0];
+  const fiscalYears = useFiscalYears(activeOrganizationId);
 
   return (
     <header className="sticky top-0 z-30 border-b border-[#d9e5ea] bg-[#f7fafb]/95 backdrop-blur">
@@ -95,21 +95,19 @@ export function AppTopbar({
 
           <div className="hidden items-center gap-2 sm:flex">
             <CalendarDays aria-hidden="true" className="size-4 shrink-0 text-[#5f8192]" />
-            <Select defaultValue={currentFiscalYear?.id}>
+            <Select value={fiscalYears.selected} onValueChange={fiscalYears.select}>
               <SelectTrigger aria-label="Aktivt räkenskapsår" className="w-28 xl:w-48">
                 <SelectValue placeholder="Räkenskapsår" />
               </SelectTrigger>
               <SelectContent>
-                {demoFiscalYears.map((fiscalYear) => (
+                {fiscalYears.years.map((fiscalYear) => (
                   <SelectItem key={fiscalYear.id} value={fiscalYear.id}>
-                    {fiscalYear.label}
+                    {fiscalYear.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Badge className="hidden 2xl:inline-flex" variant="warning">
-              Exempeldata
-            </Badge>
+            {fiscalYears.error && <span role="alert">Åren kunde inte laddas.</span>}
           </div>
 
           <div className="h-7 w-px bg-[#d9e5ea]" />
