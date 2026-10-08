@@ -11,7 +11,7 @@ const { PrismaClient } = require("../packages/db/dist");
 if (process.env.RUN_DISPOSABLE_RESTORE_DRILL !== "yes")
   throw new Error("Disposable opt-in required");
 const url =
-  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/ledgerapp_upgrade_2529";
+  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/ledgerapp_upgrade_3034";
 const root = path.resolve(__dirname, ".."),
   schemaRoot = path.join(root, "packages/db/prisma");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "ledgerapp-old-migrations-"));
@@ -115,6 +115,14 @@ async function main() {
       (await db.journalLine.findFirstOrThrow()).projectSnapshot,
       null,
       "No fabricated historical backfill"
+    );
+    assert.equal(
+      (await db.journalLine.findFirstOrThrow()).accountSnapshot,
+      null,
+      "No fabricated legacy account-name backfill"
+    );
+    await assert.rejects(
+      db.account.update({ where: { id: bank }, data: { name: "Rewrite legacy account" } })
     );
     await assert.rejects(
       db.project.update({ where: { id: project }, data: { name: "Rewrite legacy history" } })

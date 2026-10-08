@@ -81,7 +81,24 @@ jobs:
   browser-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      E2E_DATABASE_URL: postgresql://ledgerapp:disposable_ci_only@127.0.0.1:5432/ledgerapp_e2e
+      S3_ENDPOINT: http://127.0.0.1:19500
+      S3_PUBLIC_ENDPOINT: http://127.0.0.1:19500
+      S3_REGION: eu-north-1
+      S3_FORCE_PATH_STYLE: "true"
+      S3_BUCKET: ledgerapp-e2e-ci
+      S3_ACCESS_KEY_ID: disposable_drill_user
+      S3_SECRET_ACCESS_KEY: disposable_drill_secret_only
     services:
+      storage:
+        image: rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+        env:
+          RUSTFS_ACCESS_KEY: disposable_drill_user
+          RUSTFS_SECRET_KEY: disposable_drill_secret_only
+          RUSTFS_CONSOLE_ENABLE: "false"
+        ports:
+          - 19500:9000
       postgres:
         image: postgres:16-alpine
         env:
@@ -117,6 +134,8 @@ jobs:
           PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
         run: pnpm exec playwright install chromium
       - run: node --test scripts/e2e-safety.test.cjs
+      - name: Prepare isolated private browser-test storage
+        run: node scripts/prepare-e2e-storage.cjs
       - name: Browser to local API to disposable PostgreSQL
         env:
           E2E_DATABASE_URL: postgresql://ledgerapp:disposable_ci_only@127.0.0.1:5432/ledgerapp_e2e
@@ -149,7 +168,7 @@ jobs:
             done
             test "$ready" = true
           done
-          docker exec ledgerapp-fas24-pg-20261007 createdb -U ledgerapp_test ledgerapp_upgrade_2529
+          docker exec ledgerapp-fas24-pg-20261007 createdb -U ledgerapp_test ledgerapp_upgrade_3034
       - name: Apply full migrations to empty source
         env:
           DATABASE_URL: postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/ledgerapp_drill

@@ -27,7 +27,9 @@ pnpm(["--filter", "@ledgerapp/web", "build"], {
   E2E_ACCESS_SECRET: "",
   E2E_REFRESH_SECRET: "",
   JWT_ACCESS_SECRET: "",
-  JWT_REFRESH_SECRET: ""
+  JWT_REFRESH_SECRET: "",
+  S3_ACCESS_KEY_ID: "",
+  S3_SECRET_ACCESS_KEY: ""
 });
 pnpm([
   "--filter",

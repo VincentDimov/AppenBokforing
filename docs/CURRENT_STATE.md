@@ -1,6 +1,25 @@
 # LedgerApp — faktiskt nuläge
 
-## FAS 25–29 — current local development, 2026-10-07
+## FAS 30–34 — aktuellt lokalt arbete, 2026-10-08
+
+[Aktuell slutrapport](fas30-34-release-gate.md) ersätter äldre status/testantal.
+Bascommit/master är `441567e0379a1703fe48462408eebe16963bdd06` (FAS 29);
+nya ändringar är lokala/ocommittade. Ingen ny remote CI eller deployment utförd.
+
+Mallhantering och kopiering till vanliga utkast, PC8-preview/bekräftelse/historik,
+alla befintliga tenantbilagor med keyset-sökning, oföränderlig kontosnapshot för
+nya bokföringar/verifikationsrapport, CSV/utskrift för fem rapporter och verkliga
+dashboard-KPI:er är implementerade. Samma Decimal-, behörighets-, snapshot-,
+periodlås-, revisions- och återställningskontrakt återanvänds.
+Fyra nya migrationer ger 23 totalt. FAS 35 är inte påbörjad.
+
+Kontrakt: [mallar](posting-templates.md), [SIE UI](sie-ui.md),
+[arkiv](attachment-archive.md), [export](report-exports.md), [dashboard](dashboard.md).
+P0-07 är fortfarande delvis öppet: inga påhittade historiska kontonamn för äldre
+rader, och företag/samlade rapporters rubriker använder aktuella registeruppgifter.
+Cloud-/operatörs-/SIE-/konkurrensgates och extern redovisningsgranskning kvarstår.
+
+## Historik: FAS 25–29 — lokal verifiering, 2026-10-07
 
 The [current release report](fas25-29-release-gate.md) records phase contracts,
 exact verification counts and explicit remaining production/release gaps.
@@ -15,7 +34,8 @@ Contracts: [onboarding](onboarding.md), [members](members-and-permissions.md),
 [dimensions](dimensions.md). Production email is intentionally unavailable until
 a real provider is configured. General historical presentation metadata P0-07,
 operator controls, full SIE interoperability and real-cloud recovery remain open.
-New work is local/uncommitted/unpushed; no production mutation or FAS 30.
+These phases are now committed in `441567e`; their linked report is a historical
+local verification snapshot. New FAS 30–34 work is tracked separately above.
 
 ## FAS 24 — verified remote baseline, 2026-10-07
 

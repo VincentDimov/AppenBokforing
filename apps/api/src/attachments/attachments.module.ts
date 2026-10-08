@@ -7,10 +7,12 @@ import { AttachmentsController } from "./attachments.controller";
 import { AttachmentsService } from "./attachments.service";
 import { OBJECT_STORAGE } from "./object-storage";
 import { S3ObjectStorageService } from "./s3-object-storage.service";
+import { OrganizationsModule } from "../organizations/organizations.module";
+import { AttachmentArchiveController } from "./attachment-archive.controller";
 
 @Module({
-  imports: [DatabaseModule, JournalEntriesModule],
-  controllers: [AttachmentsController],
+  imports: [DatabaseModule, JournalEntriesModule, OrganizationsModule],
+  controllers: [AttachmentsController, AttachmentArchiveController],
   providers: [
     AttachmentResourceGuard,
     AttachmentsService,

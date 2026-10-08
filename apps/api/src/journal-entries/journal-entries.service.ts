@@ -1164,11 +1164,17 @@ export class JournalEntriesService {
       id: entry.id,
       version: entry.version,
       lines: entry.lines.map((line) => ({
-        account: {
-          id: line.account.id,
-          name: line.account.name,
-          number: line.account.accountNumber
-        },
+        account:
+          line.accountSnapshot &&
+          typeof line.accountSnapshot === "object" &&
+          !Array.isArray(line.accountSnapshot)
+            ? (line.accountSnapshot as unknown as { id: string; name: string; number: string })
+            : {
+                id: line.account.id,
+                name: line.account.name,
+                number: line.account.accountNumber
+              },
+        legacyAccountLabel: entry.status !== "DRAFT" && !line.accountSnapshot,
         costCenter: dimensionLabel(line.costCenterSnapshot, line.costCenter),
         credit: this.toMoneyString(line.creditAmount),
         debit: this.toMoneyString(line.debitAmount),

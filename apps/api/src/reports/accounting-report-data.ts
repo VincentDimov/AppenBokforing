@@ -22,6 +22,7 @@ export async function readAccountingContext(
   });
   if (!fiscalYear) throw new NotFoundException("Fiscal year not found.");
   const accounts = await tx.account.findMany({
+    take: 10001,
     where: { organizationId },
     orderBy: { accountNumber: "asc" },
     select: {
@@ -34,6 +35,7 @@ export async function readAccountingContext(
     }
   });
   const openingBalances = await tx.openingBalance.findMany({
+    take: 10001,
     where: { organizationId, fiscalYearId },
     select: {
       accountId: true,
@@ -43,6 +45,8 @@ export async function readAccountingContext(
       creditAmount: true
     }
   });
+  if (accounts.length > 10000 || openingBalances.length > 10000)
+    accountingDataError("REPORT_TOO_LARGE", "Maximum 10,000 accounts/opening balances per report.");
   const accountMap = new Map(accounts.map((account) => [account.id, account]));
   const opening = new Map<string, Prisma.Decimal>();
   let debit = zeroBalance(),

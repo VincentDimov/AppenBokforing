@@ -46,7 +46,10 @@ export function AppTopbar({
   const fiscalYears = useFiscalYears(activeOrganizationId);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#d9e5ea] bg-[#f7fafb]/95 backdrop-blur">
+    <header
+      data-print-hidden
+      className="sticky top-0 z-30 border-b border-[#d9e5ea] bg-[#f7fafb]/95 backdrop-blur"
+    >
       <div className="flex min-h-[4.25rem] items-center gap-3 px-4 sm:px-6 xl:px-8">
         <Button
           aria-label="Öppna navigering"

@@ -1,4 +1,24 @@
-# Production-readiness — FAS 25–29 / verified FAS 24 baseline
+# Production-readiness — FAS 30–34 / historiska releasebevis
+
+Se [aktuell lokal releasegate](fas30-34-release-gate.md). Bascommit `441567e`
+är FAS 29; FAS 30–34 är ocommittade och ingen ny deployment/remote CI har körts.
+Äldre tabeller nedan är uttryckligen historik, inte aktuella master-/cloudbevis.
+
+Nya återställningskritiska fält: mallarnas standardtext/seriepreferens, kontosnapshots
+och SIE-jobbens filnamn/SHA-256/summering/proveniens. Full DB/blob-drill jämför
+22 modeller och verifierar privat återställd fil samt verklig begränsad runtime LOGIN.
+Beräknad dashboard/arkiv behöver ingen materialiserad backup. Behåll befintliga
+grants; DELETE behövs enbart för utkastmallrader/IB-ersättning, inte bokförd historik.
+Migrationens pg_trgm måste finnas/kunna provisioneras av migrator, inte runtime.
+
+Next.js patchas till 15.5.27 efter två nya advisories; inga undantag eller sänkta
+säkerhetsgates. Lokal audit är noll, inte bevis att en gammal deployment är patchad.
+[Officiell patchrelease](https://github.com/vercel/next.js/releases/tag/v15.5.27).
+Webbens testbuild/server får inte ärva S3-/JWT-/DB-hemligheter från API-fixturen.
+
+P0-03/07/10/11/12/13 kvarstår enligt slutrapporten. Ingen production/legal approval.
+
+## Historik: FAS 25–29 / verifierad FAS 24-baseline
 
 See [FAS 25–29 local gates and remaining blockers](fas25-29-release-gate.md).
 

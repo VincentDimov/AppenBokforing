@@ -122,6 +122,33 @@ async function main() {
     });
     const bank = workspaceAccounts.find((account) => account.accountNumber === "1930"),
       equity = workspaceAccounts.find((account) => account.type === "EQUITY");
+    const templateInput = {
+      code: "LOGIN",
+      name: "Runtime template",
+      defaultText: "Runtime default",
+      voucherSeriesCode: "A",
+      lines: [
+        { accountId: bank.id, side: "DEBIT", amount: "10.01" },
+        { accountId: equity.id, side: "CREDIT", amount: "10.01" }
+      ]
+    };
+    const template = (
+      await agent.post(`${workspace}/posting-templates`).send(templateInput).expect(201)
+    ).body;
+    await agent
+      .patch(`${workspace}/posting-templates/${template.id}`)
+      .send({ ...templateInput, name: "Runtime edited template" })
+      .expect(200);
+    await agent.post(`${workspace}/posting-templates/${template.id}/apply`).expect(201);
+    await agent
+      .get("/dashboard")
+      .query({
+        organizationId: setup.organization.id,
+        fiscalYear: setup.fiscalYear.id,
+        fromDate: "2026-01-01",
+        toDate: "2026-12-31"
+      })
+      .expect(200);
     for (let repetition = 0; repetition < 2; repetition++) {
       const current = (
         await agent

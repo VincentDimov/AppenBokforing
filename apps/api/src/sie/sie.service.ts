@@ -41,7 +41,12 @@ export class SieService {
     confirm: boolean,
     actorUserId?: string,
     requestId?: string,
-    options: { previewToken?: string; fiscalYearId?: string; bytes?: Uint8Array } = {}
+    options: {
+      previewToken?: string;
+      fiscalYearId?: string;
+      bytes?: Uint8Array;
+      fileName?: string;
+    } = {}
   ) {
     if (!options.bytes) assertSieInputSize(content);
     const bytes = options.bytes ?? Buffer.from(content, "utf8");
@@ -102,6 +107,7 @@ export class SieService {
     if (!fiscalYear)
       throw new NotFoundException("Skapa motsvarande räkenskapsår innan import bekräftas.");
     const importId = randomUUID();
+    let accountsCreated = 0;
     await this.database.prisma.$transaction(
       async (tx) => {
         await requireOpenCalendar(tx, organizationId, fiscalYear.id);
@@ -112,6 +118,7 @@ export class SieService {
             message: "Import mapping changed or conflicts with existing accounting data.",
             validationErrors: review.conflicts
           });
+        preview.warnings.push(...review.warnings);
         const accounts = new Map(
           (
             await tx.account.findMany({
@@ -120,6 +127,18 @@ export class SieService {
             })
           ).map((account) => [account.accountNumber, account.id])
         );
+        await tx.sieImport.create({
+          data: {
+            id: importId,
+            organizationId,
+            fiscalYearId: fiscalYear.id,
+            importedById: actorUserId,
+            status: "PROCESSING",
+            startedAt: new Date(),
+            sourceFileName: options.fileName ?? null,
+            sourceSha256: createHash("sha256").update(bytes).digest("hex")
+          }
+        });
         for (const account of document.accounts)
           if (!accounts.has(account.number)) {
             const created = await tx.account.create({
@@ -149,6 +168,7 @@ export class SieService {
               }
             });
             accounts.set(account.number, created.id);
+            accountsCreated++;
           }
         const projects = new Map<string, string>();
         const costCenters = new Map<string, string>();
@@ -255,6 +275,7 @@ export class SieService {
               voucherSeriesId: series.id,
               status: JournalEntryStatus.DRAFT,
               source: JournalEntrySource.SIE_IMPORT,
+              sieImportId: importId,
               entryDate: new Date(`${voucher.date}T00:00:00.000Z`),
               description: voucher.text || "SIE-import",
               createdById: actorUserId,
@@ -314,6 +335,21 @@ export class SieService {
             }
           });
         }
+        await tx.sieImport.update({
+          where: { id: importId },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+            importedEntryCount: document.vouchers.length,
+            summary: {
+              accountsCreated,
+              accountsReused: document.accounts.length - accountsCreated,
+              openingBalances: document.openingBalances.length,
+              dimensions: document.objects.length,
+              warnings: preview.warnings
+            }
+          }
+        });
         await tx.auditEvent.create({
           data: {
             organizationId,
@@ -334,7 +370,13 @@ export class SieService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30000 }
     );
-    return { mode: "CONFIRMED", ...preview };
+    return {
+      mode: "CONFIRMED",
+      ...preview,
+      importId,
+      accountsCreated,
+      accountsReused: document.accounts.length - accountsCreated
+    };
   }
   async export(
     organizationId: string,
@@ -586,13 +628,22 @@ export class SieService {
   }
   private previewResult(document: SieDocument) {
     return {
+      organization: document.organization ?? null,
+      accounts: document.accounts,
+      openingBalances: document.openingBalances,
+      dimensions: document.objects,
       fiscalYear: document.fiscalYear ?? null,
       fiscalYears: document.fiscalYears,
       openingBalancesFound: document.openingBalances.length,
       objectsFound: document.objects.length,
       accountsFound: document.accounts.length,
       vouchersFound: document.vouchers.length,
-      warnings: document.warnings,
+      warnings: [
+        ...document.warnings,
+        ...(document.vouchers.length
+          ? ["Imported VAT roles are unclassified and require manual review."]
+          : [])
+      ],
       validationErrors: document.errors
     };
   }

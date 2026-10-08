@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ReportTools } from "./report-tools";
 
 import { useReportRequest } from "@/lib/use-report-request";
 
@@ -40,7 +41,7 @@ function OrganizationBalanceSheetPage() {
   const [fiscalYear, setFiscalYear] = useState("");
   const [reportDate, setReportDate] = useState("");
   const [comparisonDate, setComparisonDate] = useState("");
-  const { report, error, setError, load } = useReportRequest<BalanceSheet>();
+  const { report, error, setError, load, loadedUrl } = useReportRequest<BalanceSheet>();
 
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !reportDate)
@@ -54,44 +55,14 @@ function OrganizationBalanceSheetPage() {
     await load(`/api/reports/balance-sheet?${query}`);
   }
 
-  function exportCsv() {
-    if (!report) return;
-    const rows = [["Grupp", "Konto", "Namn", "Belopp", "Jämförelse"]];
-    for (const group of report.groups) {
-      for (const account of group.accounts)
-        rows.push([
-          group.label,
-          account.number,
-          account.name,
-          account.amount,
-          account.comparisonAmount
-        ]);
-      rows.push([
-        group.label,
-        "",
-        `Summa ${group.label.toLowerCase()}`,
-        group.total,
-        group.comparisonTotal
-      ]);
-    }
-    const csv = rows
-      .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(";"))
-      .join("\r\n");
-    const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `balansrakning-${report.reportDate}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
     <div className="mx-auto max-w-5xl print:max-w-none">
       <header className="border-b border-[#ccdce4] pb-6">
         <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
         <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Balansräkning</h1>
       </header>
-      <section className="mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
+      <ReportTools report={report} url={loadedUrl} />
+      <section className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
         <input
           aria-label="Räkenskapsår"
           className={inputClass}
@@ -119,9 +90,6 @@ function OrganizationBalanceSheetPage() {
           </Button>
           <Button type="button" variant="outline" disabled={!report} onClick={() => window.print()}>
             Skriv ut / PDF
-          </Button>
-          <Button type="button" variant="outline" disabled={!report} onClick={exportCsv}>
-            Exportera CSV
           </Button>
         </div>
       </section>

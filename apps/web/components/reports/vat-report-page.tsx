@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ReportTools } from "./report-tools";
 
 import { useReportRequest } from "@/lib/use-report-request";
 
@@ -48,7 +49,7 @@ function OrganizationVatReportPage() {
   const [fiscalYear, setFiscalYear] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const { report, error, setError, load } = useReportRequest<VatReport>();
+  const { report, error, setError, load, loadedUrl } = useReportRequest<VatReport>();
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate)
       return setError("Välj räkenskapsår och datumintervall.");
@@ -60,39 +61,15 @@ function OrganizationVatReportPage() {
     });
     await load(`/api/reports/vat?${query}`);
   }
-  function exportCsv() {
-    if (!report) return;
-    const rows = [
-      ["VAT-kod", "Namn", "Typ", "Sats", "Underlag", "Ingående", "Utgående"],
-      ...report.codes.map((code) => [
-        code.code,
-        code.name,
-        code.type,
-        code.rate,
-        code.taxableBase,
-        code.inputAmount,
-        code.outputAmount
-      ])
-    ];
-    const content = rows
-      .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(";"))
-      .join("\r\n");
-    const url = URL.createObjectURL(
-      new Blob(["\ufeff", content], { type: "text/csv;charset=utf-8" })
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `momsrapport-${toDate}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
+
   return (
     <div className="mx-auto max-w-5xl print:max-w-none">
       <header className="border-b border-[#ccdce4] pb-6">
         <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
         <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Momsrapport</h1>
       </header>
-      <section className="mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
+      <ReportTools report={report} url={loadedUrl} />
+      <section className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
         <input
           aria-label="Räkenskapsår"
           className={inputClass}
@@ -120,9 +97,6 @@ function OrganizationVatReportPage() {
           </Button>
           <Button type="button" variant="outline" disabled={!report} onClick={() => window.print()}>
             Skriv ut / PDF
-          </Button>
-          <Button type="button" variant="outline" disabled={!report} onClick={exportCsv}>
-            Exportera CSV
           </Button>
         </div>
       </section>

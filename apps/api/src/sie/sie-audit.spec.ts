@@ -16,8 +16,20 @@ describe("SIE processing history", () => {
       }
     } as unknown as DatabaseService);
     const mapping = { fiscalYearId: "year" };
-    const preview = await service.import("organization", content, false, undefined, undefined, mapping);
-    await expect(service.import("organization", content, true, undefined, undefined, { ...mapping, previewToken: (preview as { previewToken: string }).previewToken })).rejects.toThrow("closed");
+    const preview = await service.import(
+      "organization",
+      content,
+      false,
+      undefined,
+      undefined,
+      mapping
+    );
+    await expect(
+      service.import("organization", content, true, undefined, undefined, {
+        ...mapping,
+        previewToken: (preview as { previewToken: string }).previewToken
+      })
+    ).rejects.toThrow("closed");
     expect(create).not.toHaveBeenCalled();
   });
   it("keeps preview free of all database writes", async () => {
@@ -38,6 +50,10 @@ describe("SIE processing history", () => {
       fiscalYear: { findFirst: jest.fn().mockResolvedValue({ id: "year" }) },
       openingBalance: { findMany: jest.fn().mockResolvedValue([]) },
       accountingPeriod: { findMany: jest.fn().mockResolvedValue([]) },
+      sieImport: {
+        create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({})
+      },
       auditEvent: { create }
     };
     const transaction = jest.fn(async (callback: (client: typeof tx) => Promise<void>) =>
@@ -50,9 +66,29 @@ describe("SIE processing history", () => {
       }
     } as unknown as DatabaseService);
     const mapping = { fiscalYearId: "year" };
-    const preview = await service.import("organization", content, false, "actor", "request", mapping);
-    await service.import("organization", content, true, "actor", "request", { ...mapping, previewToken: (preview as { previewToken: string }).previewToken });
+    const preview = await service.import(
+      "organization",
+      content,
+      false,
+      "actor",
+      "request",
+      mapping
+    );
+    await service.import("organization", content, true, "actor", "request", {
+      ...mapping,
+      previewToken: (preview as { previewToken: string }).previewToken
+    });
     expect(transaction).toHaveBeenCalledTimes(1);
+    expect(tx.sieImport.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: "organization",
+        status: "PROCESSING",
+        importedById: "actor"
+      })
+    });
+    expect(tx.sieImport.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "COMPLETED" }) })
+    );
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         organizationId: "organization",

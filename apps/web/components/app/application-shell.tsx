@@ -94,7 +94,7 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
         </div>
       ) : null}
 
-      <div className="lg:pl-[17.5rem]">
+      <div className="lg:pl-[17.5rem] print:pl-0">
         <AppTopbar
           activeOrganization={activeOrganization}
           activeOrganizationId={activeOrganizationId}

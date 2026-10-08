@@ -137,6 +137,22 @@ export class AccountsService {
             : await this.resolveVatCodeId(transaction, organizationId, dto.vatCode);
         const accountType = dto.accountType ?? before.type;
         if (
+          dto.name !== undefined &&
+          dto.name !== before.name &&
+          (await transaction.journalLine.count({
+            where: {
+              organizationId,
+              accountId,
+              accountSnapshot: { equals: Prisma.DbNull },
+              journalEntry: { status: "POSTED" }
+            }
+          }))
+        )
+          throw new ConflictException({
+            code: "LEGACY_ACCOUNT_LABEL_IN_USE",
+            message: "Kontonamnet används av äldre bokföring utan historisk namn-snapshot."
+          });
+        if (
           ((dto.number !== undefined && dto.number !== before.accountNumber) ||
             (dto.accountType !== undefined && dto.accountType !== before.type)) &&
           ((await transaction.openingBalance.count({ where: { organizationId, accountId } })) ||

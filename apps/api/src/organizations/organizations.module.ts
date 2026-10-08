@@ -15,6 +15,8 @@ import { OpeningBalancesController } from "./opening-balances.controller";
 import { OpeningBalancesService } from "./opening-balances.service";
 import { DimensionsController } from "./dimensions.controller";
 import { DimensionsService } from "./dimensions.service";
+import { PostingTemplatesController } from "./posting-templates.controller";
+import { PostingTemplatesService } from "./posting-templates.service";
 
 @Module({
   imports: [DatabaseModule],
@@ -25,7 +27,8 @@ import { DimensionsService } from "./dimensions.service";
     InvitationAcceptanceController,
     VoucherSeriesController,
     OpeningBalancesController,
-    DimensionsController
+    DimensionsController,
+    PostingTemplatesController
   ],
   providers: [
     OrganizationMembershipGuard,
@@ -35,7 +38,8 @@ import { DimensionsService } from "./dimensions.service";
     InvitationDelivery,
     VoucherSeriesService,
     OpeningBalancesService,
-    DimensionsService
+    DimensionsService,
+    PostingTemplatesService
   ],
   exports: [OrganizationMembershipGuard, OrganizationsService]
 })

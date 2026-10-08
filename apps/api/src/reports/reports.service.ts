@@ -9,6 +9,7 @@ import { VatReportQueryDto } from "./dto/vat-report-query.dto";
 import { calculateVatReport, type VatReportLine } from "../vat/vat-reporting-engine";
 import { mapSwedishVatReport } from "../vat/swedish-vat-configuration";
 
+import { incomeGroups } from "./income-groups";
 import { TrialBalanceQueryDto } from "./dto/trial-balance-query.dto";
 import {
   balanceSides,
@@ -82,6 +83,7 @@ export class ReportsService {
           )
         : new Map<string, { debit: Prisma.Decimal; credit: Prisma.Decimal }>();
     const lines = await tx.journalLine.findMany({
+      take: 20001,
       select: {
         accountId: true,
         debitAmount: true,
@@ -118,6 +120,11 @@ export class ReportsService {
         }
       }
     });
+    if (lines.length > 20000)
+      accountingDataError(
+        "REPORT_TOO_LARGE",
+        "Limit the ledger interval/account filters; maximum 20,000 journal lines per report."
+      );
     const byAccount = new Map(
       accounts.map((account) => [
         account.id,
@@ -197,72 +204,19 @@ export class ReportsService {
       throw new BadRequestException("The report interval must be within the selected fiscal year.");
     }
 
-    const lines = await tx.journalLine.findMany({
-      include: {
-        account: { select: { accountNumber: true, id: true, name: true, type: true } },
-        journalEntry: { select: { entryDate: true } }
-      },
-      where: {
-        organizationId,
-        account: { type: { in: [AccountType.REVENUE, AccountType.EXPENSE] } },
-        ...(query.project ? { project: { code: query.project } } : {}),
-        ...(query.costCenter ? { costCenter: { code: query.costCenter } } : {}),
-        journalEntry: {
-          organizationId,
-          fiscalYearId: fiscalYear.id,
-          status: JournalEntryStatus.POSTED,
-          entryDate: { gte: fiscalYear.startDate, lte: toDate }
-        }
-      }
+    const accounts = await tx.account.findMany({
+      where: { organizationId, type: { in: [AccountType.REVENUE, AccountType.EXPENSE] } },
+      take: 10001,
+      orderBy: { accountNumber: "asc" },
+      select: { id: true, accountNumber: true, name: true, type: true }
     });
-    type Bucket = {
-      account: (typeof lines)[number]["account"];
-      period: Prisma.Decimal;
-      yearToDate: Prisma.Decimal;
-    };
-    const buckets = new Map<string, Bucket>();
-    for (const line of lines) {
-      const bucket = buckets.get(line.accountId) ?? {
-        account: line.account,
-        period: zeroBalance(),
-        yearToDate: zeroBalance()
-      };
-      // Income is shown positive for credits, expenses positive for debits.
-      const amount = presentationBalance(
-        rawBalance(line.debitAmount, line.creditAmount),
-        line.account.type
-      );
-      bucket.yearToDate = bucket.yearToDate.plus(amount);
-      if (line.journalEntry.entryDate >= fromDate) bucket.period = bucket.period.plus(amount);
-      buckets.set(line.accountId, bucket);
-    }
-    const groups = [AccountType.REVENUE, AccountType.EXPENSE].map((type) => {
-      const accounts = [...buckets.values()]
-        .filter((bucket) => bucket.account.type === type)
-        .sort((left, right) =>
-          left.account.accountNumber.localeCompare(right.account.accountNumber)
-        );
-      const periodTotal = accounts.reduce(
-        (total, account) => total.plus(account.period),
-        zeroBalance()
-      );
-      const yearToDateTotal = accounts.reduce(
-        (total, account) => total.plus(account.yearToDate),
-        zeroBalance()
-      );
-      return {
-        key: type,
-        label: type === AccountType.REVENUE ? "Intäkter" : "Kostnader",
-        accounts: accounts.map((account) => ({
-          number: account.account.accountNumber,
-          name: account.account.name,
-          periodAmount: account.period.toFixed(2),
-          yearToDateAmount: account.yearToDate.toFixed(2)
-        })),
-        periodTotal: periodTotal.toFixed(2),
-        yearToDateTotal: yearToDateTotal.toFixed(2)
-      };
-    });
+    if (accounts.length > 10000)
+      accountingDataError("REPORT_TOO_LARGE", "Maximum 10,000 income accounts per report.");
+    const [period, accumulated] = await Promise.all([
+      readPostedMovements(tx, organizationId, fiscalYear.id, fromDate, toDate, query),
+      readPostedMovements(tx, organizationId, fiscalYear.id, fiscalYear.startDate, toDate, query)
+    ]);
+    const groups = incomeGroups(accounts, period, accumulated);
     const revenue = groups[0]!;
     const expenses = groups[1]!;
     return {
@@ -481,66 +435,183 @@ export class ReportsService {
   }
 
   async vat(organizationId: string, query: VatReportQueryDto) {
-    return this.snapshot(async (tx) => {
-      const fromDate = this.asUtcDate(query.fromDate);
-      const toDate = this.asUtcDate(query.toDate);
-      if (fromDate > toDate) throw new BadRequestException("fromDate must be on or before toDate.");
-      const fiscalYear = await tx.fiscalYear.findFirst({
-        select: { endDate: true, id: true, name: true, startDate: true },
-        where: { id: query.fiscalYear, organizationId }
-      });
-      if (!fiscalYear) throw new NotFoundException("Fiscal year not found.");
-      if (fromDate < fiscalYear.startDate || toDate > fiscalYear.endDate) {
-        throw new BadRequestException(
-          "The report interval must be within the selected fiscal year."
-        );
-      }
-      const lines = await tx.journalLine.findMany({
-        include: {
-          account: { select: { accountNumber: true, name: true, vatCodeId: true } },
-          journalEntry: {
-            select: {
-              entryDate: true,
-              voucherNumber: true,
-              voucherSeries: { select: { code: true } }
-            }
-          },
-          vatCode: { select: { code: true, id: true, name: true, rate: true, type: true } }
-        },
-        orderBy: [{ journalEntry: { entryDate: "asc" } }, { lineNumber: "asc" }],
-        where: {
-          organizationId,
-          journalEntry: {
-            organizationId,
-            fiscalYearId: fiscalYear.id,
-            status: JournalEntryStatus.POSTED,
-            entryDate: { gte: fromDate, lte: toDate }
+    return this.snapshot((tx) => this.vatSnapshot(tx, organizationId, query));
+  }
+
+  private async vatSnapshot(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    query: VatReportQueryDto
+  ) {
+    const fromDate = this.asUtcDate(query.fromDate);
+    const toDate = this.asUtcDate(query.toDate);
+    if (fromDate > toDate) throw new BadRequestException("fromDate must be on or before toDate.");
+    const fiscalYear = await tx.fiscalYear.findFirst({
+      select: { endDate: true, id: true, name: true, startDate: true },
+      where: { id: query.fiscalYear, organizationId }
+    });
+    if (!fiscalYear) throw new NotFoundException("Fiscal year not found.");
+    if (fromDate < fiscalYear.startDate || toDate > fiscalYear.endDate) {
+      throw new BadRequestException("The report interval must be within the selected fiscal year.");
+    }
+    const lines = await tx.journalLine.findMany({
+      take: 20001,
+      include: {
+        account: { select: { accountNumber: true, name: true, vatCodeId: true } },
+        journalEntry: {
+          select: {
+            entryDate: true,
+            voucherNumber: true,
+            voucherSeries: { select: { code: true } }
           }
+        },
+        vatCode: { select: { code: true, id: true, name: true, rate: true, type: true } }
+      },
+      orderBy: [{ journalEntry: { entryDate: "asc" } }, { lineNumber: "asc" }],
+      where: {
+        organizationId,
+        journalEntry: {
+          organizationId,
+          fiscalYearId: fiscalYear.id,
+          status: JournalEntryStatus.POSTED,
+          entryDate: { gte: fromDate, lte: toDate }
         }
-      });
-      const report = calculateVatReport(
-        lines.map((line): VatReportLine => ({
-          account: line.account,
-          accountId: line.accountId,
-          creditAmount: line.creditAmount,
-          debitAmount: line.debitAmount,
-          entryDate: line.journalEntry.entryDate,
-          journalEntryId: line.journalEntryId,
-          vatRole: line.vatRole,
-          vatGroup: line.vatGroup,
-          vatSnapshot: line.vatSnapshot,
-          vatCodeId: line.vatCodeId,
-          voucherLabel: line.journalEntry.voucherNumber
-            ? `${line.journalEntry.voucherSeries?.code ?? ""}${line.journalEntry.voucherNumber}`
-            : null
-        }))
+      }
+    });
+    if (lines.length > 20000)
+      accountingDataError(
+        "REPORT_TOO_LARGE",
+        "Limit the VAT report interval; maximum 20,000 journal lines per report."
       );
+    const report = calculateVatReport(
+      lines.map((line): VatReportLine => ({
+        account: line.account,
+        accountId: line.accountId,
+        creditAmount: line.creditAmount,
+        debitAmount: line.debitAmount,
+        entryDate: line.journalEntry.entryDate,
+        journalEntryId: line.journalEntryId,
+        vatRole: line.vatRole,
+        vatGroup: line.vatGroup,
+        vatSnapshot: line.vatSnapshot,
+        vatCodeId: line.vatCodeId,
+        voucherLabel: line.journalEntry.voucherNumber
+          ? `${line.journalEntry.voucherSeries?.code ?? ""}${line.journalEntry.voucherNumber}`
+          : null
+      }))
+    );
+    return {
+      fiscalYear: { id: fiscalYear.id, name: fiscalYear.name },
+      fromDate: query.fromDate,
+      toDate: query.toDate,
+      swedishReturn: mapSwedishVatReport(report, query.fromDate, query.toDate),
+      ...report
+    };
+  }
+
+  async dashboard(organizationId: string, query: IncomeStatementQueryDto) {
+    if (query.project || query.costCenter)
+      throw new BadRequestException(
+        "Dashboard dimension filters are not supported; use the income statement for dimensional reports."
+      );
+    return this.snapshot(async (tx) => {
+      const income = await this.incomeStatementSnapshot(tx, organizationId, query);
+      const context = await readAccountingContext(tx, organizationId, query.fiscalYear);
+      const vat = await this.vatSnapshot(tx, organizationId, query);
+      // One PostgreSQL aggregation, not all journal lines loaded into Node.
+      const monthly = await tx.$queryRaw<
+        { month: Date; accountId: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[]
+      >`
+        SELECT date_trunc('month', e.entry_date)::date AS month, l.account_id AS "accountId",
+          sum(l.debit_amount) AS debit, sum(l.credit_amount) AS credit
+        FROM journal_lines l JOIN journal_entries e ON e.id=l.journal_entry_id AND e.organization_id=l.organization_id
+        JOIN accounts a ON a.id=l.account_id AND a.organization_id=l.organization_id
+        WHERE l.organization_id=${organizationId}::uuid AND e.fiscal_year_id=${query.fiscalYear}::uuid AND e.status='POSTED'
+          AND a.type IN ('REVENUE','EXPENSE') AND e.entry_date >= ${context.fiscalYear.startDate} AND e.entry_date <= ${context.fiscalYear.endDate}
+          AND (${query.project ?? null}::text IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=l.project_id AND p.organization_id=l.organization_id AND p.code=${query.project ?? null}))
+          AND (${query.costCenter ?? null}::text IS NULL OR EXISTS(SELECT 1 FROM cost_centers c WHERE c.id=l.cost_center_id AND c.organization_id=l.organization_id AND c.code=${query.costCenter ?? null}))
+        GROUP BY date_trunc('month',e.entry_date),l.account_id ORDER BY month,l.account_id
+      `;
+      const chart: { month: string; revenue: string; expenses: string; result: string }[] = [];
+      const cursor = new Date(
+        Date.UTC(
+          context.fiscalYear.startDate.getUTCFullYear(),
+          context.fiscalYear.startDate.getUTCMonth(),
+          1
+        )
+      );
+      while (cursor <= context.fiscalYear.endDate) {
+        if (chart.length >= 24)
+          accountingDataError(
+            "REPORT_TOO_LARGE",
+            "Dashboard supports fiscal years up to 24 calendar months."
+          );
+        const month = cursor.toISOString().slice(0, 7),
+          moves = new Map(
+            monthly
+              .filter((row) => row.month.toISOString().slice(0, 7) === month)
+              .map((row) => [row.accountId, { debit: row.debit, credit: row.credit }])
+          );
+        const groups = incomeGroups(context.accounts, moves, moves);
+        chart.push({
+          month,
+          revenue: groups[0]!.periodTotal,
+          expenses: groups[1]!.periodTotal,
+          result: new Prisma.Decimal(groups[0]!.periodTotal)
+            .minus(groups[1]!.periodTotal)
+            .toFixed(2)
+        });
+        cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+      }
+      const where: Prisma.JournalEntryWhereInput = {
+        organizationId,
+        fiscalYearId: query.fiscalYear,
+        entryDate: { gte: this.asUtcDate(query.fromDate), lte: this.asUtcDate(query.toDate) }
+      };
+      const [drafts, posted, recent] = await Promise.all([
+        tx.journalEntry.count({ where: { ...where, status: "DRAFT" } }),
+        tx.journalEntry.count({ where: { ...where, status: "POSTED" } }),
+        tx.journalEntry.findMany({
+          where,
+          take: 8,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            description: true,
+            status: true,
+            entryDate: true,
+            voucherNumber: true,
+            reversesEntryId: true,
+            reversedByEntry: { select: { id: true } },
+            voucherSeries: { select: { code: true } }
+          }
+        })
+      ]);
       return {
-        fiscalYear: { id: fiscalYear.id, name: fiscalYear.name },
+        organizationId,
+        fiscalYear: context.fiscalYear,
         fromDate: query.fromDate,
         toDate: query.toDate,
-        swedishReturn: mapSwedishVatReport(report, query.fromDate, query.toDate),
-        ...report
+        filters: { project: query.project ?? null, costCenter: query.costCenter ?? null },
+        kpis: {
+          revenue: income.groups[0]!.periodTotal,
+          expenses: income.groups[1]!.periodTotal,
+          result: income.totals.periodResult,
+          inputVat: vat.totals.inputVat,
+          outputVat: vat.totals.outputVat,
+          vatPosition: vat.totals.vatPosition,
+          drafts,
+          posted
+        },
+        vatStatus: {
+          anomalies: vat.anomalies.length,
+          warnings: vat.swedishReturn.warnings,
+          configurationVersion: vat.swedishReturn.configurationVersion
+        },
+        chart,
+        recent,
+        hasOpeningBalances: context.opening.size > 0,
+        generatedAt: new Date().toISOString()
       };
     });
   }

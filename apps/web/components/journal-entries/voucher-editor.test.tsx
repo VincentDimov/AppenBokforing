@@ -25,6 +25,7 @@ beforeEach(() => {
     const path = String(url);
     if (path.includes("/options?")) return jsonResponse(demoOptions);
     if (path.includes("/attachments")) return jsonResponse([]);
+    if (path.includes("/posting-templates")) return jsonResponse([]);
     if (path.includes("/projects?") || path.includes("/cost-centers?")) return jsonResponse([]);
     if (path.includes("/accounts?"))
       return jsonResponse(demoEntry.lines.map((line) => ({ ...line.account, active: true })));

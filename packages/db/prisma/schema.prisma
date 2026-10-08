@@ -428,7 +428,10 @@ model SieImport {
   id                 String       @id @default(uuid()) @db.Uuid
   organizationId     String       @map("organization_id") @db.Uuid
   fiscalYearId       String?      @map("fiscal_year_id") @db.Uuid
-  sourceAttachmentId String       @map("source_attachment_id") @db.Uuid
+  sourceAttachmentId String?      @map("source_attachment_id") @db.Uuid
+  sourceFileName     String?      @map("source_file_name") @db.VarChar(160)
+  sourceSha256       String?      @map("source_sha256") @db.Char(64)
+  summary            Json?
   status             SieJobStatus @default(PENDING)
   sourceSystem       String?      @map("source_system") @db.VarChar(160)
   importedById       String?      @map("imported_by_id") @db.Uuid
@@ -442,7 +445,7 @@ model SieImport {
 
   organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   fiscalYear       FiscalYear?    @relation(fields: [fiscalYearId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
-  sourceAttachment Attachment     @relation("SieImportSourceAttachment", fields: [sourceAttachmentId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
+  sourceAttachment Attachment?    @relation("SieImportSourceAttachment", fields: [sourceAttachmentId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Restrict)
   importedBy       User?          @relation("SieImportInitiatedBy", fields: [importedById], references: [id], onDelete: SetNull, onUpdate: Restrict)
   journalEntries   JournalEntry[]
 
@@ -498,6 +501,7 @@ model JournalEntry {
 }
 
 model JournalLine {
+  accountSnapshot Json? @map("account_snapshot") @db.JsonB
   projectSnapshot Json? @map("project_snapshot") @db.JsonB
   costCenterSnapshot Json? @map("cost_center_snapshot") @db.JsonB
   id             String      @id @default(uuid()) @db.Uuid
@@ -561,6 +565,7 @@ model Attachment {
   @@unique([id, organizationId])
   @@index([organizationId, journalEntryId, createdAt])
   @@index([organizationId, sha256])
+  @@index([organizationId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("attachments")
 }
 
@@ -570,6 +575,8 @@ model PostingTemplate {
   code           String   @db.VarChar(40)
   name           String   @db.VarChar(160)
   description    String?  @db.VarChar(500)
+  defaultText    String?  @map("default_text") @db.VarChar(500)
+  voucherSeriesCode String? @map("voucher_series_code") @db.VarChar(16)
   isActive       Boolean  @default(true) @map("is_active")
   createdById    String?  @map("created_by_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)

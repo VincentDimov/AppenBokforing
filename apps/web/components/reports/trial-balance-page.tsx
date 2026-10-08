@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ReportTools } from "./report-tools";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { useReportRequest } from "@/lib/use-report-request";
@@ -34,7 +35,7 @@ function OrganizationTrialBalancePage() {
   const [fiscalYear, setFiscalYear] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const { report, error, setError, load } = useReportRequest<TrialBalanceReport>();
+  const { report, error, setError, load, loadedUrl } = useReportRequest<TrialBalanceReport>();
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate) {
       setError("Välj räkenskapsår och datumintervall.");
@@ -56,8 +57,9 @@ function OrganizationTrialBalancePage() {
         <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
         <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Saldobalans</h1>
       </header>
+      <ReportTools report={report} url={loadedUrl} />
       <section
-        className="mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4 print:hidden"
+        className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4 print:hidden"
         aria-label="Rapportfilter"
       >
         <input

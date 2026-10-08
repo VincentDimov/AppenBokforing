@@ -20,6 +20,7 @@ import {
   type AccountChoice
 } from "@/components/journal-entries/account-typeahead";
 import { VoucherAttachments } from "@/components/journal-entries/voucher-attachments";
+import { TemplatePicker } from "@/components/journal-entries/template-picker";
 import { DimensionTypeahead } from "@/components/journal-entries/dimension-typeahead";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
@@ -583,6 +584,14 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           </div>
         ) : null}
       </header>
+      {entry && (
+        <Link
+          className="mt-3 inline-block underline print:hidden"
+          href={`/reports/voucher/${entry.id}`}
+        >
+          Verifikationsrapport / Skriv ut
+        </Link>
+      )}
 
       {error ? (
         <div
@@ -735,6 +744,20 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         </div>
       ) : null}
 
+      {isDraft && canWrite && activeOrganizationId && (
+        <TemplatePicker
+          org={activeOrganizationId}
+          disabled={!isEditable}
+          onApply={(draft) => {
+            setDescription(draft.description);
+            setLines(draft.lines.map((line) => ({ ...createLine(), ...line })));
+            const series = options?.voucherSeries.find(
+              (series) => series.code === draft.voucherSeriesCode
+            );
+            if (series) setVoucherSeriesId(series.id);
+          }}
+        />
+      )}
       <section className="mt-6 border border-[#d6e3e9] bg-white shadow-[0_8px_22px_rgba(16,47,66,0.035)]">
         <div className="grid gap-5 border-b border-[#e1ebef] p-5 md:grid-cols-2 xl:grid-cols-[minmax(13rem,0.8fr)_minmax(10rem,0.55fr)_minmax(0,1.7fr)] md:p-6">
           <label className="block">

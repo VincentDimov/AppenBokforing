@@ -94,6 +94,9 @@ erDiagram
     uuid account_id FK
     decimal debit_amount
     decimal credit_amount
+    json account_snapshot
+    json project_snapshot
+    json cost_center_snapshot
   }
   PROJECT {
     uuid id PK
@@ -115,6 +118,8 @@ erDiagram
     uuid id PK
     uuid organization_id FK
     string code
+    string default_text
+    string voucher_series_code
   }
   POSTING_TEMPLATE_LINE {
     uuid id PK
@@ -145,6 +150,9 @@ erDiagram
     uuid fiscal_year_id FK
     uuid source_attachment_id FK
     enum status
+    string source_file_name
+    string source_sha256
+    json summary
   }
   SIE_EXPORT {
     uuid id PK
@@ -181,7 +189,7 @@ erDiagram
 
   ORGANIZATION ||--o{ ATTACHMENT : owns
   JOURNAL_ENTRY o|--o{ ATTACHMENT : documents
-  ATTACHMENT ||--o{ SIE_IMPORT : source_file
+  ATTACHMENT o|--o{ SIE_IMPORT : optional_source_file
   SIE_IMPORT o|--o{ JOURNAL_ENTRY : provenance
   ATTACHMENT o|--o{ SIE_EXPORT : output_file
 

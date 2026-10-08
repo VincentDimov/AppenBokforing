@@ -10,6 +10,7 @@ import { PrismaClient } from "@ledgerapp/db";
 import { goldenAccounting as golden } from "../../../tests/fixtures/accounting-golden";
 import { readFile } from "node:fs/promises";
 import { parseSie4 } from "@ledgerapp/sie";
+import { validateIndependent } from "../../../tests/sie-independent.cjs";
 
 type Organization = {
   id: string;
@@ -187,13 +188,17 @@ async function posted(org: Organization, amount = "1000.00", expense = false) {
   return entry;
 }
 async function selectOrg(page: Page, org: Organization) {
-  await page.getByRole("combobox", { name: "Aktiv organisation" }).last().click();
+  const selector = page.getByRole("combobox", { name: "Aktiv organisation" }).last();
+  if ((await selector.textContent())?.includes(org.name)) return;
+  await selector.click();
   await page.getByRole("option", { name: org.name, exact: true }).click();
 }
 async function open(page: Page, org: Organization, route: string) {
-  await page.goto("/app");
+  // Navigate directly: loading a dashboard before every destination creates
+  // redundant year requests and can exhaust the real per-IP read limiter.
+  // Do not weaken production throttling to accommodate an artificial test storm.
+  await page.goto(route ? "/app/" + route : "/app");
   await selectOrg(page, org);
-  await page.goto("/app/" + route);
 }
 async function fillVoucher(page: Page, amount: string) {
   for (const [index, number] of ["1930", "3000"].entries()) {
@@ -241,6 +246,123 @@ test.beforeEach(async ({ context }) => {
   await context.addCookies(cookies);
 });
 
+test("posting template create → use → change amount → normal posting", async ({ page }) => {
+  const org = await onboardWorkspace("E2E template flow");
+  await open(page, org, "bookkeeping/posting-templates");
+  await page.getByLabel("Mallkod", { exact: true }).fill("RECURRING");
+  await page.getByLabel("Mallnamn", { exact: true }).fill("Återkommande bankmall");
+  await page.getByLabel("Verifikationstext", { exact: true }).fill("Mallförslag");
+  for (const [index, number] of ["1930", "3000"].entries()) {
+    const row = page.getByRole("group", { name: `Mallrad ${index + 1}` });
+    await row.getByRole("combobox").first().fill(number);
+    await page.getByRole("option", { name: new RegExp("^" + number) }).click();
+  }
+  await page
+    .getByRole("group", { name: "Mallrad 2" })
+    .getByLabel("Sida", { exact: true })
+    .selectOption("CREDIT");
+  await page.getByRole("button", { name: "Spara mall", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Konteringsmall sparad.");
+  await page.goto("/app/bookkeeping/vouchers/new");
+  await page.getByLabel("Mall", { exact: true }).selectOption({ label: "Återkommande bankmall" });
+  await page.getByLabel("Ersätt raderna i utkastet").check();
+  await page.getByRole("button", { name: "Använd mall", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Beskrivning", exact: true })).toHaveValue(
+    "Mallförslag"
+  );
+  await page.getByLabel("Debet rad 1").fill("123.45");
+  await page.getByLabel("Kredit rad 2").fill("123.45");
+  await page.getByRole("button", { name: "Spara utkast", exact: true }).click();
+  await expect(page).toHaveURL(/vouchers\/[0-9a-f-]+$/);
+  const id = page.url().split("/").at(-1)!;
+  await page.getByLabel("Debet rad 1").fill("234.56");
+  await page.getByLabel("Kredit rad 2").fill("234.56");
+  await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
+  expect((await storedEntry(id)).lines[0]!.debitAmount.toFixed(2)).toBe("234.56");
+});
+
+test("SIE UI PC8 file → preview warnings → explicit confirm → report → binary export", async ({
+  page
+}) => {
+  const org = await onboardWorkspace("E2E SIE UI");
+  const source = await readFile("tests/fixtures/sie-spec-derived.pc8-escaped.txt", "ascii");
+  const bytes = Buffer.from(
+    source.replace(/\\x([a-f0-9]{2})/gi, (_match, hex: string) =>
+      String.fromCharCode(parseInt(hex, 16))
+    ),
+    "latin1"
+  );
+  await open(page, org, "settings/import-export");
+  await page.getByLabel("Räkenskapsår för SIE", { exact: true }).selectOption(org.yearId);
+  await page
+    .getByLabel("SIE-fil", { exact: true })
+    .setInputFiles({ name: "Årsfil.sie", mimeType: "application/octet-stream", buffer: bytes });
+  await page.getByRole("button", { name: "Förhandsgranska SIE" }).click();
+  await expect(page.getByRole("region", { name: "SIE-förhandsgranskning" })).toContainText(
+    "Verifikationer: 1"
+  );
+  await expect(
+    page.getByText("Imported VAT roles are unclassified and require manual review.", {
+      exact: true
+    })
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bekräfta import" })).toBeDisabled();
+  expect(await db.journalEntry.count({ where: { organizationId: org.id } })).toBe(0);
+  await page.getByLabel("Jag har granskat förhandsvisningen och vill importera filen.").check();
+  await page.getByRole("button", { name: "Bekräfta import" }).click();
+  await expect(page.getByRole("heading", { name: "Import slutförd" })).toBeVisible();
+  expect(await db.sieImport.count({ where: { organizationId: org.id, status: "COMPLETED" } })).toBe(
+    1
+  );
+  const downloadEvent = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Ladda ner SIE" }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe("ledgerapp.sie");
+  const exported = validateIndependent(await readFile((await download.path())!));
+  expect(exported.closing.get("1930")).toBe(101001n);
+  await page.goto("/app/bookkeeping/vouchers");
+  await expect(page.getByRole("table")).toContainText("Oberoende");
+  await page.goto("/app/reports/trial-balance");
+  await page.getByLabel("Räkenskapsår", { exact: true }).fill(org.yearId);
+  await page.getByLabel("Från datum").fill("2026-01-01");
+  await page.getByLabel("Till datum").fill("2026-12-31");
+  await page.getByRole("button", { name: "Visa rapport" }).click();
+  await expect(page.getByRole("row").filter({ hasText: "1930" })).toContainText("1010.01");
+});
+
+test("real draft attachment → posted voucher → global archive search → authorized download", async ({
+  page
+}) => {
+  const org = await onboardWorkspace("E2E archive UI");
+  await open(page, org, "bookkeeping/vouchers/new");
+  await fillVoucher(page, "10.01");
+  await page.getByRole("button", { name: "Spara utkast" }).click();
+  await expect(page).toHaveURL(/vouchers\/[0-9a-f-]{36}$/);
+  const entryId = page.url().split("/").at(-1)!;
+  const bytes = Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n");
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({ name: "Arkivkvitto.pdf", mimeType: "application/pdf", buffer: bytes });
+  await expect(page.getByText("Arkivkvitto.pdf", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Bokför verifikation" }).click();
+  await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
+  await page.goto("/app/bookkeeping/attachments");
+  await page.getByLabel("Filnamn (minst 3 tecken)").fill("Arkivkvitto");
+  await page.getByRole("button", { name: "Sök bilagor", exact: true }).click();
+  await expect(page.getByRole("table")).toContainText("Arkivkvitto.pdf");
+  await expect(page.getByRole("table")).toContainText("POSTED");
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Ladda ner Arkivkvitto.pdf" }).click();
+  const downloaded = await downloading;
+  expect(await readFile((await downloaded.path())!)).toEqual(bytes);
+  await page.getByRole("link", { name: /A 1/ }).click();
+  await expect(page).toHaveURL(new RegExp(entryId));
+  await page.goto("/app/bookkeeping/attachments");
+  await selectOrg(page, b);
+  await expect(page.getByRole("table")).not.toContainText("Arkivkvitto.pdf");
+});
+
 async function onboardWorkspace(name: string): Promise<Organization> {
   const response = await api.post("/api/onboarding", {
     data: { setupKey: randomUUID(), name, startDate: year + "-01-01", endDate: year + "-12-31" }
@@ -263,6 +385,112 @@ async function onboardWorkspace(name: string): Promise<Organization> {
     accounts
   };
 }
+
+test("voucher print report preserves values and correction links", async ({ page }) => {
+  const org = await onboardWorkspace("E2E voucher report"),
+    original = await posted(org, "123.01");
+  const correction = await api.post(`/api/journal-entries/${original.id}/reverse`, {
+    data: { transactionDate: date, voucherSeriesId: org.seriesId }
+  });
+  expect(correction.status()).toBe(201);
+  await open(page, org, `reports/voucher/${original.id}`);
+  await expect(page.getByRole("heading", { name: /Verifikationsrapport/ })).toBeVisible();
+  await expect(page.getByRole("table").locator("tfoot")).toContainText("123.01");
+  await expect(page.getByRole("link", { name: /Rättelseverifikation/ })).toBeVisible();
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByRole("button", { name: "Skriv ut / Spara PDF" })).toBeHidden();
+  await page.emulateMedia({ media: "screen" });
+  await page.getByRole("link", { name: /Rättelseverifikation/ }).click();
+  await expect(page.getByRole("link", { name: /Ursprunglig verifikation/ })).toBeVisible();
+});
+test("Golden report CSV exports exact accounting totals and filter metadata", async ({ page }) => {
+  await open(page, goldenOrg, "reports/trial-balance");
+  await page.getByLabel("Räkenskapsår", { exact: true }).fill(goldenOrg.yearId);
+  await page.getByLabel("Från datum").fill(golden.year.startDate);
+  await page.getByLabel("Till datum").fill(golden.year.endDate);
+  await page.getByRole("button", { name: "Visa rapport", exact: true }).click();
+  await expect(page.getByRole("table")).toContainText("13500.00");
+  // Editing a filter without rerunning must not rewrite the export's metadata.
+  await page.getByLabel("Till datum").fill("2026-06-30");
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportera CSV", exact: true }).click();
+  const csv = (await readFile((await (await downloading).path())!)).toString("utf8");
+  expect(csv).toContain('"closingDebit";"13500.00"');
+  expect(csv).toContain('"closingCredit";"13500.00"');
+  expect(csv).toContain('"toDate";"2026-12-31"');
+  expect(csv).toContain(goldenOrg.name);
+  for (const [kind, exactRow] of [
+    ["general-ledger", '"11000.00"'],
+    ["income-statement", '"periodResult";"2000.00"'],
+    ["balance-sheet", '"assets";"11000.00"'],
+    ["vat", '"vatPosition";"0.00"']
+  ]) {
+    await open(page, goldenOrg, `reports/${kind}`);
+    await page.getByLabel("Räkenskapsår", { exact: true }).fill(goldenOrg.yearId);
+    if (kind === "balance-sheet") {
+      await page.getByLabel("Rapportdatum").fill(golden.year.endDate);
+      await page.getByLabel("Jämförelsedatum").fill("2026-06-30");
+    } else {
+      await page.getByLabel("Från datum").fill(golden.year.startDate);
+      await page.getByLabel("Till datum").fill(golden.year.endDate);
+    }
+    await page.getByRole("button", { name: "Visa rapport", exact: true }).click();
+    const exportButton = page.getByRole("button", { name: "Exportera CSV", exact: true });
+    await expect(exportButton).toBeVisible();
+    const fileEvent = page.waitForEvent("download");
+    await exportButton.click();
+    const bytes = await readFile((await (await fileEvent).path())!);
+    const content = bytes.toString("utf8");
+    expect(content).toContain(exactRow);
+    expect(content).toContain(goldenOrg.name);
+    expect(bytes.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+    if (kind === "balance-sheet") expect(content).toContain('"comparisonDate";"2026-06-30"');
+    await page.emulateMedia({ media: "print" });
+    await expect(exportButton).toBeHidden();
+    await expect(page.getByLabel("Räkenskapsår", { exact: true })).toBeHidden();
+    await page.emulateMedia({ media: "screen" });
+  }
+});
+test("Golden dashboard shows exact KPI chart period changes and no stale tenant values", async ({
+  page
+}) => {
+  await open(page, goldenOrg, "");
+  await expect(page.getByRole("article", { name: "Intäkter", exact: true })).toContainText(
+    "4500.00 SEK"
+  );
+  await expect(page.getByRole("article", { name: "Kostnader", exact: true })).toContainText(
+    "2500.00 SEK"
+  );
+  await expect(page.getByRole("article", { name: "Aktuellt resultat", exact: true })).toContainText(
+    "2000.00 SEK"
+  );
+  await expect(
+    page
+      .getByRole("table", { name: "Verklig månadsutveckling" })
+      .getByRole("row", { name: /2026-07/ })
+  ).toContainText("-1500.00");
+  await page.getByLabel("Dashboardperiod", { exact: true }).selectOption("custom");
+  await page.getByLabel("Dashboard från datum").fill("2026-06-01");
+  await page.getByLabel("Dashboard till datum").fill("2026-06-30");
+  await expect(page.getByRole("article", { name: "Intäkter", exact: true })).toContainText(
+    "-500.00 SEK"
+  );
+  await expect(page.getByRole("article", { name: "Aktuellt resultat", exact: true })).toContainText(
+    "-500.00 SEK"
+  );
+  const blank = await onboardWorkspace("Dashboard empty company");
+  await page.reload(); // reload organization list after server-side fixture creation
+  await selectOrg(page, blank);
+  await expect(page.getByRole("article", { name: "Intäkter", exact: true })).toContainText(
+    "0.00 SEK"
+  );
+  await expect(
+    page.getByText("Inga bokförda transaktioner i urvalet", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByRole("article", { name: "Intäkter", exact: true })).not.toContainText(
+    "4500.00"
+  );
+});
 test("invitation UI → new user's registration → acceptance → read-only boundary", async ({
   page,
   browser

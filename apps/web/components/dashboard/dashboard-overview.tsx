@@ -1,75 +1,348 @@
-import { CalendarDays, CircleHelp, FileText, Plus } from "lucide-react";
+"use client";
 import Link from "next/link";
-
-import { LatestVouchers } from "@/components/dashboard/latest-vouchers";
-import { MetricCard } from "@/components/dashboard/metric-card";
-import { QuickActionCard } from "@/components/dashboard/quick-action-card";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/components/auth/auth-provider";
+import { useFiscalYears, type FiscalYearChoice } from "@/lib/use-fiscal-years";
+import { workspaceRequest } from "@/lib/workspace-api";
 import { Button } from "@/components/ui/button";
-import { dashboardMockData } from "@/lib/mock-data/dashboard";
-
+export interface DashboardData {
+  organizationId: string;
+  fiscalYear: { id: string; name: string };
+  fromDate: string;
+  toDate: string;
+  kpis: {
+    revenue: string;
+    expenses: string;
+    result: string;
+    inputVat: string;
+    outputVat: string;
+    vatPosition: string;
+    drafts: number;
+    posted: number;
+  };
+  vatStatus: { anomalies: number; warnings: string[]; configurationVersion: string };
+  chart: { month: string; revenue: string; expenses: string; result: string }[];
+  recent: {
+    id: string;
+    description: string;
+    status: string;
+    entryDate: string;
+    voucherNumber: number | null;
+    voucherSeries: { code: string } | null;
+    reversesEntryId: string | null;
+    reversedByEntry: { id: string } | null;
+  }[];
+  hasOpeningBalances: boolean;
+  generatedAt: string;
+}
+function interval(year: FiscalYearChoice, preset: string, from: string, to: string) {
+  const start = year.startDate.slice(0, 10),
+    end = year.endDate.slice(0, 10);
+  if (preset === "custom") return { fromDate: from, toDate: to };
+  if (preset === "fiscal-year") return { fromDate: start, toDate: end };
+  const now = new Date(),
+    offset = preset === "previous-month" ? -1 : 0;
+  const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset, 1))
+    .toISOString()
+    .slice(0, 10);
+  const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + offset + 1, 0))
+    .toISOString()
+    .slice(0, 10);
+  return {
+    fromDate: monthStart < start ? start : monthStart,
+    toDate: monthEnd > end ? end : monthEnd
+  };
+}
+const magnitude = (amount: string) => {
+  const value = BigInt(amount.replace(".", ""));
+  return value < 0n ? -value : value;
+};
+/** Normalize exact cents only for CSS geometry. Financial labels remain server strings. */
+export function barWidth(value: string, max: bigint) {
+  const ratio = max === 0n ? 0n : (magnitude(value) * 10000n) / max;
+  return `${ratio / 100n}.${(ratio % 100n).toString().padStart(2, "0")}%`;
+}
 export function DashboardOverview() {
+  const { activeOrganizationId } = useAuth();
+  if (!activeOrganizationId) return <p>Välj organisation för att visa ekonomin.</p>;
+  return <Dashboard key={activeOrganizationId} org={activeOrganizationId} />;
+}
+function Dashboard({ org }: { org: string }) {
+  const { activeOrganization } = useAuth(),
+    years = useFiscalYears(org);
+  const [preset, setPreset] = useState("fiscal-year"),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
+    [retry, setRetry] = useState(0);
+  const [response, setResponse] = useState<{ key: string; data: DashboardData } | null>(null),
+    [error, setError] = useState("");
+  const dates = years.activeYear
+    ? interval(years.activeYear, preset, from, to)
+    : { fromDate: "", toDate: "" };
+  const key = `${org}:${years.selected}:${dates.fromDate}:${dates.toDate}`;
+  const valid = Boolean(
+    years.activeYear &&
+    dates.fromDate &&
+    dates.toDate &&
+    dates.fromDate <= dates.toDate &&
+    dates.fromDate >= years.activeYear.startDate.slice(0, 10) &&
+    dates.toDate <= years.activeYear.endDate.slice(0, 10)
+  );
+  useEffect(() => {
+    if (!valid) return;
+    const controller = new AbortController();
+    setError("");
+    setResponse(null);
+    workspaceRequest<DashboardData>(
+      "/dashboard?" +
+        new URLSearchParams({ organizationId: org, fiscalYear: years.selected, ...dates }),
+      { signal: controller.signal }
+    )
+      .then((data) => {
+        if (!controller.signal.aborted && data.organizationId === org) setResponse({ key, data });
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setError(e.message);
+      });
+    return () => controller.abort();
+  }, [org, years.selected, dates.fromDate, dates.toDate, key, valid, retry]);
+  const data = response?.key === key ? response.data : null,
+    canWrite = ["OWNER", "ADMIN", "ACCOUNTANT"].includes(activeOrganization?.role ?? "");
+  const maximum =
+    data?.chart.reduce(
+      (max, row) =>
+        [row.revenue, row.expenses, row.result].reduce(
+          (v, amount) => (magnitude(amount) > v ? magnitude(amount) : v),
+          max
+        ),
+      0n
+    ) ?? 0n;
   return (
-    <div className="mx-auto max-w-[1400px]">
-      <section className="flex flex-col justify-between gap-6 border-b border-[#ccdce4] pb-7 sm:flex-row sm:items-end">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-semibold tracking-[0.13em] text-[#638292] uppercase">
-              Dashboard
-            </p>
-            <Badge variant="warning">Exempeldata</Badge>
-          </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#12374c] sm:text-4xl">
-            Läget i bokföringen
-          </h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-[#58717e]">
-            En snabb överblick över organisationens ekonomi och senaste aktivitet.
+    <div className="mx-auto max-w-[1400px] space-y-6">
+      <header className="border-b pb-6">
+        <p className="text-xs uppercase tracking-wider">Dashboard</p>
+        <h1 className="text-3xl font-semibold">Läget i bokföringen</h1>
+        <p>{activeOrganization?.name} · Verkliga bokförda data, SEK</p>
+      </header>
+      <section className="report-filters flex flex-wrap gap-3 rounded-xl bg-white p-4">
+        <label>
+          Räkenskapsår{" "}
+          <select
+            aria-label="Räkenskapsår för dashboard"
+            className="border p-2"
+            value={years.selected}
+            onChange={(e) => years.select(e.target.value)}
+          >
+            {years.years.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Period{" "}
+          <select
+            aria-label="Dashboardperiod"
+            className="border p-2"
+            value={preset}
+            onChange={(e) => setPreset(e.target.value)}
+          >
+            <option value="fiscal-year">Hela räkenskapsåret</option>
+            <option value="current-month">Aktuell månad</option>
+            <option value="previous-month">Föregående månad</option>
+            <option value="custom">Eget intervall</option>
+          </select>
+        </label>
+        {preset === "custom" && (
+          <>
+            <label>
+              Från datum{" "}
+              <input
+                aria-label="Dashboard från datum"
+                type="date"
+                className="border p-2"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </label>
+            <label>
+              Till datum{" "}
+              <input
+                aria-label="Dashboard till datum"
+                type="date"
+                className="border p-2"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+      </section>
+      {years.error || error ? (
+        <p role="alert">
+          {years.error || error}
+          <Button onClick={() => setRetry((v) => v + 1)}>Försök igen</Button>
+        </p>
+      ) : !valid ? (
+        <p role="status">
+          {years.years.length ? "Välj ett intervall inom räkenskapsåret." : "Läser räkenskapsår…"}
+        </p>
+      ) : !data ? (
+        <p role="status">Läser dashboard…</p>
+      ) : null}
+      {data && (
+        <>
+          <p className="text-sm">
+            {data.fromDate} – {data.toDate} · Uppdaterat {data.generatedAt}
           </p>
-        </div>
-        <Button asChild className="shrink-0" size="wide">
-          <Link href="/app/bookkeeping/vouchers/new">
-            <Plus aria-hidden="true" className="size-4" />
-            Ny verifikation
-          </Link>
-        </Button>
-      </section>
-
-      <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#668291]">
-        <span className="inline-flex items-center gap-1.5">
-          <CalendarDays aria-hidden="true" className="size-3.5" />
-          Uppdaterat {dashboardMockData.asOf}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <CircleHelp aria-hidden="true" className="size-3.5" />
-          Belopp visas som exempel tills bokförings-API:t är anslutet.
-        </span>
-      </div>
-
-      <section
-        aria-label="Ekonomisk översikt"
-        className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
-      >
-        {dashboardMockData.metrics.map((metric) => (
-          <MetricCard currency={dashboardMockData.currency} key={metric.label} metric={metric} />
-        ))}
-      </section>
-
-      <section className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <LatestVouchers
-          currency={dashboardMockData.currency}
-          vouchers={dashboardMockData.latestVouchers}
-        />
-        <div className="space-y-6">
-          <QuickActionCard />
-          <section className="border border-[#d6e3e9] bg-[#f7fafb] p-5">
-            <FileText aria-hidden="true" className="size-5 text-[#4c7d92]" />
-            <h2 className="mt-4 text-base font-semibold text-[#17384b]">Från demo till data</h2>
-            <p className="mt-2 text-sm leading-6 text-[#58717e]">
-              Organisationsnamn och behörighet är verkliga. Nyckeltalen är fortfarande avgränsad
-              exempeldata, medan verifikationer hanteras i bokföringsvyn.
-            </p>
+          <section
+            aria-label="Ekonomisk översikt"
+            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+          >
+            {[
+              ["Intäkter", data.kpis.revenue],
+              ["Kostnader", data.kpis.expenses],
+              ["Aktuellt resultat", data.kpis.result],
+              ["Ingående moms", data.kpis.inputVat],
+              ["Utgående moms", data.kpis.outputVat],
+              ["Momsposition", data.kpis.vatPosition]
+            ].map(([label, value]) => (
+              <article key={label} aria-label={label} className="rounded-xl border bg-white p-5">
+                <h2>{label}</h2>
+                <p className="mt-2 text-2xl font-semibold tabular-nums">{value} SEK</p>
+              </article>
+            ))}
           </section>
-        </div>
+          <p>
+            Utkast i urvalet: {data.kpis.drafts} · Bokförda verifikationer i urvalet:{" "}
+            {data.kpis.posted}
+          </p>
+          <section className="rounded-xl border bg-white p-5">
+            <h2 className="text-lg font-semibold">Momsstatus</h2>
+            <p>
+              Konfiguration: {data.vatStatus.configurationVersion}. Momsposition = utgående minus
+              ingående moms. Inte en färdig skattedeklaration.
+            </p>
+            {data.vatStatus.anomalies > 0 || data.vatStatus.warnings.length > 0 ? (
+              <p role="status">
+                Behöver granskas: {data.vatStatus.anomalies} anomalier.{" "}
+                {data.vatStatus.warnings.join(" ")}
+              </p>
+            ) : (
+              <p>
+                Inga identifierade metadataanomalier i urvalet. Detta bevisar inte regelefterlevnad.
+              </p>
+            )}
+            <Link className="underline" href="/app/reports/vat">
+              Öppna momsrapport
+            </Link>
+          </section>
+          {data.kpis.posted === 0 && (
+            <section className="rounded-xl border bg-white p-5">
+              <h2>Inga bokförda transaktioner i urvalet</h2>
+              <p>Tomma perioder visas med noll, aldrig med exempelbelopp.</p>
+              {canWrite && (
+                <Link className="underline" href="/app/bookkeeping/vouchers/new">
+                  Skapa första verifikationen
+                </Link>
+              )}
+            </section>
+          )}
+          <section className="overflow-x-auto rounded-xl border bg-white p-5">
+            <h2 className="text-lg font-semibold">Månadsutveckling · hela räkenskapsåret</h2>
+            <p className="text-sm">
+              Endast POSTED. Rättelser ingår med sina tecken. Staplar visar absolut storlek;
+              tabellen anger tecken och exakta belopp.
+            </p>
+            <table aria-label="Verklig månadsutveckling" className="mt-3 w-full text-left">
+              <thead>
+                <tr>
+                  <th>Månad</th>
+                  <th>Intäkter</th>
+                  <th>Kostnader</th>
+                  <th>Resultat</th>
+                  <th>Resultatets storlek</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.chart.map((row) => (
+                  <tr key={row.month} className="border-t">
+                    <th>{row.month}</th>
+                    <td>{row.revenue}</td>
+                    <td>{row.expenses}</td>
+                    <td>{row.result}</td>
+                    <td className="w-1/4">
+                      <div
+                        aria-hidden="true"
+                        className={
+                          row.result.startsWith("-") ? "h-3 bg-amber-600" : "h-3 bg-teal-700"
+                        }
+                        style={{ width: barWidth(row.result, maximum) }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <section className="rounded-xl border bg-white p-5">
+            <h2 className="text-lg font-semibold">Senaste verifikationer</h2>
+            {data.recent.length ? (
+              <ul className="divide-y">
+                {data.recent.map((entry) => (
+                  <li key={entry.id} className="py-3">
+                    <Link className="underline" href={`/app/bookkeeping/vouchers/${entry.id}`}>
+                      {entry.voucherSeries?.code} {entry.voucherNumber ?? "utkast"} ·{" "}
+                      {entry.entryDate.slice(0, 10)} · {entry.description}
+                    </Link>
+                    <span className="ml-2">
+                      {entry.status}
+                      {entry.reversesEntryId
+                        ? " · Rättelse"
+                        : entry.reversedByEntry
+                          ? " · Har rättelse"
+                          : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Inga verifikationer i urvalet.</p>
+            )}
+          </section>
+          {!data.hasOpeningBalances && (
+            <p>
+              Inga ingående balanser registrerade.
+              {canWrite && (
+                <Link className="ml-2 underline" href="/app/settings/opening-balances">
+                  Hantera ingående balans
+                </Link>
+              )}
+            </p>
+          )}
+        </>
+      )}
+      <section aria-label="Snabbval" className="flex flex-wrap gap-4">
+        {canWrite && (
+          <>
+            <Button asChild>
+              <Link href="/app/bookkeeping/vouchers/new">Ny verifikation</Link>
+            </Button>
+            <Link className="underline" href="/app/bookkeeping/posting-templates">
+              Använd bokföringsmall
+            </Link>
+            <Link className="underline" href="/app/settings/import-export">
+              Importera SIE
+            </Link>
+          </>
+        )}
+        <Link className="underline" href="/app/reports/trial-balance">
+          Visa rapporter
+        </Link>
+        <Link className="underline" href="/app/bookkeeping/attachments">
+          Öppna bilagor
+        </Link>
       </section>
     </div>
   );

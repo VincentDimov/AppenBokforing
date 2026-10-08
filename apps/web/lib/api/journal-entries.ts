@@ -33,6 +33,7 @@ export interface JournalEntryLink {
 }
 
 export interface JournalEntryLine {
+  legacyAccountLabel?: boolean;
   vatRole?: "UNCLASSIFIED" | "BASE" | "TAX" | "NONE";
   vatGroup?: string | null;
   account: JournalEntryAccount;

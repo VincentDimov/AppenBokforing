@@ -175,6 +175,19 @@ async function main() {
     await db.costCenter.create({
       data: { organizationId: org.id, code: "K1", name: "Kostnadsställe" }
     });
+    await agent
+      .post(`/organizations/${org.id}/posting-templates`)
+      .send({
+        code: "RESTORE",
+        name: "Återställd mall",
+        defaultText: "Verklig standardtext",
+        voucherSeriesCode: "A",
+        lines: [
+          { accountId: accountIds[0], side: "DEBIT", amount: "10.01" },
+          { accountId: accountIds[2], side: "CREDIT", amount: null }
+        ]
+      })
+      .expect(201);
     await db.openingBalance.createMany({
       data: [
         {
@@ -253,10 +266,32 @@ async function main() {
         })
         .expect(201)
     ).body;
-    await agent
+    const exported = await agent
       .get("/exports/sie")
       .query({ organizationId: org.id, fiscalYear: fiscal.id })
       .expect(200);
+    const importWorkspace = (
+      await agent
+        .post("/onboarding")
+        .send({
+          setupKey: randomUUID(),
+          name: "Restored SIE job",
+          startDate: "2026-01-01",
+          endDate: "2026-12-31"
+        })
+        .expect(201)
+    ).body;
+    const importInput = {
+      organizationId: importWorkspace.organization.id,
+      fiscalYearId: importWorkspace.fiscalYear.id,
+      contentBase64: Buffer.from(exported.body).toString("base64"),
+      fileName: "Restore-source.se4"
+    };
+    const review = (await agent.post("/imports/sie").send(importInput).expect(201)).body;
+    await agent
+      .post("/imports/sie")
+      .send({ ...importInput, confirm: true, previewToken: review.previewToken })
+      .expect(201);
     const period = await db.accountingPeriod.findFirstOrThrow({
       where: { organizationId: org.id, fiscalYearId: fiscal.id, periodNumber: 1 }
     });
@@ -392,7 +427,9 @@ async function main() {
       "sieImport",
       "vatCode",
       "project",
-      "costCenter"
+      "costCenter",
+      "postingTemplate",
+      "postingTemplateLine"
     ])
       assert.deepEqual(
         await restored[model].findMany({ orderBy: { id: "asc" } }),
@@ -426,7 +463,14 @@ async function main() {
       (await restored.journalEntry.findUniqueOrThrow({ where: { id: entry.id } })).status,
       "POSTED"
     );
-    assert.equal(await restored.openingBalance.count(), 4);
+    assert.equal(await restored.openingBalance.count(), 6);
+    assert.equal(await restored.postingTemplate.count(), 1);
+    assert.equal(await restored.postingTemplateLine.count(), 2);
+    const restoredImport = await restored.sieImport.findFirstOrThrow();
+    assert.equal(restoredImport.sourceFileName, "Restore-source.se4");
+    assert.equal(restoredImport.status, "COMPLETED");
+    assert.ok(restoredImport.sourceSha256);
+    assert.ok(restoredImport.summary);
     assert.equal(await restored.user.count(), 2);
     assert.equal(
       await restored.organizationInvitation.count({ where: { acceptedAt: { not: null } } }),

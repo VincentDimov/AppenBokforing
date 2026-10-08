@@ -130,6 +130,58 @@ describe("Golden accounting truth (real PostgreSQL / HTTP)", () => {
     await app?.close();
   });
 
+  it("dashboard matches Golden statement totals and exact month groups, never draft amounts", async () => {
+    const dashboard = (await owner.get("/dashboard").query(interval(fixture)).expect(200)).body;
+    expect(dashboard.kpis).toMatchObject({
+      revenue: "4500.00",
+      expenses: "2500.00",
+      result: "2000.00",
+      drafts: 1,
+      posted: 7
+    });
+    expect(dashboard.chart).toHaveLength(12);
+    expect(dashboard.chart[5]).toEqual({
+      month: "2026-06",
+      revenue: "-500.00",
+      expenses: "0.00",
+      result: "-500.00"
+    });
+    expect(dashboard.chart[6]).toEqual({
+      month: "2026-07",
+      revenue: "0.00",
+      expenses: "-1500.00",
+      result: "1500.00"
+    });
+    const june = (
+      await owner
+        .get("/dashboard")
+        .query(interval(fixture, "2026-06-01", "2026-06-30"))
+        .expect(200)
+    ).body;
+    expect(june.kpis).toMatchObject({ revenue: "-500.00", expenses: "0.00", result: "-500.00" });
+    const blank = (await owner.get("/dashboard").query(interval(empty)).expect(200)).body;
+    expect(blank.kpis).toMatchObject({
+      revenue: "0.00",
+      expenses: "0.00",
+      result: "0.00",
+      posted: 0,
+      drafts: 1
+    });
+  });
+  it("dashboard enforces membership, interval and unsupported-dimension boundaries", async () => {
+    await request(app.getHttpServer()).get("/dashboard").query(interval(fixture)).expect(401);
+    await foreign.get("/dashboard").query(interval(fixture)).expect(404);
+    await owner
+      .get("/dashboard")
+      .query({ ...interval(fixture), project: "P1" })
+      .expect(400);
+    await owner.get("/dashboard").query(interval(fixture, "2025-12-31")).expect(400);
+    await owner
+      .get("/dashboard")
+      .query({ ...interval(empty), fiscalYear: fixture.fiscalYear })
+      .expect(404);
+  });
+
   it("independently validates exported Golden bytes then reconciles imported IB and all four reports", async () => {
     const exported = await owner
       .get("/exports/sie")
@@ -549,5 +601,8 @@ describe("Golden accounting truth (real PostgreSQL / HTTP)", () => {
     expect(
       (await foreign.get("/reports/trial-balance").query(interval(fixture)).expect(200)).body.totals
     ).toEqual(golden.expected.fullYearTotals);
+    expect(
+      (await foreign.get("/dashboard").query(interval(fixture)).expect(200)).body.kpis.result
+    ).toBe("2000.00");
   });
 });

@@ -76,6 +76,17 @@ export class AttachmentsController {
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: AuthenticatedRequest
   ) {
+    // Busboy decodes multipart filename parameters as Latin-1. Browsers send
+    // UTF-8 bytes; repair only valid UTF-8, then apply the existing sanitizer.
+    if (file && [...file.originalname].every((character) => character.codePointAt(0)! <= 255)) {
+      try {
+        file.originalname = new TextDecoder("utf-8", { fatal: true }).decode(
+          Buffer.from(file.originalname, "latin1")
+        );
+      } catch {
+        /* A genuine Latin-1 filename remains unchanged. */
+      }
+    }
     return this.attachmentsService.upload(
       this.getOrganizationId(request),
       journalEntryId,

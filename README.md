@@ -1,6 +1,22 @@
 # LedgerApp
 
-## FAS 25–29 — current development
+## FAS 30–34 — aktuellt lokalt arbete, 2026-10-08
+
+Konteringsmallar, granskad SIE-import/export med historik, organisationsgemensamt
+bilagearkiv, verifikationsrapport/CSV/A4 och verklig dashboard använder befintliga
+Nest/Next/PostgreSQL-kontrakt. Inga produktionssidor visar mockbokföring.
+Fyra framåtriktade migrationer ger totalt 23; äldre migrationer är oförändrade.
+Se [slutrapport och full lokal releasegate](docs/fas30-34-release-gate.md),
+[mallar](docs/posting-templates.md), [SIE UI](docs/sie-ui.md),
+[bilagearkiv](docs/attachment-archive.md), [rapportexport](docs/report-exports.md)
+och [dashboard](docs/dashboard.md).
+
+Bascommit är `441567e0379a1703fe48462408eebe16963bdd06` (FAS 29).
+FAS 30–34 är lokala, ännu inte committade/pushade/deployade. Ingen ny remote CI
+eller produktionsverifiering påstås. FAS 35 är inte påbörjad. Godkända tekniska
+tester innebär inte produktions-, redovisnings- eller regelgodkännande.
+
+## Historik: FAS 25–29
 
 See the [complete local release report, exact counts and remaining blockers](docs/fas25-29-release-gate.md).
 
@@ -9,7 +25,8 @@ atomic IB/explicit year carry-forward and project/cost-centre registers extend
 the existing Nest/Next architecture. See [onboarding](docs/onboarding.md),
 [members](docs/members-and-permissions.md), [series](docs/voucher-series.md),
 [IB/carry](docs/opening-balances-and-carry-forward.md) and [dimensions](docs/dimensions.md).
-These changes are local, uncommitted and not deployed; no FAS 30 work is started.
+These phases are now included in baseline commit `441567e`; the linked report
+records their historical local verification, not a new deployment approval.
 Production email delivery is fail-closed until a real reviewed adapter is configured.
 
 ## FAS 24 — verified remote baseline

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ReportTools } from "./report-tools";
 
 import { useReportRequest } from "@/lib/use-report-request";
 
@@ -45,7 +46,7 @@ function OrganizationGeneralLedgerPage() {
   const [accountTo, setAccountTo] = useState("");
   const [project, setProject] = useState("");
   const [costCenter, setCostCenter] = useState("");
-  const { report, error, setError, load } = useReportRequest<GeneralLedgerReport>();
+  const { report, error, setError, load, loadedUrl } = useReportRequest<GeneralLedgerReport>();
 
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate) {
@@ -65,53 +66,14 @@ function OrganizationGeneralLedgerPage() {
     await load(`/api/reports/general-ledger?${parameters}`);
   }
 
-  function exportCsv() {
-    if (!report) return;
-    const rows: string[][] = [
-      ["Konto", "Namn", "Datum", "Verifikation", "Beskrivning", "Debet", "Kredit", "Saldo"]
-    ];
-    report.accounts.forEach((account) => {
-      rows.push([
-        account.account.number,
-        account.account.name,
-        "",
-        "",
-        "Ingående saldo",
-        "",
-        "",
-        account.openingBalance
-      ]);
-      account.transactions.forEach((transaction) =>
-        rows.push([
-          account.account.number,
-          account.account.name,
-          transaction.date,
-          transaction.voucher ?? "",
-          transaction.description,
-          transaction.debit,
-          transaction.credit,
-          transaction.runningBalance
-        ])
-      );
-    });
-    const csv = rows
-      .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(";"))
-      .join("\r\n");
-    const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "huvudbok.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
     <div className="mx-auto max-w-6xl print:max-w-none">
       <header className="border-b border-[#ccdce4] pb-6">
         <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
         <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Huvudbok</h1>
       </header>
-      <section className="mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
+      <ReportTools report={report} url={loadedUrl} />
+      <section className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
         <input
           aria-label="Räkenskapsår"
           className={inputClassName}
@@ -166,9 +128,6 @@ function OrganizationGeneralLedgerPage() {
         <div className="flex gap-2">
           <Button onClick={() => void run()} type="button">
             Visa rapport
-          </Button>
-          <Button disabled={!report} onClick={exportCsv} type="button" variant="outline">
-            CSV
           </Button>
         </div>
       </section>

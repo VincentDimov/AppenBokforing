@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 /** Used inside organization-keyed report components: no state survives a tenant switch. */
 export function useReportRequest<T>() {
   const [report, setReport] = useState<T | null>(null);
+  const [loadedUrl, setLoadedUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
   useEffect(
@@ -19,6 +20,7 @@ export function useReportRequest<T>() {
     const controller = new AbortController();
     request.current = controller;
     setReport(null);
+    setLoadedUrl("");
     setError(null);
     try {
       const response = await fetch(url, {
@@ -39,6 +41,7 @@ export function useReportRequest<T>() {
         );
       }
       setReport(body as T);
+      setLoadedUrl(url);
     } catch (caughtError) {
       if (!controller.signal.aborted)
         setError(
@@ -46,5 +49,5 @@ export function useReportRequest<T>() {
         );
     }
   }
-  return { report, error, setError, load };
+  return { report, error, setError, load, loadedUrl };
 }

@@ -1,6 +1,24 @@
 # LedgerApp — GAP-analys
 
-## FAS 25–29 — current gap update
+## Aktuellt efter FAS 30–34
+
+Se [aktuell gate, exakta testantal och blockerare](fas30-34-release-gate.md).
+Tidigare produktluckor för mallar, SIE UI/historik, globalt arkiv, rapportexport
+och mockdashboard är åtgärdade inom de dokumenterade kontrakten. Nya bokföringar
+fryser kontonamn på databasnivå; rättelser bevarar originalets snapshot.
+
+P0-07 är inte generellt stängt: äldre NULL-snapshots backfylls inte med gissningar,
+och företag/samlade rapporters namn är inte historiskt versionslagrade.
+P0-03/10/11/12/13 kvarstår för deployad säkerhet/operatörskontroller, full SIE-
+interoperabilitet, återstående race-matris, review/remote CI och verklig cloud-
+backup/least privilege/redovisningsgranskning. Lokal noll-advisory-audit ersätter
+inte deployad patchverifiering. Ingen compliance eller produktionsrelease påstås.
+
+P1/P2: verklig inbjudningsmail/outbox/verifierad identitet, gemensamma lättanvända
+rapportårsväljare, dimensionell IB, större strömmande export, komplett årsbokslut,
+licensierad BAS-import och FAS 35 premium-UX. FAS 35 är inte påbörjad.
+
+## Historik: FAS 25–29 — gap update
 
 See [current evidence and remaining P0/P1 gaps](fas25-29-release-gate.md).
 

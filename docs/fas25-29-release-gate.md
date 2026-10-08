@@ -1,5 +1,10 @@
 # FAS 25–29 — implementation and local release report
 
+Historical verification snapshot. FAS 25–29 is now included in baseline commit
+`441567e0379a1703fe48462408eebe16963bdd06`. Current work/status/test counts are in
+[FAS 30–34](fas30-34-release-gate.md); the original dated claims below are retained
+as history, not current git/deployment statements.
+
 2026-10-07. This report separates the new working tree from the successful,
 committed FAS 24 remote baseline. Passing these gates is not approval for real
 Swedish bookkeeping, tax declarations, legal compliance or SIE certification.
