@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { ReportTools } from "./report-tools";
+import { FiscalYearSelect } from "./fiscal-year-select";
+import { PageHeader, EmptyState, LoadingState } from "@/components/ui/workspace";
+import { DimensionTypeahead } from "@/components/journal-entries/dimension-typeahead";
 
 import { useReportRequest } from "@/lib/use-report-request";
 
@@ -25,7 +28,7 @@ interface IncomeStatement {
   groups: ReportGroup[];
   totals: { periodResult: string; yearToDateResult: string };
 }
-const inputClass = "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-sm";
+const inputClass = "h-10 rounded-md border border-border bg-white px-3 text-sm";
 
 export function IncomeStatementPage() {
   const { activeOrganizationId } = useAuth();
@@ -39,7 +42,7 @@ function OrganizationIncomeStatementPage() {
   const [toDate, setToDate] = useState("");
   const [project, setProject] = useState("");
   const [costCenter, setCostCenter] = useState("");
-  const { report, error, setError, load, loadedUrl } = useReportRequest<IncomeStatement>();
+  const { report, error, setError, load, loadedUrl, loading } = useReportRequest<IncomeStatement>();
 
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate)
@@ -57,47 +60,56 @@ function OrganizationIncomeStatementPage() {
 
   return (
     <div className="mx-auto max-w-5xl print:max-w-none">
-      <header className="border-b border-[#ccdce4] pb-6">
-        <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
-        <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Resultaträkning</h1>
-      </header>
+      <PageHeader
+        title="Resultaträkning"
+        context="Rapporter"
+        description="Välj räkenskapsår och urval. Rapporten baseras på bokförda transaktioner."
+      />
       <ReportTools report={report} url={loadedUrl} />
-      <section className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-3">
-        <input
-          aria-label="Räkenskapsår"
-          className={inputClass}
-          placeholder="Räkenskapsår-ID"
-          value={fiscalYear}
-          onChange={(event) => setFiscalYear(event.target.value)}
-        />
-        <input
-          aria-label="Från datum"
-          className={inputClass}
-          type="date"
-          value={fromDate}
-          onChange={(event) => setFromDate(event.target.value)}
-        />
-        <input
-          aria-label="Till datum"
-          className={inputClass}
-          type="date"
-          value={toDate}
-          onChange={(event) => setToDate(event.target.value)}
-        />
-        <input
-          aria-label="Projekt"
-          className={inputClass}
-          placeholder="Projektkod"
-          value={project}
-          onChange={(event) => setProject(event.target.value)}
-        />
-        <input
-          aria-label="Kostnadsställe"
-          className={inputClass}
-          placeholder="Kostnadsställe"
-          value={costCenter}
-          onChange={(event) => setCostCenter(event.target.value)}
-        />
+      <section className="report-filters mt-6 grid gap-3 border border-border bg-white p-5 md:grid-cols-3">
+        <FiscalYearSelect className={inputClass} value={fiscalYear} onChange={setFiscalYear} />
+        <label>
+          Från datum
+          <input
+            aria-label="Från datum"
+            className={inputClass}
+            type="date"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Till datum
+          <input
+            aria-label="Till datum"
+            className={inputClass}
+            type="date"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Projekt
+          <DimensionTypeahead
+            org={activeOrganizationId}
+            kind="projects"
+            label="Projekt"
+            value={project}
+            onChange={setProject}
+            disabled={false}
+          />
+        </label>
+        <label>
+          Kostnadsställe
+          <DimensionTypeahead
+            org={activeOrganizationId}
+            kind="cost-centers"
+            label="Kostnadsställe"
+            value={costCenter}
+            onChange={setCostCenter}
+            disabled={false}
+          />
+        </label>
         <div className="flex gap-2">
           <Button type="button" onClick={() => void run()}>
             Visa rapport
@@ -107,48 +119,56 @@ function OrganizationIncomeStatementPage() {
           </Button>
         </div>
       </section>
-      <p className="mt-2 text-xs text-[#638292]">
-        PDF-knappen använder webbläsarens utskriftsdialog; en servergenererad PDF-adapter kan senare
-        anslutas utan att ändra rapportkontraktet.
+      <p className="mt-2 text-xs text-muted">
+        Skriv ut / PDF öppnar webbläsarens utskriftsdialog. Välj Spara som PDF för en fil.
       </p>
       {error ? (
-        <p role="alert" className="mt-4 text-sm text-red-700">
+        <p role="alert" className="mt-4 text-sm text-danger">
           {error}
         </p>
       ) : null}
+      {loading && <LoadingState label="Hämtar rapport…" />}
+      {!report && !error && !loading && (
+        <EmptyState
+          title="Din rapport visas här"
+          description="Välj år och datum, och tryck på Visa rapport."
+        />
+      )}
       {report ? (
         <section className="mt-6 bg-white print:mt-0">
           {report.groups.map((group) => (
-            <article key={group.key} className="mb-6 border border-[#d6e3e9]">
-              <h2 className="border-b p-4 font-semibold text-[#17384b]">{group.label}</h2>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="p-3 text-left">Konto</th>
-                    <th className="p-3 text-right">Period</th>
-                    <th className="p-3 text-right">Ackumulerat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {group.accounts.map((account) => (
-                    <tr key={account.number}>
-                      <td className="p-3">
-                        {account.number} {account.name}
-                      </td>
-                      <td className="p-3 text-right">{account.periodAmount}</td>
-                      <td className="p-3 text-right">{account.yearToDateAmount}</td>
+            <article key={group.key} className="mb-6 border border-border">
+              <h2 className="border-b p-4 font-semibold text-ink">{group.label}</h2>
+              <div className="table-frame" tabIndex={0}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="p-3 text-left">Konto</th>
+                      <th className="p-3 text-right">Period</th>
+                      <th className="p-3 text-right">Ackumulerat</th>
                     </tr>
-                  ))}
-                  <tr className="border-t font-semibold">
-                    <td className="p-3">Summa {group.label.toLowerCase()}</td>
-                    <td className="p-3 text-right">{group.periodTotal}</td>
-                    <td className="p-3 text-right">{group.yearToDateTotal}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {group.accounts.map((account) => (
+                      <tr key={account.number}>
+                        <td className="p-3">
+                          {account.number} {account.name}
+                        </td>
+                        <td className="p-3 text-right">{account.periodAmount}</td>
+                        <td className="p-3 text-right">{account.yearToDateAmount}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t font-semibold">
+                      <td className="p-3">Summa {group.label.toLowerCase()}</td>
+                      <td className="p-3 text-right">{group.periodTotal}</td>
+                      <td className="p-3 text-right">{group.yearToDateTotal}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </article>
           ))}
-          <div className="border-2 border-[#17384b] p-4 font-semibold">
+          <div className="border-2 border-border p-4 font-semibold">
             <span>Periodens resultat: {report.totals.periodResult}</span>
             <span className="float-right">
               Ackumulerat resultat: {report.totals.yearToDateResult}

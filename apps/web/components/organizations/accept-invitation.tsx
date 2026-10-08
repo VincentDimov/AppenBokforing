@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PageHeader, LoadingState } from "@/components/ui/workspace";
+import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/components/auth/auth-provider";
 import { workspaceRequest } from "@/lib/workspace-api";
@@ -17,11 +19,14 @@ function AcceptForm() {
   const [token, setToken] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   useEffect(() => {
     const candidate = location.hash.slice(1);
     if (/^[A-Za-z0-9_-]{43}$/.test(candidate)) setToken(candidate);
   }, []);
   async function accept() {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -36,12 +41,17 @@ function AcceptForm() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Kunde inte acceptera inbjudan.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
   return (
-    <section className="mx-auto max-w-xl rounded-xl bg-white p-8">
-      <h1 className="text-2xl font-semibold">Acceptera inbjudan</h1>
+    <section className="mx-auto max-w-xl rounded-lg border border-border bg-white p-6 sm:p-8">
+      <PageHeader
+        title="Acceptera inbjudan"
+        context="Företagsåtkomst"
+        description="Anslut med den e-postadress som inbjudan skickades till."
+      />
       {!token ? (
         <p>Inbjudningslänk saknas eller är ogiltig.</p>
       ) : status === "anonymous" ? (
@@ -55,20 +65,18 @@ function AcceptForm() {
           <p className="my-4">
             Du är inloggad som {user?.email}. E-postadressen måste matcha inbjudan.
           </p>
-          <button
-            className="rounded bg-[#17384b] p-3 text-white"
-            disabled={busy}
-            onClick={() => void accept()}
-          >
+          <Button disabled={busy} onClick={() => void accept()}>
             Acceptera inbjudan
-          </button>
+          </Button>
         </>
       ) : (
-        <p>
-          {status === "error"
-            ? "Kunde inte kontrollera sessionen. Ladda om sidan."
-            : "Kontrollerar session…"}
-        </p>
+        <LoadingState
+          label={
+            status === "error"
+              ? "Kunde inte kontrollera sessionen. Ladda om sidan."
+              : "Kontrollerar session…"
+          }
+        />
       )}
       <p role="alert">{message}</p>
     </section>

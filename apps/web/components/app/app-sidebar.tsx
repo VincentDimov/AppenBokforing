@@ -15,6 +15,8 @@ import {
   Settings2,
   TableProperties,
   Upload,
+  PanelLeftClose,
+  PanelLeftOpen,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
@@ -27,6 +29,8 @@ import {
   type NavigationItem
 } from "@/lib/app-navigation";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { isNavigationActive } from "@/lib/app-navigation";
 
 const navigationIcons: Record<NavigationIconName, LucideIcon> = {
   archive: Archive,
@@ -48,94 +52,125 @@ const navigationIcons: Record<NavigationIconName, LucideIcon> = {
 interface AppSidebarProps {
   className?: string;
   onNavigate?: () => void;
+  collapsed?: boolean;
+  onToggle?: () => void;
 }
-
-export function AppSidebar({ className, onNavigate }: Readonly<AppSidebarProps>) {
+export function AppSidebar({
+  className,
+  onNavigate,
+  collapsed = false,
+  onToggle
+}: Readonly<AppSidebarProps>) {
   const pathname = usePathname();
-
   return (
     <nav aria-label="Huvudnavigering" className={cn("flex h-full flex-col", className)}>
       <Link
-        className="flex items-center gap-3 px-5 pb-7 pt-6 text-white outline-none focus-visible:ring-2 focus-visible:ring-[#9ad0e4]"
+        className={cn(
+          "flex items-center gap-3 px-5 py-5 text-white",
+          collapsed && "justify-center px-0"
+        )}
         href="/app"
         onClick={onNavigate}
+        aria-label="LedgerApp – översikt"
       >
-        <span className="grid size-9 place-items-center rounded-lg bg-[#74b7d1] text-[#0d2c3e] shadow-[0_8px_20px_rgba(0,0,0,0.16)]">
-          <Landmark aria-hidden="true" className="size-5" strokeWidth={2.3} />
+        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-white/10 text-white">
+          <Landmark aria-hidden="true" className="size-5" />
         </span>
-        <span>
-          <span className="block text-base font-semibold tracking-[-0.03em]">LedgerApp</span>
-          <span className="mt-0.5 block text-[10px] font-medium tracking-[0.16em] text-[#a7c6d4] uppercase">
-            Redovisning
+        {!collapsed && (
+          <span className="text-base font-semibold tracking-tight">
+            LedgerApp
+            <span className="block text-[11px] font-normal tracking-normal text-sidebar-muted">
+              Bokföring & uppföljning
+            </span>
           </span>
-        </span>
+        )}
       </Link>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         <SidebarLink
-          active={isActivePath(pathname, dashboardNavigationItem.href)}
+          active={isNavigationActive(pathname, dashboardNavigationItem.href)}
           item={dashboardNavigationItem}
           onNavigate={onNavigate}
+          collapsed={collapsed}
         />
-
         {navigationGroups.map((group) => (
-          <section className="mt-6" key={group.label}>
-            <p className="px-3 text-[10px] font-semibold tracking-[0.15em] text-[#91b2c2] uppercase">
-              {group.label}
-            </p>
+          <section className="mt-5" key={group.label}>
+            {!collapsed && (
+              <p className="px-3 text-[11px] font-medium text-sidebar-muted">{group.label}</p>
+            )}
             <div className="mt-2 space-y-0.5">
               {group.items.map((item) => (
                 <SidebarLink
-                  active={isActivePath(pathname, item.href)}
+                  active={isNavigationActive(pathname, item.href)}
                   item={item}
                   key={item.href}
                   onNavigate={onNavigate}
+                  collapsed={collapsed}
                 />
               ))}
             </div>
           </section>
         ))}
       </div>
-
-      <div className="mx-3 mb-4 border-t border-[#2d566b] px-3 pt-4 text-xs leading-5 text-[#aac6d2]">
-        <p className="font-medium text-[#d8e8ee]">Säker arbetsyta</p>
-        <p className="mt-0.5">Åtkomst styrs av din organisationsroll.</p>
+      <div className="border-t border-white/10 px-3 py-3">
+        {onToggle && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-sidebar-text hover:bg-white/10 hover:text-white"
+            onClick={onToggle}
+            aria-label={collapsed ? "Expandera navigering" : "Fäll ihop navigering"}
+            title={collapsed ? "Expandera navigering" : "Fäll ihop navigering"}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" aria-hidden="true" />
+            ) : (
+              <>
+                <PanelLeftClose className="size-4" aria-hidden="true" />
+                <span className="text-xs">Fäll ihop</span>
+              </>
+            )}
+          </Button>
+        )}
+        {!collapsed && (
+          <p className="px-3 pt-2 text-[11px] leading-5 text-sidebar-muted">
+            Åtkomst styrs av din företagsroll.
+          </p>
+        )}
       </div>
     </nav>
   );
 }
-
-interface SidebarLinkProps {
+function SidebarLink({
+  active,
+  item,
+  onNavigate,
+  collapsed
+}: {
   active: boolean;
   item: NavigationItem;
   onNavigate?: () => void;
-}
-
-function SidebarLink({ active, item, onNavigate }: Readonly<SidebarLinkProps>) {
+  collapsed: boolean;
+}) {
   const Icon = navigationIcons[item.icon];
-
   return (
     <Link
       aria-current={active ? "page" : undefined}
+      aria-label={collapsed ? item.label : undefined}
+      title={collapsed ? item.label : undefined}
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#9ad0e4]",
-        active
-          ? "bg-[#29566d] text-white shadow-[inset_3px_0_0_#82c3da]"
-          : "text-[#c7dce5] hover:bg-[#1d465b] hover:text-white"
+        "flex min-h-9 items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-colors",
+        collapsed && "justify-center px-0",
+        active ? "bg-white/12 text-white" : "text-sidebar-text hover:bg-white/6 hover:text-white"
       )}
       href={item.href}
       onClick={onNavigate}
     >
       <Icon
         aria-hidden="true"
-        className={cn("size-4 shrink-0", active ? "text-[#a9d7e7]" : "text-[#9cbecb]")}
-        strokeWidth={2}
+        className={cn("size-4 shrink-0", active ? "text-white" : "text-sidebar-muted")}
+        strokeWidth={1.8}
       />
-      <span className="truncate">{item.label}</span>
+      {!collapsed && <span className="truncate">{item.label}</span>}
     </Link>
   );
-}
-
-function isActivePath(pathname: string, href: string) {
-  return href === "/app" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }

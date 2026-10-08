@@ -69,6 +69,43 @@ it("invites through the scoped API and labels dev delivery honestly", async () =
     })
   );
 });
+it("requires confirmation for a permission change and keeps the original role on cancellation", async () => {
+  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) =>
+    jsonResponse(
+      init?.method
+        ? {}
+        : {
+            invitations: [],
+            members: [
+              {
+                id: "member-a",
+                userId: "user-a",
+                role: "MEMBER",
+                removedAt: null,
+                createdAt: "2026-01-01",
+                user: { displayName: "Colleague", email: "colleague@example.test" }
+              }
+            ]
+          }
+    )
+  );
+  render(<MembersPage />);
+  const selector = await screen.findByLabelText("Roll för colleague@example.test");
+  fireEvent.change(selector, { target: { value: "ADMIN" } });
+  expect(screen.getByRole("dialog", { name: "Ändra behörighet?" })).toBeVisible();
+  expect(fetchMock.mock.calls.every(([, init]) => !init?.method)).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: /^Avbryt$/ }));
+  expect(selector).toHaveValue("MEMBER");
+  expect(fetchMock.mock.calls.every(([, init]) => !init?.method)).toBe(true);
+  fireEvent.change(selector, { target: { value: "ADMIN" } });
+  fireEvent.click(screen.getByRole("button", { name: "Genomför ändringen" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/organizations/org-a/members/member-a",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ role: "ADMIN" }) })
+    )
+  );
+});
 it("creates a series without accepting an arbitrary counter", async () => {
   render(<VoucherSeriesPage />);
   fireEvent.change(screen.getByLabelText("Seriekod"), { target: { value: "B" } });

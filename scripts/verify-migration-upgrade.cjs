@@ -10,8 +10,11 @@ const { randomUUID } = require("node:crypto");
 const { PrismaClient } = require("../packages/db/dist");
 if (process.env.RUN_DISPOSABLE_RESTORE_DRILL !== "yes")
   throw new Error("Disposable opt-in required");
+const upgradeDatabase = process.env.UPGRADE_TEST_DATABASE || "ledgerapp_upgrade_3034";
+if (!/^ledgerapp_upgrade_[a-z0-9]+$/.test(upgradeDatabase))
+  throw new Error("Invalid disposable upgrade database name.");
 const url =
-  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/ledgerapp_upgrade_3034";
+  "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15440/" + upgradeDatabase;
 const root = path.resolve(__dirname, ".."),
   schemaRoot = path.join(root, "packages/db/prisma");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "ledgerapp-old-migrations-"));

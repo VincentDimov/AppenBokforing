@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { PageHeader } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { workspaceRequest } from "@/lib/workspace-api";
 
@@ -8,11 +9,14 @@ export function OnboardingPage() {
   const { refresh } = useAuth();
   const router = useRouter();
   const setupKey = useRef<string>("");
+  const inFlight = useRef(false);
   const year = new Date().getFullYear();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError("");
     const form = new FormData(event.currentTarget);
@@ -37,17 +41,21 @@ export function OnboardingPage() {
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Kunde inte skapa arbetsytan.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
   return (
-    <section className="rounded-2xl bg-white p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold">Välkommen till din arbetsyta</h1>
+    <section className="space-y-5">
+      <PageHeader
+        title="Välkommen till din arbetsyta"
+        context="Kom igång · Företag och räkenskapsår"
+      />
       <p className="my-4">
         Skapa organisation och första räkenskapsår. En liten egen startkontoplan och serie A skapas
         samtidigt. Den är inte en full BAS-kontoplan eller färdig momsinställning.
       </p>
-      <form className="space-y-4" onSubmit={submit}>
+      <form className="space-y-4" onSubmit={submit} aria-busy={busy}>
         <label className="block">
           Företagsnamn
           <input className="block w-full rounded border p-2" name="name" required maxLength={160} />
@@ -89,7 +97,7 @@ export function OnboardingPage() {
           />
         </label>
         {error && <p role="alert">{error}</p>}
-        <button className="rounded bg-[#17384b] px-5 py-3 text-white" disabled={busy}>
+        <button className="rounded bg-accent px-5 py-3 text-white" disabled={busy}>
           {busy ? "Skapar…" : "Skapa arbetsyta"}
         </button>
       </form>

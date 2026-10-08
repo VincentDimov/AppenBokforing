@@ -1,3 +1,12 @@
+jest.mock("@/lib/use-fiscal-years", () => ({
+  useFiscalYears: () => ({
+    selected: "",
+    error: "",
+    years: [
+      { id: "year", name: "2026", status: "OPEN", startDate: "2026-01-01", endDate: "2026-12-31" }
+    ]
+  })
+}));
 import { fireEvent, render, screen } from "@testing-library/react";
 import { VatReportPage } from "./vat-report-page";
 import { vatGolden } from "../../../../tests/fixtures/vat-golden";

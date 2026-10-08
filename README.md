@@ -1,6 +1,15 @@
 # LedgerApp
 
-## FAS 30–34 — aktuellt lokalt arbete, 2026-10-08
+## FAS 35 — gemensam UI/UX, 2026-10-08
+
+Nordisk arbetsyta med gemensamma tokens, kompakt navigation, mobildialog,
+namngivna rapportår, tydliga bekräftelser och konsekvent tabell-/formpresentation.
+Se [designsystem](docs/ui-design-system.md) och [fasrapport/releasegate](docs/fas35-ui-ux.md).
+FAS 35 är lokala ändringar ovanpå `acbba5434321f0d5bfaf68b1a152d46d8e765b7e`;
+ingen ny commit, push eller deployment har utförts. Bokföringens backendkontrakt
+och kända P0-gränser är oförändrade.
+
+## Historik: FAS 30–34 — implementerat i bascommit
 
 Konteringsmallar, granskad SIE-import/export med historik, organisationsgemensamt
 bilagearkiv, verifikationsrapport/CSV/A4 och verklig dashboard använder befintliga
@@ -11,10 +20,12 @@ Se [slutrapport och full lokal releasegate](docs/fas30-34-release-gate.md),
 [bilagearkiv](docs/attachment-archive.md), [rapportexport](docs/report-exports.md)
 och [dashboard](docs/dashboard.md).
 
-Bascommit är `441567e0379a1703fe48462408eebe16963bdd06` (FAS 29).
-FAS 30–34 är lokala, ännu inte committade/pushade/deployade. Ingen ny remote CI
-eller produktionsverifiering påstås. FAS 35 är inte påbörjad. Godkända tekniska
-tester innebär inte produktions-, redovisnings- eller regelgodkännande.
+Den tidigare lokala statusen är ersatt: FAS 30–34 ingår i `acbba5434321f0d5bfaf68b1a152d46d8e765b7e`.
+[GitHub-run 37785265772](https://github.com/VincentDimov/AppenBokforing/actions/runs/37785265772)
+har verifierats via GitHub API: verify, browser-e2e och recovery-runtime-gate SUCCESS
+för samma SHA. Vercel READY för bascommit är användaruppgift, inte en ny verifierad
+deployment i FAS 35. Den daterade fasrapportens äldre gitstatus är historisk.
+Godkända tester innebär inte produktions-, redovisnings- eller regelgodkännande.
 
 ## Historik: FAS 25–29
 

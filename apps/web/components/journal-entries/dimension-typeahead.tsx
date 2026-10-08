@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { FloatingOptions } from "@/components/ui/floating-options";
 import { workspaceRequest } from "@/lib/workspace-api";
 import type { Dimension } from "@/components/organizations/dimensions-page";
 export function DimensionTypeahead({
@@ -20,6 +21,7 @@ export function DimensionTypeahead({
   displayName?: string;
 }) {
   const id = useId();
+  const anchor = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [choices, setChoices] = useState<Dimension[]>([]);
@@ -67,7 +69,7 @@ export function DimensionTypeahead({
       </span>
     );
   return (
-    <div className="relative min-w-32">
+    <div ref={anchor} className="relative min-w-32">
       <input
         className="h-9 w-full rounded border p-2"
         aria-label={label}
@@ -90,7 +92,7 @@ export function DimensionTypeahead({
           if (event.key === "ArrowDown") {
             event.preventDefault();
             setOpen(true);
-            setActive((index) => Math.min(index + 1, choices.length - 1));
+            setActive((index) => Math.min(index + 1, Math.max(choices.length - 1, 0)));
           }
           if (event.key === "ArrowUp") {
             event.preventDefault();
@@ -104,27 +106,25 @@ export function DimensionTypeahead({
         }}
       />
       {open && !disabled && (
-        <ul
-          id={id}
-          role="listbox"
-          className="absolute z-30 max-h-48 w-64 overflow-auto rounded border bg-white shadow-lg"
-        >
-          {choices.map((choice, index) => (
-            <li
-              id={`${id}-${index}`}
-              key={choice.id}
-              role="option"
-              aria-selected={active === index}
-              className={`cursor-pointer p-2 ${active === index ? "bg-slate-100" : ""}`}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                choose(choice);
-              }}
-            >
-              {choice.code} · {choice.name}
-            </li>
-          ))}
-        </ul>
+        <FloatingOptions anchor={anchor}>
+          <ul id={id} role="listbox" className="w-full rounded border bg-white shadow-lg">
+            {choices.map((choice, index) => (
+              <li
+                id={`${id}-${index}`}
+                key={choice.id}
+                role="option"
+                aria-selected={active === index}
+                className={`cursor-pointer p-2 ${active === index ? "bg-accent-soft" : ""}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  choose(choice);
+                }}
+              >
+                {choice.code} · {choice.name}
+              </li>
+            ))}
+          </ul>
+        </FloatingOptions>
       )}
     </div>
   );

@@ -30,7 +30,7 @@ export const dashboardNavigationItem: NavigationItem = {
   description: "Översikt av resultat, moms och senaste verifikationer.",
   href: "/app",
   icon: "layout-dashboard",
-  label: "Dashboard"
+  label: "Översikt"
 };
 
 export const navigationGroups: NavigationGroup[] = [
@@ -38,7 +38,7 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Bokföring",
     items: [
       {
-        description: "Granska verifikationer när bokföringsvyn är ansluten.",
+        description: "Granska utkast och bokförda verifikationer.",
         href: "/app/bookkeeping/vouchers",
         icon: "receipt-text",
         label: "Verifikationer"
@@ -134,7 +134,7 @@ export const navigationGroups: NavigationGroup[] = [
         description: "Granska organisationens grunduppgifter.",
         href: "/app/settings/organization",
         icon: "building-2",
-        label: "Organisation"
+        label: "Företag"
       },
       {
         description: "Hantera räkenskapsår och perioder.",
@@ -185,4 +185,19 @@ export function getWorkspaceNavigationItem(slug: string[]): NavigationItem | und
   const href = `/app/${slug.join("/")}`;
 
   return allNavigationItems.find((item) => item.href === href);
+}
+
+/** Resolve canonical and /app aliases; only the most specific matching item is active. */
+export function isNavigationActive(pathname: string, href: string): boolean {
+  const normalize = (path: string) => (path === "/app" ? "/" : path.replace(/^\/app(?=\/)/, ""));
+  const current = normalize(pathname);
+  const match = allNavigationItems
+    .filter((item) => {
+      const target = normalize(item.href);
+      return target === "/"
+        ? current === "/"
+        : current === target || current.startsWith(target + "/");
+    })
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  return match?.href === href;
 }

@@ -1,13 +1,22 @@
 # LedgerApp — roadmap från nuvarande implementation
 
-## Efter FAS 30–34
+## Efter FAS 35-arbetskopian
+
+[UI/UX-rapport](fas35-ui-ux.md) och [designsystem](ui-design-system.md) beskriver
+arbetet. Nästa steg är kod-/produktgranskning och nya remote releasegates för
+FAS 35 innan eventuell release. Ingen FAS 36 startas automatiskt.
+Prioritera kvarvarande P0-operatörsbevis före påståenden om produktionsberedskap.
+
+## Historik: efter FAS 30–34 (ersatt fasstatus)
 
 Se [fasstatus och lokal releasegate](fas30-34-release-gate.md).
 Begär kodgranskning och kör befintliga tre remote CI-jobb för den nya arbetskopian
 innan någon deployment. Migrationer/grants/pg_trgm och DB/blob-backup måste
 hanteras som operatörskontroller; nya lokala tester är inte cloud-releasebevis.
 
-FAS 35 är nästa separata produktfas: premium UI/UX-polish. Inte påbörjad här.
+FAS 30–34 ingår nu i bascommit acbba54 och GitHub-run 37785265772 har tre
+verifierade gröna jobb. FAS 35 implementeras i den aktuella lokala arbetskopian;
+den tidigare formuleringen om en ännu ej påbörjad fas gäller inte längre.
 Parallellt behöver återstående P0-risker hanteras genom explicit releasearbete:
 historiska företags-/rapportnamn, kvarvarande close/import/retry-races, exponerade
 hemligheters rotation, verklig cloud-backup/TLS/kryptering/least privilege och

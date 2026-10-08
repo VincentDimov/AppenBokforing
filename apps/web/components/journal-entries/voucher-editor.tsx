@@ -25,6 +25,7 @@ import { DimensionTypeahead } from "@/components/journal-entries/dimension-typea
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, ConfirmDialog } from "@/components/ui/dialog";
 import {
   createJournalEntry,
   getJournalEntry,
@@ -91,6 +92,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   const [reversalOptionsLoading, setReversalOptionsLoading] = useState(false);
   const [reversalSeriesId, setReversalSeriesId] = useState("");
   const [showReversalConfirmation, setShowReversalConfirmation] = useState(false);
+  const [showPostConfirmation, setShowPostConfirmation] = useState(false);
   const [transactionDate, setTransactionDate] = useState(today());
   const [voucherSeriesId, setVoucherSeriesId] = useState("");
   const nextLineToFocus = useRef<string | null>(null);
@@ -446,7 +448,9 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   }
 
   async function handlePost() {
-    await persistDraft(false, true);
+    if (mutationInFlight.current) return;
+    if (canPost) setShowPostConfirmation(true);
+    else await persistDraft(false, true);
   }
   async function reloadLatest() {
     if (!entry || mutationInFlight.current) return;
@@ -539,10 +543,37 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
 
   return (
     <div className="mx-auto max-w-[1500px]">
-      <header className="flex flex-col gap-5 border-b border-[#ccdce4] pb-6 lg:flex-row lg:items-end lg:justify-between">
+      <ConfirmDialog
+        open={showPostConfirmation}
+        title="Bokför verifikationen?"
+        confirmLabel="Bekräfta bokföring"
+        description={
+          <>
+            <p>
+              {description} · {transactionDate}
+            </p>
+            <p className="mt-3">
+              Debet {amounts ? formatOre(amounts.debit) : "—"} · Kredit{" "}
+              {amounts ? formatOre(amounts.credit) : "—"}
+            </p>
+            <p className="mt-3">
+              När du bokför tilldelas ett nummer. Beloppen låses och ändringar görs genom en spårbar
+              rättelse.
+            </p>
+          </>
+        }
+        onCancel={() => setShowPostConfirmation(false)}
+        disabled={!canPost}
+        busy={isSaving}
+        onConfirm={() => {
+          setShowPostConfirmation(false);
+          void persistDraft(false, true);
+        }}
+      />
+      <header className="flex flex-col gap-5 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-[#537786] hover:text-[#12374c]"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
             href="/app/bookkeeping/vouchers"
           >
             <ArrowLeft aria-hidden="true" className="size-4" />
@@ -550,10 +581,10 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           </Link>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div>
-              <p className="text-xs font-semibold tracking-[0.13em] text-[#638292] uppercase">
+              <p className="text-xs font-semibold tracking-[0.13em] text-muted uppercase">
                 Bokföring
               </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-[#12374c] sm:text-4xl">
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-2xl">
                 {pageTitle}
               </h1>
             </div>
@@ -563,14 +594,14 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
               <Badge variant="warning">Utkast</Badge>
             )}
           </div>
-          <p className="mt-3 text-sm leading-6 text-[#58717e]">
+          <p className="mt-3 text-sm leading-6 text-secondary">
             {entry?.status === "POSTED"
               ? "Bokförda belopp är låsta. Spårbarheten bevaras i revisionsloggen."
-              : "Belopp hanteras i ören i gränssnittet och valideras som Decimal i databasen."}
+              : "Fyll i datum, beskrivning och kontering. Spara ett utkast eller bokför när debet och kredit balanserar."}
           </p>
         </div>
         {entry?.status === "POSTED" ? (
-          <div className="flex flex-wrap items-center gap-3 border border-[#b7ddca] bg-[#eff9f3] px-4 py-3 text-sm text-[#256447]">
+          <div className="flex flex-wrap items-center gap-3 border border-border bg-success-soft px-4 py-3 text-sm text-success">
             <span className="flex items-center gap-2">
               <CheckCircle2 aria-hidden="true" className="size-4" />
               Bokförd {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString("sv-SE") : ""}
@@ -595,7 +626,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
 
       {error ? (
         <div
-          className="mt-6 flex items-start gap-3 border-l-2 border-[#c76b52] bg-[#fff6f2] px-4 py-4 text-sm leading-6 text-[#914a38]"
+          className="mt-6 flex items-start gap-3 border-l-2 border-danger bg-danger-soft px-4 py-4 text-sm leading-6 text-danger"
           role="alert"
         >
           <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -615,132 +646,122 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         />
       ) : null}
 
-      {entry ? (
-        <VoucherAttachments
-          key={entry.id}
-          canUpload={canWrite && entry.status === "DRAFT" && !isSaving}
-          isDraft={entry.status === "DRAFT"}
-          journalEntryId={entry.id}
-          onUploadingChange={setAttachmentsUploading}
-        />
-      ) : (
-        <section className="mt-6 border border-[#d6e3e9] bg-[#f7fafb] px-5 py-4 text-sm leading-6 text-[#58717e] md:px-6">
-          <span className="mr-2 inline-flex align-middle text-[#24627c]">
-            <Paperclip aria-hidden="true" className="size-4" />
-          </span>
-          Spara utkastet fÃ¶rst fÃ¶r att lÃ¤gga till underlag. Bilagor bevaras sedan nÃ¤r
-          verifikationen bokfÃ¶rs.
-        </section>
-      )}
-
       {showReversalConfirmation && entry ? (
-        <section className="mt-6 border border-[#e2cbbd] bg-[#fffaf6] p-5 shadow-[0_8px_22px_rgba(81,48,22,0.04)] md:p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold tracking-[-0.025em] text-[#583827]">
-                Skapa rättelse
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#785a49]">
-                En ny bokförd motverifikation skapas med omvänd debet och kredit. Originalet är låst
-                och ändras inte.
-              </p>
+        <Dialog
+          open={showReversalConfirmation}
+          title="Skapa rättelse"
+          onClose={() => setShowReversalConfirmation(false)}
+          busy={isSaving}
+          className="max-w-3xl"
+        >
+          <div className="dialog-body">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="max-w-3xl text-sm leading-6 text-secondary">
+                  En ny bokförd motverifikation skapas med omvänd debet och kredit. Originalet är
+                  låst och ändras inte.
+                </p>
+              </div>
+              <Badge variant="outline">Steg 2 av 2</Badge>
             </div>
-            <Badge variant="outline">Steg 2 av 2</Badge>
-          </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-[minmax(11rem,0.7fr)_minmax(13rem,0.9fr)_minmax(0,1.5fr)]">
-            <label className="block">
-              <span className="text-xs font-semibold tracking-[0.1em] text-[#795d4c] uppercase">
-                Rättelsedatum
-              </span>
-              <input
-                className="mt-2 h-10 w-full rounded-lg border border-[#dcc6b8] bg-white px-3 text-sm text-[#3e3029] outline-none focus:border-[#b87b58] focus:ring-4 focus:ring-[#f6e2d5]"
-                disabled={isSaving}
-                onChange={(event) => setReversalDate(event.target.value)}
-                type="date"
-                value={reversalDate}
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-semibold tracking-[0.1em] text-[#795d4c] uppercase">
-                Rättelseserie
-              </span>
-              <select
-                className="mt-2 h-10 w-full rounded-lg border border-[#dcc6b8] bg-white px-3 text-sm text-[#3e3029] outline-none focus:border-[#b87b58] focus:ring-4 focus:ring-[#f6e2d5] disabled:bg-[#f7eee8]"
-                disabled={isSaving || reversalOptionsLoading}
-                onChange={(event) => setReversalSeriesId(event.target.value)}
-                value={reversalSeriesId}
-              >
-                <option value="">{reversalOptionsLoading ? "Laddar serier…" : "Välj serie"}</option>
-                {reversalOptions?.voucherSeries.map((series) => (
-                  <option key={series.id} value={series.id}>
-                    {series.code} — {series.name}
+            <div className="mt-5 grid gap-4 md:grid-cols-[minmax(11rem,0.7fr)_minmax(13rem,0.9fr)_minmax(0,1.5fr)]">
+              <label className="block">
+                <span className="text-xs font-semibold tracking-[0.1em] text-warning uppercase">
+                  Rättelsedatum
+                </span>
+                <input
+                  className="mt-2 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-border focus:ring-4 focus:ring-warning"
+                  disabled={isSaving}
+                  onChange={(event) => setReversalDate(event.target.value)}
+                  type="date"
+                  value={reversalDate}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold tracking-[0.1em] text-warning uppercase">
+                  Rättelseserie
+                </span>
+                <select
+                  className="mt-2 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-border focus:ring-4 focus:ring-warning disabled:bg-warning-soft"
+                  disabled={isSaving || reversalOptionsLoading}
+                  onChange={(event) => setReversalSeriesId(event.target.value)}
+                  value={reversalSeriesId}
+                >
+                  <option value="">
+                    {reversalOptionsLoading ? "Laddar serier…" : "Välj serie"}
                   </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-xs font-semibold tracking-[0.1em] text-[#795d4c] uppercase">
-                Beskrivning (valfri)
+                  {reversalOptions?.voucherSeries.map((series) => (
+                    <option key={series.id} value={series.id}>
+                      {series.code} — {series.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold tracking-[0.1em] text-warning uppercase">
+                  Beskrivning (valfri)
+                </span>
+                <input
+                  className="mt-2 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-muted focus:border-border focus:ring-4 focus:ring-warning disabled:bg-warning-soft"
+                  disabled={isSaving}
+                  maxLength={500}
+                  onChange={(event) => setReversalDescription(event.target.value)}
+                  placeholder={`Rättelse av ${entry.voucherSeries?.code ?? ""}${entry.voucherNumber ?? ""}`}
+                  value={reversalDescription}
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-warning">
+              <span>
+                Räkenskapsår: <strong>{reversalOptions?.fiscalYear.name ?? "—"}</strong>
               </span>
-              <input
-                className="mt-2 h-10 w-full rounded-lg border border-[#dcc6b8] bg-white px-3 text-sm text-[#3e3029] outline-none placeholder:text-[#9c8577] focus:border-[#b87b58] focus:ring-4 focus:ring-[#f6e2d5] disabled:bg-[#f7eee8]"
+              <span>
+                Period: <strong>{reversalOptions?.accountingPeriod.periodNumber ?? "—"}</strong>
+              </span>
+              {selectedReversalSeries ? <span>Serie {selectedReversalSeries.code}</span> : null}
+              {reversalOptions?.accountingPeriod.status === "LOCKED" ? (
+                <span className="font-medium text-danger">Målperioden är låst.</span>
+              ) : null}
+              {reversalOptions?.fiscalYear.status === "CLOSED" ? (
+                <span className="font-medium text-danger">Målräkenskapsåret är stängt.</span>
+              ) : null}
+              {reversalOptionsError ? (
+                <span className="font-medium text-danger">{reversalOptionsError}</span>
+              ) : null}
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <Button
                 disabled={isSaving}
-                maxLength={500}
-                onChange={(event) => setReversalDescription(event.target.value)}
-                placeholder={`Rättelse av ${entry.voucherSeries?.code ?? ""}${entry.voucherNumber ?? ""}`}
-                value={reversalDescription}
-              />
-            </label>
+                onClick={() => setShowReversalConfirmation(false)}
+                type="button"
+                variant="outline"
+              >
+                Avbryt
+              </Button>
+              <Button
+                disabled={!canConfirmCorrection}
+                onClick={() => void handleReverse()}
+                type="button"
+              >
+                {isSaving ? (
+                  <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+                ) : (
+                  <RotateCcw aria-hidden="true" className="size-4" />
+                )}
+                Bekräfta och bokför rättelse
+              </Button>
+            </div>
           </div>
-
-          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#795d4c]">
-            <span>
-              Räkenskapsår: <strong>{reversalOptions?.fiscalYear.name ?? "—"}</strong>
-            </span>
-            <span>
-              Period: <strong>{reversalOptions?.accountingPeriod.periodNumber ?? "—"}</strong>
-            </span>
-            {selectedReversalSeries ? <span>Serie {selectedReversalSeries.code}</span> : null}
-            {reversalOptions?.accountingPeriod.status === "LOCKED" ? (
-              <span className="font-medium text-[#a04f39]">Målperioden är låst.</span>
-            ) : null}
-            {reversalOptions?.fiscalYear.status === "CLOSED" ? (
-              <span className="font-medium text-[#a04f39]">Målräkenskapsåret är stängt.</span>
-            ) : null}
-            {reversalOptionsError ? (
-              <span className="font-medium text-[#a04f39]">{reversalOptionsError}</span>
-            ) : null}
-          </div>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <Button
-              disabled={isSaving}
-              onClick={() => setShowReversalConfirmation(false)}
-              type="button"
-              variant="outline"
-            >
-              Avbryt
-            </Button>
-            <Button
-              disabled={!canConfirmCorrection}
-              onClick={() => void handleReverse()}
-              type="button"
-            >
-              {isSaving ? (
-                <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-              ) : (
-                <RotateCcw aria-hidden="true" className="size-4" />
-              )}
-              Bekräfta och bokför rättelse
-            </Button>
-          </div>
-        </section>
+        </Dialog>
       ) : null}
 
       {!canWrite && isDraft ? (
-        <div className="mt-6 border border-[#d7e4e9] bg-[#f7fafb] px-4 py-3 text-sm text-[#58717e]">
-          Du har läsbehörighet. Owner, admin eller accountant krävs för att ändra eller bokföra.
+        <div className="mt-6 border border-border bg-surface-muted px-4 py-3 text-sm text-secondary">
+          Du har läsbehörighet. Ägare, administratör eller redovisare krävs för att ändra eller
+          bokföra.
         </div>
       ) : null}
 
@@ -758,14 +779,14 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           }}
         />
       )}
-      <section className="mt-6 border border-[#d6e3e9] bg-white shadow-[0_8px_22px_rgba(16,47,66,0.035)]">
-        <div className="grid gap-5 border-b border-[#e1ebef] p-5 md:grid-cols-2 xl:grid-cols-[minmax(13rem,0.8fr)_minmax(10rem,0.55fr)_minmax(0,1.7fr)] md:p-6">
+      <section className="mt-6 border border-border bg-white shadow-none">
+        <div className="grid gap-5 border-b border-border p-5 md:grid-cols-2 xl:grid-cols-[minmax(13rem,0.8fr)_minmax(10rem,0.55fr)_minmax(0,1.7fr)] md:p-6">
           <label className="block">
-            <span className="text-xs font-semibold tracking-[0.1em] text-[#64818f] uppercase">
+            <span className="text-xs font-semibold tracking-[0.1em] text-muted uppercase">
               Serie
             </span>
             <select
-              className="mt-2 h-10 w-full rounded-lg border border-[#cbdbe3] bg-white px-3 text-sm text-[#17384b] outline-none focus:border-[#4a8fa9] focus:ring-4 focus:ring-[#d8edf5] disabled:bg-[#f3f6f7]"
+              className="mt-2 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-border focus:ring-4 focus:ring-focus disabled:bg-surface-muted"
               disabled={!isEditable || optionsLoading}
               onChange={(event) => setVoucherSeriesId(event.target.value)}
               value={voucherSeriesId}
@@ -780,11 +801,11 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
             </select>
           </label>
           <label className="block">
-            <span className="text-xs font-semibold tracking-[0.1em] text-[#64818f] uppercase">
+            <span className="text-xs font-semibold tracking-[0.1em] text-muted uppercase">
               Bokföringsdatum
             </span>
             <input
-              className="mt-2 h-10 w-full rounded-lg border border-[#cbdbe3] bg-white px-3 text-sm text-[#17384b] outline-none focus:border-[#4a8fa9] focus:ring-4 focus:ring-[#d8edf5] disabled:bg-[#f3f6f7]"
+              className="mt-2 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none focus:border-border focus:ring-4 focus:ring-focus disabled:bg-surface-muted"
               disabled={!isEditable}
               onChange={(event) => setTransactionDate(event.target.value)}
               type="date"
@@ -792,11 +813,11 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
             />
           </label>
           <label className="block md:col-span-2 xl:col-span-1">
-            <span className="text-xs font-semibold tracking-[0.1em] text-[#64818f] uppercase">
+            <span className="text-xs font-semibold tracking-[0.1em] text-muted uppercase">
               Beskrivning
             </span>
             <input
-              className="mt-2 h-10 w-full rounded-lg border border-[#cbdbe3] bg-white px-3 text-sm text-[#17384b] outline-none placeholder:text-[#8298a3] focus:border-[#4a8fa9] focus:ring-4 focus:ring-[#d8edf5] disabled:bg-[#f3f6f7]"
+              className="mt-2 h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-ink outline-none placeholder:text-muted focus:border-border focus:ring-4 focus:ring-focus disabled:bg-surface-muted"
               disabled={!isEditable}
               maxLength={500}
               onChange={(event) => setDescription(event.target.value)}
@@ -805,32 +826,37 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
             />
           </label>
         </div>
-        <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-[#e1ebef] bg-[#f7fafb] px-5 py-3 text-xs text-[#64818f] md:px-6">
+        <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-border bg-surface-muted px-5 py-3 text-xs text-muted md:px-6">
           <span>
             Räkenskapsår:{" "}
-            <strong className="font-semibold text-[#294f62]">
+            <strong className="font-semibold text-secondary">
               {options?.fiscalYear.name ?? entry?.fiscalYear.name ?? "—"}
             </strong>
           </span>
           <span>
             Period:{" "}
-            <strong className="font-semibold text-[#294f62]">
+            <strong className="font-semibold text-secondary">
               {options?.accountingPeriod.periodNumber ??
                 entry?.accountingPeriod.periodNumber ??
                 "—"}
             </strong>
           </span>
-          {optionsError ? <span className="text-[#a4503a]">{optionsError}</span> : null}
+          {optionsError ? <span className="text-danger">{optionsError}</span> : null}
           {selectedSeries ? <span>Serie {selectedSeries.code}</span> : null}
         </div>
 
-        <div className="overflow-x-auto">
+        <div
+          className="table-frame border-x-0 rounded-none"
+          tabIndex={0}
+          role="region"
+          aria-label="Konteringsrader"
+        >
           <table className="w-full min-w-[1100px] text-left text-sm">
-            <thead className="border-b border-[#e5edf1] bg-[#f7fafb] text-[11px] font-semibold tracking-[0.08em] text-[#6c8490] uppercase">
+            <thead className="border-b border-border bg-surface-muted text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
               <tr>
                 <th className="w-[16rem] px-4 py-3.5 font-semibold md:px-6">Konto</th>
                 <th className="min-w-[13rem] px-3 py-3.5 font-semibold">Beskrivning</th>
-                <th className="w-[8rem] px-3 py-3.5 font-semibold">Kst.</th>
+                <th className="w-[8rem] px-3 py-3.5 font-semibold">Kostnadsställe</th>
                 <th className="w-[8rem] px-3 py-3.5 font-semibold">Projekt</th>
                 <th className="w-[8rem] px-3 py-3.5 font-semibold">Moms</th>
                 <th className="w-[8.5rem] px-3 py-3.5 text-right font-semibold">Debet</th>
@@ -840,12 +866,13 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
             </thead>
             <tbody>
               {lines.map((line, index) => (
-                <tr className="border-b border-[#edf2f4] last:border-b-0" key={line.clientId}>
+                <tr className="border-b border-border last:border-b-0" key={line.clientId}>
                   <td className="px-4 py-2 md:px-6">
                     <AccountTypeahead
                       account={line.account}
                       disabled={!isEditable}
                       id={`voucher-account-${line.clientId}`}
+                      ariaLabel={`Konto rad ${index + 1}`}
                       onAdvance={() =>
                         document.getElementById(`voucher-description-${line.clientId}`)?.focus()
                       }
@@ -855,6 +882,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                   </td>
                   <td className="px-3 py-2">
                     <TableInput
+                      ariaLabel={`Radbeskrivning ${index + 1}`}
                       disabled={!isEditable}
                       id={`voucher-description-${line.clientId}`}
                       onChange={(value) => updateLine(line.clientId, "description", value)}
@@ -890,6 +918,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                   </td>
                   <td className="px-3 py-2">
                     <TableInput
+                      ariaLabel={`Momskod rad ${index + 1}`}
                       disabled={!isEditable}
                       onChange={(value) =>
                         updateLine(line.clientId, "vatCode", value.toUpperCase())
@@ -897,29 +926,39 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                       placeholder="Kod"
                       value={line.vatCode}
                     />
-                    <select
-                      aria-label={`Momsroll rad ${index + 1}`}
-                      disabled={!isEditable}
-                      value={line.vatRole}
-                      onChange={(event) => updateLine(line.clientId, "vatRole", event.target.value)}
-                      className="mt-1 w-full rounded border p-1"
-                    >
-                      <option value="NONE">Ingen momsroll</option>
-                      <option value="BASE">Underlag</option>
-                      <option value="TAX">Momsbelopp</option>
-                      <option value="UNCLASSIFIED">Ej klassificerad</option>
-                    </select>
-                    <input
-                      aria-label={`Momsgrupp rad ${index + 1}`}
-                      disabled={!isEditable}
-                      maxLength={64}
-                      placeholder="Grupp (valfri)"
-                      value={line.vatGroup}
-                      onChange={(event) =>
-                        updateLine(line.clientId, "vatGroup", event.target.value)
-                      }
-                      className="mt-1 w-full rounded border p-1"
-                    />
+                    <details className="mt-1 text-xs">
+                      <summary
+                        aria-label={`Momsmetadata rad ${index + 1}`}
+                        className="text-secondary"
+                      >
+                        Metadata
+                      </summary>
+                      <select
+                        aria-label={`Momsroll rad ${index + 1}`}
+                        disabled={!isEditable}
+                        value={line.vatRole}
+                        onChange={(event) =>
+                          updateLine(line.clientId, "vatRole", event.target.value)
+                        }
+                        className="mt-1 w-full rounded border p-1"
+                      >
+                        <option value="NONE">Ingen momsroll</option>
+                        <option value="BASE">Underlag</option>
+                        <option value="TAX">Momsbelopp</option>
+                        <option value="UNCLASSIFIED">Ej klassificerad</option>
+                      </select>
+                      <input
+                        aria-label={`Momsgrupp rad ${index + 1}`}
+                        disabled={!isEditable}
+                        maxLength={64}
+                        placeholder="Grupp (valfri)"
+                        value={line.vatGroup}
+                        onChange={(event) =>
+                          updateLine(line.clientId, "vatGroup", event.target.value)
+                        }
+                        className="mt-1 w-full rounded border p-1"
+                      />
+                    </details>
                   </td>
                   <td className="px-3 py-2">
                     <TableInput
@@ -955,7 +994,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                   <td className="px-3 py-2 text-center">
                     <button
                       aria-label={`Ta bort rad ${index + 1}`}
-                      className="grid size-8 place-items-center rounded-md text-[#79929d] hover:bg-[#fff0eb] hover:text-[#a7503b] disabled:opacity-40"
+                      className="grid size-8 place-items-center rounded-md text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40"
                       disabled={!isEditable || lines.length <= 1}
                       onClick={() => removeLine(line.clientId)}
                       type="button"
@@ -969,7 +1008,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           </table>
         </div>
 
-        <div className="flex flex-col gap-5 border-t border-[#dce8ed] bg-[#f8fbfc] p-5 md:flex-row md:items-end md:justify-between md:px-6">
+        <div className="voucher-actions flex flex-col gap-5 border-t border-border bg-surface p-5 md:flex-row md:items-end md:justify-between md:px-6">
           <div>
             {isDraft ? (
               <Button
@@ -982,8 +1021,9 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                 Lägg till rad
               </Button>
             ) : null}
-            <p className="mt-3 text-xs leading-5 text-[#66818e]">
-              Enter på sista kreditfältet lägger till en rad. Ctrl/Cmd + Enter försöker bokföra.
+            <p className="mt-3 text-xs leading-5 text-muted">
+              Enter på sista kreditfältet lägger till en rad. Ctrl/Cmd + Enter öppnar bekräftelse
+              för bokföring.
             </p>
           </div>
           <div className="w-full max-w-lg">
@@ -1028,6 +1068,23 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           </div>
         </div>
       </section>
+      {entry ? (
+        <VoucherAttachments
+          key={entry.id}
+          canUpload={canWrite && entry.status === "DRAFT" && !isSaving}
+          isDraft={entry.status === "DRAFT"}
+          journalEntryId={entry.id}
+          onUploadingChange={setAttachmentsUploading}
+        />
+      ) : (
+        <section className="mt-6 border border-border bg-surface-muted px-5 py-4 text-sm leading-6 text-secondary md:px-6">
+          <span className="mr-2 inline-flex align-middle text-secondary">
+            <Paperclip aria-hidden="true" className="size-4" />
+          </span>
+          Spara utkastet först för att lägga till underlag. Bilagor bevaras sedan när verifikationen
+          bokförs.
+        </section>
+      )}
     </div>
   );
 }
@@ -1056,8 +1113,8 @@ function TableInput({
   return (
     <input
       aria-label={ariaLabel}
-      className={`h-9 w-full rounded-md border border-[#cadbe3] bg-white px-2 text-sm text-[#17384b] outline-none placeholder:text-[#90a3ac] focus:border-[#4b90aa] focus:ring-3 focus:ring-[#d8edf5] disabled:bg-[#f3f6f7] ${
-        align === "right" ? "text-right tabular-nums" : ""
+      className={`h-9 w-full rounded-md border border-border bg-white px-2 text-sm text-ink outline-none placeholder:text-muted focus:border-border focus:ring-3 focus:ring-focus disabled:bg-surface-muted ${
+        align === "right" ? "min-w-[7rem] text-right tabular-nums" : ""
       }`}
       disabled={disabled}
       id={id}
@@ -1077,13 +1134,11 @@ function AmountSummary({
   value
 }: Readonly<{ emphasis?: boolean; label: string; negative?: boolean; value: string }>) {
   return (
-    <div className={emphasis ? "border-l border-[#d7e4e9] pl-3" : ""}>
-      <dt className="text-[10px] font-semibold tracking-[0.09em] text-[#68838f] uppercase">
-        {label}
-      </dt>
+    <div className={emphasis ? "border-l border-border pl-3" : ""}>
+      <dt className="text-[10px] font-semibold tracking-[0.09em] text-muted uppercase">{label}</dt>
       <dd
         className={`mt-1 font-semibold tabular-nums ${
-          negative ? "text-[#a5503b]" : emphasis ? "text-[#1b6549]" : "text-[#244b60]"
+          negative ? "text-danger" : emphasis ? "text-success" : "text-secondary"
         }`}
       >
         {value}
@@ -1098,7 +1153,7 @@ function StatusBadge({ status }: Readonly<{ status: JournalEntry["status"] }>) {
   }
 
   if (status === "REVERSED") {
-    return <Badge variant="outline">Makulerad</Badge>;
+    return <Badge variant="outline">Rättad</Badge>;
   }
 
   return <Badge variant="warning">Utkast</Badge>;
@@ -1112,8 +1167,8 @@ function VoucherRelationshipPanel({
   original: JournalEntry["reversesEntry"];
 }>) {
   return (
-    <section className="mt-6 border border-[#d2e2e7] bg-[#f4fafb] px-5 py-4 text-sm text-[#365869] md:px-6">
-      <p className="text-xs font-semibold tracking-[0.1em] text-[#638292] uppercase">
+    <section className="mt-6 border border-border bg-surface-muted px-5 py-4 text-sm text-secondary md:px-6">
+      <p className="text-xs font-semibold tracking-[0.1em] text-muted uppercase">
         Kopplade verifikationer
       </p>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -1141,19 +1196,19 @@ function VoucherRelationshipLink({
 
   return (
     <Link
-      className="inline-flex items-center gap-2 rounded-md border border-[#c9dce3] bg-white px-3 py-2 font-medium text-[#1c526b] hover:border-[#83aeba] hover:bg-[#eaf5f7]"
+      className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 font-medium text-secondary hover:border-border hover:bg-surface-muted"
       href={`/app/bookkeeping/vouchers/${entry.id}`}
     >
-      <span className="text-[#68838f]">{label}</span>
+      <span className="text-muted">{label}</span>
       <span>{identity}</span>
-      <span className="text-xs text-[#68838f]">{entry.transactionDate}</span>
+      <span className="text-xs text-muted">{entry.transactionDate}</span>
     </Link>
   );
 }
 
 function VoucherEditorMessage({ message }: Readonly<{ message: string }>) {
   return (
-    <section className="mx-auto max-w-4xl border border-[#d6e3e9] bg-white p-6 text-sm leading-6 text-[#58717e] shadow-[0_8px_22px_rgba(16,47,66,0.035)] sm:p-8">
+    <section className="mx-auto max-w-4xl border border-border bg-white p-6 text-sm leading-6 text-secondary shadow-none sm:p-8">
       {message}
     </section>
   );

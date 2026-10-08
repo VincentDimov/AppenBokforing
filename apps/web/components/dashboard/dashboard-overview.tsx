@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useFiscalYears, type FiscalYearChoice } from "@/lib/use-fiscal-years";
 import { workspaceRequest } from "@/lib/workspace-api";
+import { PageHeader, StatusBadge } from "@/components/ui/workspace";
 import { Button } from "@/components/ui/button";
 export interface DashboardData {
   organizationId: string;
@@ -119,12 +120,19 @@ function Dashboard({ org }: { org: string }) {
     ) ?? 0n;
   return (
     <div className="mx-auto max-w-[1400px] space-y-6">
-      <header className="border-b pb-6">
-        <p className="text-xs uppercase tracking-wider">Dashboard</p>
-        <h1 className="text-3xl font-semibold">Läget i bokföringen</h1>
-        <p>{activeOrganization?.name} · Verkliga bokförda data, SEK</p>
-      </header>
-      <section className="report-filters flex flex-wrap gap-3 rounded-xl bg-white p-4">
+      <PageHeader
+        title="Översikt"
+        context="Arbetsyta"
+        description={<>{activeOrganization?.name} · Bokförda belopp, SEK</>}
+        action={
+          canWrite && (
+            <Button asChild>
+              <Link href="/app/bookkeeping/vouchers/new">Ny verifikation</Link>
+            </Button>
+          )
+        }
+      />
+      <section className="report-filters flex flex-wrap gap-3 rounded-lg bg-white p-4">
         <label>
           Räkenskapsår{" "}
           <select
@@ -189,28 +197,38 @@ function Dashboard({ org }: { org: string }) {
           {years.years.length ? "Välj ett intervall inom räkenskapsåret." : "Läser räkenskapsår…"}
         </p>
       ) : !data ? (
-        <p role="status">Läser dashboard…</p>
+        <p role="status">Hämtar ekonomisk översikt…</p>
       ) : null}
       {data && (
         <>
           <p className="text-sm">
-            {data.fromDate} – {data.toDate} · Uppdaterat {data.generatedAt}
+            {data.fromDate} – {data.toDate} · Uppdaterat{" "}
+            {new Date(data.generatedAt).toLocaleString("sv-SE", {
+              dateStyle: "short",
+              timeStyle: "short"
+            })}
           </p>
           <section
             aria-label="Ekonomisk översikt"
             className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
           >
             {[
+              ["Aktuellt resultat", data.kpis.result],
               ["Intäkter", data.kpis.revenue],
               ["Kostnader", data.kpis.expenses],
-              ["Aktuellt resultat", data.kpis.result],
               ["Ingående moms", data.kpis.inputVat],
               ["Utgående moms", data.kpis.outputVat],
               ["Momsposition", data.kpis.vatPosition]
             ].map(([label, value]) => (
-              <article key={label} aria-label={label} className="rounded-xl border bg-white p-5">
+              <article
+                key={label}
+                aria-label={label}
+                className="rounded-lg border border-border bg-white p-5"
+              >
                 <h2>{label}</h2>
-                <p className="mt-2 text-2xl font-semibold tabular-nums">{value} SEK</p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+                  {value} SEK
+                </p>
               </article>
             ))}
           </section>
@@ -218,11 +236,11 @@ function Dashboard({ org }: { org: string }) {
             Utkast i urvalet: {data.kpis.drafts} · Bokförda verifikationer i urvalet:{" "}
             {data.kpis.posted}
           </p>
-          <section className="rounded-xl border bg-white p-5">
+          <section className="rounded-lg border bg-white p-5">
             <h2 className="text-lg font-semibold">Momsstatus</h2>
             <p>
               Konfiguration: {data.vatStatus.configurationVersion}. Momsposition = utgående minus
-              ingående moms. Inte en färdig skattedeklaration.
+              ingående moms. Granska rapporten innan den används som deklarationsunderlag.
             </p>
             {data.vatStatus.anomalies > 0 || data.vatStatus.warnings.length > 0 ? (
               <p role="status">
@@ -231,7 +249,8 @@ function Dashboard({ org }: { org: string }) {
               </p>
             ) : (
               <p>
-                Inga identifierade metadataanomalier i urvalet. Detta bevisar inte regelefterlevnad.
+                Inga identifierade metadataanomalier i urvalet. Kontrollera även underlagen och
+                företagets momsinställningar.
               </p>
             )}
             <Link className="underline" href="/app/reports/vat">
@@ -239,7 +258,7 @@ function Dashboard({ org }: { org: string }) {
             </Link>
           </section>
           {data.kpis.posted === 0 && (
-            <section className="rounded-xl border bg-white p-5">
+            <section className="rounded-lg border bg-white p-5">
               <h2>Inga bokförda transaktioner i urvalet</h2>
               <p>Tomma perioder visas med noll, aldrig med exempelbelopp.</p>
               {canWrite && (
@@ -249,44 +268,46 @@ function Dashboard({ org }: { org: string }) {
               )}
             </section>
           )}
-          <section className="overflow-x-auto rounded-xl border bg-white p-5">
+          <section className="overflow-x-auto rounded-lg border bg-white p-5">
             <h2 className="text-lg font-semibold">Månadsutveckling · hela räkenskapsåret</h2>
             <p className="text-sm">
-              Endast POSTED. Rättelser ingår med sina tecken. Staplar visar absolut storlek;
-              tabellen anger tecken och exakta belopp.
+              Endast bokförda transaktioner. Rättelser ingår med sina tecken. Staplar visar absolut
+              storlek; tabellen anger tecken och exakta belopp.
             </p>
-            <table aria-label="Verklig månadsutveckling" className="mt-3 w-full text-left">
-              <thead>
-                <tr>
-                  <th>Månad</th>
-                  <th>Intäkter</th>
-                  <th>Kostnader</th>
-                  <th>Resultat</th>
-                  <th>Resultatets storlek</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.chart.map((row) => (
-                  <tr key={row.month} className="border-t">
-                    <th>{row.month}</th>
-                    <td>{row.revenue}</td>
-                    <td>{row.expenses}</td>
-                    <td>{row.result}</td>
-                    <td className="w-1/4">
-                      <div
-                        aria-hidden="true"
-                        className={
-                          row.result.startsWith("-") ? "h-3 bg-amber-600" : "h-3 bg-teal-700"
-                        }
-                        style={{ width: barWidth(row.result, maximum) }}
-                      />
-                    </td>
+            <div className="table-frame mt-4" tabIndex={0}>
+              <table aria-label="Verklig månadsutveckling" className="mt-3 w-full text-left">
+                <thead>
+                  <tr>
+                    <th>Månad</th>
+                    <th>Intäkter</th>
+                    <th>Kostnader</th>
+                    <th>Resultat</th>
+                    <th>Resultatets storlek</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.chart.map((row) => (
+                    <tr key={row.month} className="border-t">
+                      <th>{row.month}</th>
+                      <td className="text-right tabular-nums">{row.revenue}</td>
+                      <td className="text-right tabular-nums">{row.expenses}</td>
+                      <td className="text-right tabular-nums">{row.result}</td>
+                      <td className="w-1/4">
+                        <div
+                          aria-hidden="true"
+                          className={
+                            row.result.startsWith("-") ? "h-3 bg-warning" : "h-3 bg-accent"
+                          }
+                          style={{ width: barWidth(row.result, maximum) }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
-          <section className="rounded-xl border bg-white p-5">
+          <section className="rounded-lg border bg-white p-5">
             <h2 className="text-lg font-semibold">Senaste verifikationer</h2>
             {data.recent.length ? (
               <ul className="divide-y">
@@ -297,7 +318,7 @@ function Dashboard({ org }: { org: string }) {
                       {entry.entryDate.slice(0, 10)} · {entry.description}
                     </Link>
                     <span className="ml-2">
-                      {entry.status}
+                      <StatusBadge status={entry.status} />
                       {entry.reversesEntryId
                         ? " · Rättelse"
                         : entry.reversedByEntry
@@ -326,9 +347,6 @@ function Dashboard({ org }: { org: string }) {
       <section aria-label="Snabbval" className="flex flex-wrap gap-4">
         {canWrite && (
           <>
-            <Button asChild>
-              <Link href="/app/bookkeeping/vouchers/new">Ny verifikation</Link>
-            </Button>
             <Link className="underline" href="/app/bookkeeping/posting-templates">
               Använd bokföringsmall
             </Link>

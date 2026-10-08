@@ -4,12 +4,25 @@ import {
   allNavigationItems,
   dashboardNavigationItem,
   getWorkspaceNavigationItem,
+  isNavigationActive,
   navigationGroups
 } from "@/lib/app-navigation";
 
 describe("application navigation", () => {
+  it("marks only the most specific item and handles canonical aliases", () => {
+    expect(isNavigationActive("/bookkeeping/vouchers/new", "/app/bookkeeping/vouchers/new")).toBe(
+      true
+    );
+    expect(isNavigationActive("/bookkeeping/vouchers/new", "/app/bookkeeping/vouchers")).toBe(
+      false
+    );
+    expect(
+      isNavigationActive("/app/bookkeeping/vouchers/entry-id", "/app/bookkeeping/vouchers")
+    ).toBe(true);
+    expect(isNavigationActive("/reports/balance-sheet", "/app/reports/balance-sheet")).toBe(true);
+  });
   it("contains every requested navigation group and entry", () => {
-    expect(dashboardNavigationItem).toMatchObject({ href: "/app", label: "Dashboard" });
+    expect(dashboardNavigationItem).toMatchObject({ href: "/app", label: "Översikt" });
     expect(navigationGroups.map((group) => group.label)).toEqual([
       "Bokföring",
       "Rapporter",

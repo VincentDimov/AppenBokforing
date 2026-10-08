@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -50,6 +50,11 @@ export function AccountEditor({
   const [form, setForm] = useState<AccountFormState>(() => toFormState(account));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const inFlight = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    formRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+  }, []);
   const isEditing = account !== null;
 
   useEffect(() => {
@@ -59,6 +64,7 @@ export function AccountEditor({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
     setError(null);
 
     if (!/^\d{1,16}$/.test(form.number.trim())) {
@@ -71,6 +77,7 @@ export function AccountEditor({
       return;
     }
 
+    inFlight.current = true;
     setIsSaving(true);
 
     try {
@@ -90,6 +97,7 @@ export function AccountEditor({
           : "Kunde inte spara kontot. Försök igen."
       );
     } finally {
+      inFlight.current = false;
       setIsSaving(false);
     }
   }
@@ -97,20 +105,20 @@ export function AccountEditor({
   return (
     <section
       aria-labelledby="account-editor-title"
-      className="border border-[#cfdfe6] bg-white p-5 shadow-[0_12px_30px_rgba(16,47,66,0.06)] sm:p-6"
+      className="border border-border bg-white p-5 shadow-none sm:p-6"
     >
-      <div className="flex items-start justify-between gap-4 border-b border-[#e2ebef] pb-5">
+      <div className="flex items-start justify-between gap-4 border-b border-border pb-5">
         <div>
-          <p className="text-xs font-semibold tracking-[0.12em] text-[#638292] uppercase">
+          <p className="text-xs font-semibold tracking-[0.12em] text-muted uppercase">
             {isEditing ? "Redigera konto" : "Nytt konto"}
           </p>
           <h2
-            className="mt-1.5 text-xl font-semibold tracking-[-0.03em] text-[#13364a]"
+            className="mt-1.5 text-xl font-semibold tracking-[-0.03em] text-ink"
             id="account-editor-title"
           >
             {isEditing ? `${account.number} · ${account.name}` : "Lägg till konto"}
           </h2>
-          <p className="mt-2 text-sm text-[#668291]">{organizationName}</p>
+          <p className="mt-2 text-sm text-muted">{organizationName}</p>
         </div>
         <Button
           aria-label="Stäng kontoformulär"
@@ -123,11 +131,11 @@ export function AccountEditor({
         </Button>
       </div>
 
-      <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
-        <label className="block text-sm font-medium text-[#27495b]">
+      <form ref={formRef} className="unstyled-form mt-6 space-y-5" onSubmit={handleSubmit}>
+        <label className="block text-sm font-medium text-secondary">
           Kontonummer
           <input
-            className="mt-2 w-full rounded-lg border border-[#c7d8e0] bg-white px-3 py-2.5 text-[#17384b] outline-none transition focus:border-[#3e85a2] focus:ring-4 focus:ring-[#d8edf5]"
+            className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
             inputMode="numeric"
             maxLength={16}
             onChange={(event) => setForm((current) => ({ ...current, number: event.target.value }))}
@@ -136,10 +144,10 @@ export function AccountEditor({
           />
         </label>
 
-        <label className="block text-sm font-medium text-[#27495b]">
+        <label className="block text-sm font-medium text-secondary">
           Kontonamn
           <input
-            className="mt-2 w-full rounded-lg border border-[#c7d8e0] bg-white px-3 py-2.5 text-[#17384b] outline-none transition focus:border-[#3e85a2] focus:ring-4 focus:ring-[#d8edf5]"
+            className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
             maxLength={160}
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
             required
@@ -147,7 +155,7 @@ export function AccountEditor({
           />
         </label>
 
-        <label className="block text-sm font-medium text-[#27495b]">
+        <label className="block text-sm font-medium text-secondary">
           Typ
           <Select
             onValueChange={(value) =>
@@ -168,10 +176,10 @@ export function AccountEditor({
           </Select>
         </label>
 
-        <label className="block text-sm font-medium text-[#27495b]">
-          Momskod <span className="font-normal text-[#758e9a]">(valfritt)</span>
+        <label className="block text-sm font-medium text-secondary">
+          Momskod <span className="font-normal text-muted">(valfritt)</span>
           <input
-            className="mt-2 w-full rounded-lg border border-[#c7d8e0] bg-white px-3 py-2.5 font-mono text-[#17384b] uppercase outline-none transition focus:border-[#3e85a2] focus:ring-4 focus:ring-[#d8edf5]"
+            className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2.5 font-mono text-ink uppercase outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
             maxLength={32}
             onChange={(event) =>
               setForm((current) => ({ ...current, vatCode: event.target.value }))
@@ -179,15 +187,15 @@ export function AccountEditor({
             placeholder="Till exempel MOMS25-UT"
             value={form.vatCode}
           />
-          <span className="mt-1.5 block text-xs font-normal leading-5 text-[#758e9a]">
+          <span className="mt-1.5 block text-xs font-normal leading-5 text-muted">
             Koden måste finnas och vara aktiv i den valda organisationen.
           </span>
         </label>
 
-        <label className="block text-sm font-medium text-[#27495b]">
-          Beskrivning <span className="font-normal text-[#758e9a]">(valfritt)</span>
+        <label className="block text-sm font-medium text-secondary">
+          Beskrivning <span className="font-normal text-muted">(valfritt)</span>
           <textarea
-            className="mt-2 min-h-24 w-full resize-y rounded-lg border border-[#c7d8e0] bg-white px-3 py-2.5 text-[#17384b] outline-none transition focus:border-[#3e85a2] focus:ring-4 focus:ring-[#d8edf5]"
+            className="mt-2 min-h-24 w-full resize-y rounded-lg border border-border bg-white px-3 py-2.5 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
             maxLength={500}
             onChange={(event) =>
               setForm((current) => ({ ...current, description: event.target.value }))
@@ -196,7 +204,7 @@ export function AccountEditor({
           />
         </label>
 
-        <label className="flex items-center gap-3 rounded-lg border border-[#d9e5ea] bg-[#f7fafb] px-3 py-3 text-sm font-medium text-[#27495b]">
+        <label className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted px-3 py-3 text-sm font-medium text-secondary">
           <input
             checked={form.active}
             className="size-4 accent-[#1f6b86]"
@@ -211,13 +219,13 @@ export function AccountEditor({
         {error ? (
           <p
             aria-live="polite"
-            className="rounded-lg bg-[#fff0ed] px-3 py-2.5 text-sm leading-6 text-[#9c3127]"
+            className="rounded-lg bg-danger-soft px-3 py-2.5 text-sm leading-6 text-danger"
           >
             {error}
           </p>
         ) : null}
 
-        <div className="flex flex-wrap justify-end gap-3 border-t border-[#e2ebef] pt-5">
+        <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-5">
           <Button onClick={onCancel} type="button" variant="ghost">
             Avbryt
           </Button>

@@ -1,6 +1,18 @@
 # LedgerApp — GAP-analys
 
-## Aktuellt efter FAS 30–34
+## Aktuellt efter UI-arbetet i FAS 35
+
+[FAS 35-rapport](fas35-ui-ux.md) ersätter tidigare aktuell UI/git-status.
+Namngivna rapportår, gemensam layout och mobilnavigation är implementerade.
+FAS 30–34 ingår i acbba5434321f0d5bfaf68b1a152d46d8e765b7e; GitHub-run
+37785265772 har tre verifierade SUCCESS-jobb för denna SHA. FAS 35 är ännu lokal.
+UI-arbetet stänger inte P0-03/07/10/11/13. Cloud-KMS/RPO/RTO, säkerhet i drift,
+historiska metadata, extern SIE-matris och resterande retries/races kvarstår.
+Dark mode, full hjälpmedels-/redovisningsgranskning och verklig mailleverans kvarstår.
+Alla äldre avsnitt nedan är historiska granskningsögonblicksbilder. Deras dåvarande
+CI/git-/funktionsbrister ska inte läsas som dagens status; använd fasrapporten ovan.
+
+## Historik: efter FAS 30–34 (ersatt aktuell status)
 
 Se [aktuell gate, exakta testantal och blockerare](fas30-34-release-gate.md).
 Tidigare produktluckor för mallar, SIE UI/historik, globalt arkiv, rapportexport
@@ -16,7 +28,8 @@ inte deployad patchverifiering. Ingen compliance eller produktionsrelease påst�
 
 P1/P2: verklig inbjudningsmail/outbox/verifierad identitet, gemensamma lättanvända
 rapportårsväljare, dimensionell IB, större strömmande export, komplett årsbokslut,
-licensierad BAS-import och FAS 35 premium-UX. FAS 35 är inte påbörjad.
+licensierad BAS-import och premium-UX. Dåvarande ännu ej påbörjade FAS 35-status
+är ersatt av avsnittet ovan; övriga produkt-/operatörsgränser kvarstår.
 
 ## Historik: FAS 25–29 — gap update
 

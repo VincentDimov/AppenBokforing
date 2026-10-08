@@ -4,6 +4,7 @@ import { Building2, CalendarDays, ChevronDown, LogOut, Menu } from "lucide-react
 
 import type { AuthenticatedUser, OrganizationSummary } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
+import { roleLabels } from "@/components/ui/workspace";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -44,16 +45,15 @@ export function AppTopbar({
   user
 }: Readonly<AppTopbarProps>) {
   const fiscalYears = useFiscalYears(activeOrganizationId);
-
   return (
     <header
       data-print-hidden
-      className="sticky top-0 z-30 border-b border-[#d9e5ea] bg-[#f7fafb]/95 backdrop-blur"
+      className="app-topbar sticky top-0 z-30 border-b border-border bg-surface"
     >
-      <div className="flex min-h-[4.25rem] items-center gap-3 px-4 sm:px-6 xl:px-8">
+      <div className="flex min-h-16 min-w-0 items-center gap-3 px-4 sm:px-6 lg:px-8">
         <Button
           aria-label="Öppna navigering"
-          className="lg:hidden"
+          className="lg:hidden shrink-0"
           onClick={onOpenNavigation}
           size="icon"
           type="button"
@@ -61,153 +61,119 @@ export function AppTopbar({
         >
           <Menu aria-hidden="true" className="size-5" />
         </Button>
-
-        <div className="hidden min-w-0 lg:block">
-          <p className="text-xs font-semibold tracking-[0.12em] text-[#6a8492] uppercase">
-            Arbetsyta
-          </p>
-          <p className="mt-0.5 text-sm font-semibold text-[#17384b]">Bokföring och uppföljning</p>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Building2 aria-hidden="true" className="hidden size-4 shrink-0 text-muted sm:block" />
+          <Select
+            onValueChange={onOrganizationChange}
+            value={activeOrganizationId}
+            disabled={organizationsStatus !== "ready" || !organizations.length}
+          >
+            <SelectTrigger
+              aria-label="Aktiv organisation"
+              className="w-full max-w-64 border-transparent bg-transparent px-2 hover:border-border"
+            >
+              <SelectValue
+                placeholder={organizationsStatus === "loading" ? "Laddar företag…" : "Välj företag"}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {organizations.map((organization) => (
+                <SelectItem key={organization.id} value={organization.id}>
+                  {organization.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {activeOrganization && (
+            <Badge className="hidden shrink-0 xl:inline-flex" variant="outline">
+              {roleLabels[activeOrganization.role]}
+            </Badge>
+          )}
         </div>
-
-        <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-          <div className="flex min-w-0 items-center gap-1.5 md:hidden">
-            <Building2 aria-hidden="true" className="size-4 shrink-0 text-[#5f8192]" />
-            <OrganizationSelector
-              activeOrganizationId={activeOrganizationId}
-              compact
-              onOrganizationChange={onOrganizationChange}
-              organizations={organizations}
-              organizationsStatus={organizationsStatus}
-            />
-          </div>
-
-          <div className="hidden min-w-0 items-center gap-2 md:flex">
-            <Building2 aria-hidden="true" className="size-4 shrink-0 text-[#5f8192]" />
-            <OrganizationSelector
-              activeOrganizationId={activeOrganizationId}
-              onOrganizationChange={onOrganizationChange}
-              organizations={organizations}
-              organizationsStatus={organizationsStatus}
-            />
-            {activeOrganization ? (
-              <Badge className="hidden xl:inline-flex" variant="outline">
-                {formatOrganizationRole(activeOrganization.role)}
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="hidden items-center gap-2 sm:flex">
-            <CalendarDays aria-hidden="true" className="size-4 shrink-0 text-[#5f8192]" />
-            <Select value={fiscalYears.selected} onValueChange={fiscalYears.select}>
-              <SelectTrigger aria-label="Aktivt räkenskapsår" className="w-28 xl:w-48">
-                <SelectValue placeholder="Räkenskapsår" />
-              </SelectTrigger>
-              <SelectContent>
-                {fiscalYears.years.map((fiscalYear) => (
-                  <SelectItem key={fiscalYear.id} value={fiscalYear.id}>
-                    {fiscalYear.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {fiscalYears.error && <span role="alert">Åren kunde inte laddas.</span>}
-          </div>
-
-          <div className="h-7 w-px bg-[#d9e5ea]" />
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label="Öppna användarmeny" className="max-w-56 px-2.5" variant="ghost">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#d7eaf1] text-xs font-bold text-[#1a516a]">
-                  {getInitials(user.displayName)}
-                </span>
-                <span className="hidden truncate text-left sm:block">
-                  <span className="block text-sm leading-4 text-[#17384b]">{user.displayName}</span>
-                </span>
-                <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-[#668291]" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>
-                <p className="text-sm font-semibold text-[#17384b]">{user.displayName}</p>
-                <p className="mt-0.5 max-w-48 truncate text-xs font-normal text-[#668291]">
-                  {user.email}
-                </p>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => void onSignOut()}>
-                <LogOut aria-hidden="true" className="size-4 text-[#5f8192]" />
-                Logga ut
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="hidden items-center gap-2 md:flex">
+          <CalendarDays aria-hidden="true" className="size-4 text-muted" />
+          <Select value={fiscalYears.selected} onValueChange={fiscalYears.select}>
+            <SelectTrigger aria-label="Aktivt räkenskapsår" className="w-36 lg:w-44">
+              <SelectValue placeholder="Räkenskapsår" />
+            </SelectTrigger>
+            <SelectContent>
+              {fiscalYears.years.map((year) => (
+                <SelectItem key={year.id} value={year.id}>
+                  {year.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button aria-label="Öppna användarmeny" className="shrink-0 px-2" variant="ghost">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
+                {getInitials(user.displayName)}
+              </span>
+              <span className="hidden max-w-36 truncate lg:block">{user.displayName}</span>
+              <ChevronDown aria-hidden="true" className="size-3.5 text-muted" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>
+              <p className="font-semibold">{user.displayName}</p>
+              <p className="max-w-56 truncate text-xs font-normal text-muted">{user.email}</p>
+              <p className="mt-1 text-xs text-secondary">
+                {activeOrganization && roleLabels[activeOrganization.role]}
+              </p>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void onSignOut()}>
+              <LogOut className="size-4" aria-hidden="true" />
+              Logga ut
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      {organizationsStatus === "error" ? (
-        <p className="border-t border-[#f2dfd6] bg-[#fff6f2] px-4 py-2 text-center text-xs text-[#9b513c] sm:px-6 xl:px-8">
-          Organisationerna kunde inte laddas. Din inloggning är fortfarande aktiv.
+      <div className="flex items-center justify-between gap-2 border-t border-border bg-surface-muted px-4 py-2 text-xs text-secondary md:hidden">
+        <label className="flex min-w-0 items-center gap-2">
+          <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
+          <select
+            aria-label="Aktivt räkenskapsår"
+            value={fiscalYears.selected}
+            onChange={(event) => fiscalYears.select(event.target.value)}
+            className="max-w-44 rounded border border-border bg-white px-2 py-1"
+          >
+            <option value="">Välj år</option>
+            {fiscalYears.years.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span>{activeOrganization && roleLabels[activeOrganization.role]}</span>
+      </div>
+      {fiscalYears.error && (
+        <div role="alert" className="feedback feedback-error">
+          <span>Räkenskapsåren kunde inte laddas. {fiscalYears.error}</span>
+          <Button variant="outline" onClick={fiscalYears.retry}>
+            Försök igen
+          </Button>
+        </div>
+      )}
+      {organizationsStatus === "error" && (
+        <p role="alert" className="feedback feedback-error">
+          Företagen kunde inte laddas. Din inloggning är fortfarande aktiv.
         </p>
-      ) : null}
+      )}
     </header>
   );
 }
-
-interface OrganizationSelectorProps {
-  activeOrganizationId: string;
-  compact?: boolean;
-  onOrganizationChange: (organizationId: string) => void;
-  organizations: OrganizationSummary[];
-  organizationsStatus: "error" | "idle" | "loading" | "ready";
-}
-
-function OrganizationSelector({
-  activeOrganizationId,
-  compact = false,
-  onOrganizationChange,
-  organizations,
-  organizationsStatus
-}: Readonly<OrganizationSelectorProps>) {
-  const widthClassName = compact ? "w-28 min-[420px]:w-36" : "w-44 xl:w-56";
-
-  if (organizationsStatus === "ready" && organizations.length > 0) {
-    return (
-      <Select onValueChange={onOrganizationChange} value={activeOrganizationId}>
-        <SelectTrigger aria-label="Aktiv organisation" className={widthClassName}>
-          <SelectValue placeholder="Välj organisation" />
-        </SelectTrigger>
-        <SelectContent>
-          {organizations.map((organization) => (
-            <SelectItem key={organization.id} value={organization.id}>
-              {organization.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    );
-  }
-
-  return (
-    <div
-      className={`flex h-10 items-center rounded-lg border border-[#cbdbe3] bg-white px-3 text-sm text-[#668291] ${widthClassName}`}
-    >
-      {organizationsStatus === "loading" ? "Laddar…" : "Ingen organisation"}
-    </div>
-  );
-}
-
-function formatOrganizationRole(role: OrganizationSummary["role"]) {
-  return role === "READ_ONLY" ? "LÄS" : role.replace("_", " ");
-}
-
 function getInitials(displayName: string) {
-  const initials = displayName
-    .trim()
-    .split(/\s+/)
-    .map((part) => part[0])
-    .filter((part): part is string => Boolean(part))
-    .slice(0, 2)
-    .join("");
-
-  return initials.toLocaleUpperCase("sv-SE") || "U";
+  return (
+    displayName
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toLocaleUpperCase("sv-SE") || "U"
+  );
 }

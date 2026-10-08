@@ -5,7 +5,7 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#72b1cc] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
     defaultVariants: {
       size: "default",
@@ -19,11 +19,11 @@ const buttonVariants = cva(
         wide: "h-11 px-5"
       },
       variant: {
-        default:
-          "bg-[#12374c] text-white shadow-[0_8px_18px_rgba(16,47,66,0.16)] hover:bg-[#0d2c3e]",
-        ghost: "text-[#244457] hover:bg-[#e6f0f4] hover:text-[#102f42]",
-        outline: "border border-[#cddde5] bg-white text-[#17384b] hover:bg-[#f2f7f9]",
-        secondary: "bg-[#e2f0f5] text-[#17384b] hover:bg-[#d4e7ef]"
+        default: "bg-accent text-white hover:bg-accent-hover",
+        danger: "bg-danger text-white hover:bg-danger/90",
+        ghost: "text-ink hover:bg-accent-soft hover:text-ink",
+        outline: "border border-border bg-white text-ink hover:bg-surface-muted",
+        secondary: "bg-accent-soft text-ink hover:bg-accent-soft"
       }
     }
   }

@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { ReportTools } from "./report-tools";
+import { FiscalYearSelect } from "./fiscal-year-select";
+import { PageHeader, EmptyState, LoadingState } from "@/components/ui/workspace";
+import { DimensionTypeahead } from "@/components/journal-entries/dimension-typeahead";
 
 import { useReportRequest } from "@/lib/use-report-request";
 
@@ -30,7 +33,7 @@ interface GeneralLedgerReport {
 }
 
 const inputClassName =
-  "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-sm outline-none focus:border-[#245a73] focus:ring-2 focus:ring-[#b8d6e4]";
+  "h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-border focus:ring-2 focus:ring-focus";
 
 export function GeneralLedgerPage() {
   const { activeOrganizationId } = useAuth();
@@ -46,7 +49,8 @@ function OrganizationGeneralLedgerPage() {
   const [accountTo, setAccountTo] = useState("");
   const [project, setProject] = useState("");
   const [costCenter, setCostCenter] = useState("");
-  const { report, error, setError, load, loadedUrl } = useReportRequest<GeneralLedgerReport>();
+  const { report, error, setError, load, loadedUrl, loading } =
+    useReportRequest<GeneralLedgerReport>();
 
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate) {
@@ -68,78 +72,100 @@ function OrganizationGeneralLedgerPage() {
 
   return (
     <div className="mx-auto max-w-6xl print:max-w-none">
-      <header className="border-b border-[#ccdce4] pb-6">
-        <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
-        <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Huvudbok</h1>
-      </header>
+      <PageHeader
+        title="Huvudbok"
+        context="Rapporter"
+        description="Välj räkenskapsår och urval. Rapporten baseras på bokförda transaktioner."
+      />
       <ReportTools report={report} url={loadedUrl} />
-      <section className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
-        <input
-          aria-label="Räkenskapsår"
-          className={inputClassName}
-          placeholder="Räkenskapsår-ID"
-          value={fiscalYear}
-          onChange={(event) => setFiscalYear(event.target.value)}
-        />
-        <input
-          aria-label="Från konto"
-          className={inputClassName}
-          inputMode="numeric"
-          placeholder="Från konto"
-          value={accountFrom}
-          onChange={(event) => setAccountFrom(event.target.value)}
-        />
-        <input
-          aria-label="Till konto"
-          className={inputClassName}
-          inputMode="numeric"
-          placeholder="Till konto"
-          value={accountTo}
-          onChange={(event) => setAccountTo(event.target.value)}
-        />
-        <input
-          aria-label="Projekt"
-          className={inputClassName}
-          placeholder="Projektkod"
-          value={project}
-          onChange={(event) => setProject(event.target.value)}
-        />
-        <input
-          aria-label="Kostnadsställe"
-          className={inputClassName}
-          placeholder="Kostnadsställe"
-          value={costCenter}
-          onChange={(event) => setCostCenter(event.target.value)}
-        />
-        <input
-          aria-label="Från datum"
-          className={inputClassName}
-          type="date"
-          value={fromDate}
-          onChange={(event) => setFromDate(event.target.value)}
-        />
-        <input
-          aria-label="Till datum"
-          className={inputClassName}
-          type="date"
-          value={toDate}
-          onChange={(event) => setToDate(event.target.value)}
-        />
+      <section className="report-filters mt-6 grid gap-3 border border-border bg-white p-5 md:grid-cols-4">
+        <FiscalYearSelect className={inputClassName} value={fiscalYear} onChange={setFiscalYear} />
+        <label>
+          Från konto
+          <input
+            aria-label="Från konto"
+            className={inputClassName}
+            inputMode="numeric"
+            placeholder="Från konto"
+            value={accountFrom}
+            onChange={(event) => setAccountFrom(event.target.value)}
+          />
+        </label>
+        <label>
+          Till konto
+          <input
+            aria-label="Till konto"
+            className={inputClassName}
+            inputMode="numeric"
+            placeholder="Till konto"
+            value={accountTo}
+            onChange={(event) => setAccountTo(event.target.value)}
+          />
+        </label>
+        <label>
+          Projekt
+          <DimensionTypeahead
+            org={activeOrganizationId}
+            kind="projects"
+            label="Projekt"
+            value={project}
+            onChange={setProject}
+            disabled={false}
+          />
+        </label>
+        <label>
+          Kostnadsställe
+          <DimensionTypeahead
+            org={activeOrganizationId}
+            kind="cost-centers"
+            label="Kostnadsställe"
+            value={costCenter}
+            onChange={setCostCenter}
+            disabled={false}
+          />
+        </label>
+        <label>
+          Från datum
+          <input
+            aria-label="Från datum"
+            className={inputClassName}
+            type="date"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Till datum
+          <input
+            aria-label="Till datum"
+            className={inputClassName}
+            type="date"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+          />
+        </label>
         <div className="flex gap-2">
           <Button onClick={() => void run()} type="button">
             Visa rapport
           </Button>
         </div>
       </section>
-      <p className="mt-2 text-xs text-[#638292]">
-        Ange räkenskapsårets ID. Om året har IB kan projekt/kostnadsställe inte användas: IB saknar
-        dimensionsfördelning. Utan IB filtreras endast bokförda rörelser.
+      <p className="mt-2 text-xs text-muted">
+        Om året har IB kan projekt/kostnadsställe inte användas: IB saknar dimensionsfördelning.
+        Utan IB filtreras endast bokförda rörelser.
       </p>
       {error ? (
-        <p role="alert" className="mt-4 text-sm text-red-700">
+        <p role="alert" className="mt-4 text-sm text-danger">
           {error}
         </p>
       ) : null}
+      {loading && <LoadingState label="Hämtar rapport…" />}
+      {!report && !error && !loading && (
+        <EmptyState
+          title="Din rapport visas här"
+          description="Välj år och datum, och tryck på Visa rapport."
+        />
+      )}
       {report ? (
         <section className="mt-6 print:mt-0">
           <div className="mb-4 flex justify-end print:hidden">
@@ -148,35 +174,37 @@ function OrganizationGeneralLedgerPage() {
             </Button>
           </div>
           {report.accounts.map((account) => (
-            <article key={account.account.id} className="mb-6 border border-[#d6e3e9] bg-white">
-              <h2 className="border-b p-4 font-semibold text-[#17384b]">
+            <article key={account.account.id} className="mb-6 border border-border bg-white">
+              <h2 className="border-b p-4 font-semibold text-ink">
                 {account.account.number} — {account.account.name}
               </h2>
               <p className="p-4 text-sm">Ingående saldo: {account.openingBalance}</p>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th>Datum</th>
-                    <th>Verifikation</th>
-                    <th>Beskrivning</th>
-                    <th>Debet</th>
-                    <th>Kredit</th>
-                    <th>Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {account.transactions.map((transaction, index) => (
-                    <tr key={`${transaction.voucher}-${index}`}>
-                      <td>{transaction.date}</td>
-                      <td>{transaction.voucher}</td>
-                      <td>{transaction.description}</td>
-                      <td>{transaction.debit}</td>
-                      <td>{transaction.credit}</td>
-                      <td>{transaction.runningBalance}</td>
+              <div className="table-frame" tabIndex={0}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th>Datum</th>
+                      <th>Verifikation</th>
+                      <th>Beskrivning</th>
+                      <th className="text-right">Debet</th>
+                      <th className="text-right">Kredit</th>
+                      <th className="text-right">Saldo</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {account.transactions.map((transaction, index) => (
+                      <tr key={`${transaction.voucher}-${index}`}>
+                        <td>{transaction.date}</td>
+                        <td>{transaction.voucher}</td>
+                        <td>{transaction.description}</td>
+                        <td className="text-right tabular-nums">{transaction.debit}</td>
+                        <td className="text-right tabular-nums">{transaction.credit}</td>
+                        <td className="text-right tabular-nums">{transaction.runningBalance}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <p className="p-4 text-sm font-semibold">Utgående saldo: {account.closingBalance}</p>
             </article>
           ))}

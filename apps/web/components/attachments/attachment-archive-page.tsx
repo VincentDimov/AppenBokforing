@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { PageHeader, StatusBadge, EmptyState, LoadingState } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { workspaceRequest } from "@/lib/workspace-api";
 import { getAttachmentDownload } from "@/lib/api/attachments";
@@ -80,11 +81,15 @@ function Archive({ org }: { org: string }) {
     }
   }
   return (
-    <section className="space-y-4 rounded-xl bg-white p-6">
-      <h1 className="text-2xl font-semibold">Bilagearkiv</h1>
+    <section className="space-y-6">
+      <PageHeader
+        title="Bilagearkiv"
+        context="Bokföring"
+        description="Företagets privata underlag och deras verifikationskoppling."
+      />
       <p>
         Organisationens privata bilagor och dokument, även utan verifikationskoppling. Nedladdning
-        kräver aktuell behörighet. Ingen osäker HTML-/PDF-inbäddning eller permanent publik länk.
+        kräver aktuell behörighet. Filerna öppnas via en tidsbegränsad nedladdningslänk.
       </p>
       <form onSubmit={search} className="flex flex-wrap gap-3">
         <label>
@@ -118,9 +123,9 @@ function Archive({ org }: { org: string }) {
           Verifikationsstatus{" "}
           <select name="status" aria-label="Verifikationsstatus" className="border p-2">
             <option value="">Alla</option>
-            <option>DRAFT</option>
-            <option>POSTED</option>
-            <option>REVERSED</option>
+            <option value="DRAFT">Utkast</option>
+            <option value="POSTED">Bokförd</option>
+            <option value="REVERSED">Rättad</option>
           </select>
         </label>
         <label>
@@ -136,57 +141,65 @@ function Archive({ org }: { org: string }) {
         <button className="rounded border p-2">Sök bilagor</button>
       </form>
       <p role="status">{busy ? "Läser bilagor…" : message}</p>
-      {!busy && page?.items.length === 0 && (
-        <p>Inga bilagor matchar urvalet. Bilagor laddas upp på en sparad utkastverifikation.</p>
-      )}
       <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr>
-              <th>Filnamn</th>
-              <th>Uppladdad</th>
-              <th>Verifikation / datum</th>
-              <th>Status</th>
-              <th>Uppladdare</th>
-              <th>Storlek / typ</th>
-              <th>Åtgärd</th>
-            </tr>
-          </thead>
-          <tbody>
-            {page?.items.map((item) => (
-              <tr key={item.id} className="border-t">
-                <td>{item.originalName}</td>
-                <td>{item.createdAt.slice(0, 10)}</td>
-                <td>
-                  {item.journalEntry ? (
-                    <Link
-                      className="underline"
-                      href={`/bookkeeping/vouchers/${item.journalEntry.id}`}
-                    >
-                      {item.journalEntry.voucherSeries.code}{" "}
-                      {item.journalEntry.voucherNumber ?? "utkast"} ·{" "}
-                      {item.journalEntry.entryDate.slice(0, 10)}
-                    </Link>
-                  ) : (
-                    "Ej kopplad till verifikation"
-                  )}
-                </td>
-                <td>{item.journalEntry?.status ?? "—"}</td>
-                <td>{item.uploadedBy?.displayName ?? "Okänd"}</td>
-                <td>
-                  {item.size} byte · {item.mimeType}
-                  {item.kind ? ` · ${item.kind}` : ""}
-                </td>
-                <td>
-                  <button className="p-2 underline" onClick={() => void download(item.id)}>
-                    Ladda ner {item.originalName}
-                  </button>
-                </td>
+        <div className="table-frame" tabIndex={0}>
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                <th>Filnamn</th>
+                <th>Uppladdad</th>
+                <th>Verifikation / datum</th>
+                <th>Status</th>
+                <th>Uppladdare</th>
+                <th>Storlek / typ</th>
+                <th>Åtgärd</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {page?.items.map((item) => (
+                <tr key={item.id} className="border-t">
+                  <td>{item.originalName}</td>
+                  <td>{item.createdAt.slice(0, 10)}</td>
+                  <td>
+                    {item.journalEntry ? (
+                      <Link
+                        className="underline"
+                        href={`/bookkeeping/vouchers/${item.journalEntry.id}`}
+                      >
+                        {item.journalEntry.voucherSeries.code}{" "}
+                        {item.journalEntry.voucherNumber ?? "utkast"} ·{" "}
+                        {item.journalEntry.entryDate.slice(0, 10)}
+                      </Link>
+                    ) : (
+                      "Ej kopplad till verifikation"
+                    )}
+                  </td>
+                  <td>
+                    {item.journalEntry ? <StatusBadge status={item.journalEntry.status} /> : "—"}
+                  </td>
+                  <td>{item.uploadedBy?.displayName ?? "Okänd"}</td>
+                  <td>
+                    {item.size} byte · {item.mimeType}
+                    {item.kind ? ` · ${item.kind}` : ""}
+                  </td>
+                  <td>
+                    <button className="p-2 underline" onClick={() => void download(item.id)}>
+                      Ladda ner {item.originalName}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+      {busy && <LoadingState label="Hämtar bilagor…" />}
+      {page && !page.items.length && !busy && (
+        <EmptyState
+          title="Inga bilagor matchar urvalet"
+          description="Ändra filtren eller lägg till ett underlag på en verifikation."
+        />
+      )}
       <div className="flex gap-3">
         <button
           type="button"

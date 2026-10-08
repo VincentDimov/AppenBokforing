@@ -7,6 +7,11 @@ import { AppSidebar } from "@/components/app/app-sidebar";
 import { AppTopbar } from "@/components/app/app-topbar";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { LoadingState } from "@/components/ui/workspace";
+import { FiscalYearProvider } from "@/lib/use-fiscal-years";
+import Link from "next/link";
+import type { CSSProperties } from "react";
 
 export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
@@ -19,10 +24,32 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
     setActiveOrganizationId,
     signOut,
     status,
-    user
+    user,
+    refresh
   } = useAuth();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const signingOut = useRef(false);
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem("ledgerapp:sidebar:v1") === "collapsed");
+    } catch {
+      /* Optional UI state. */
+    }
+  }, []);
+  function toggleSidebar() {
+    setCollapsed((current) => {
+      try {
+        localStorage.setItem("ledgerapp:sidebar:v1", current ? "expanded" : "collapsed");
+      } catch {
+        /* Optional. */
+      }
+      return !current;
+    });
+  }
+  useEffect(() => {
+    setMobileNavigationOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (status === "anonymous") {
@@ -43,14 +70,23 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
 
   if (status === "error") {
     return (
-      <LoadingScreen message="Kunde inte kontrollera din session. Ladda om sidan och försök igen." />
+      <LoadingScreen
+        message="Kunde inte kontrollera din session."
+        action={
+          <>
+            <Button onClick={() => void refresh()}>Försök igen</Button>
+            <Link href="/">Till startsidan</Link>
+          </>
+        }
+      />
     );
   }
 
   if (status === "anonymous" || !user) {
     return <LoadingScreen message="Tar dig till inloggningen…" />;
   }
-  if (pathname === "/onboarding") return <main className="mx-auto max-w-2xl p-8">{children}</main>;
+  if (pathname === "/onboarding")
+    return <main className="workspace-content mx-auto max-w-2xl p-8">{children}</main>;
   if (organizationsStatus === "ready" && !organizations.length)
     return <LoadingScreen message="Förbereder din arbetsyta…" />;
 
@@ -62,61 +98,52 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
   }
 
   return (
-    <div className="min-h-screen bg-[#eef4f6] text-[#17384b]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[17.5rem] border-r border-[#285268] bg-[#102f42] lg:block">
-        <AppSidebar />
-      </aside>
-
-      {mobileNavigationOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            aria-label="Stäng navigering"
-            className="absolute inset-0 bg-[#08202e]/55"
-            onClick={() => setMobileNavigationOpen(false)}
-            type="button"
+    <FiscalYearProvider organizationId={activeOrganizationId}>
+      <div
+        className="min-h-screen bg-background text-ink"
+        style={{ "--sidebar-width": collapsed ? "76px" : "248px" } as CSSProperties}
+      >
+        <a className="skip-link" href="#workspace-main">
+          Hoppa till innehållet
+        </a>
+        <aside className="app-sidebar fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-width)] bg-sidebar lg:block">
+          <AppSidebar collapsed={collapsed} onToggle={toggleSidebar} />
+        </aside>
+        <Dialog
+          open={mobileNavigationOpen}
+          onClose={() => setMobileNavigationOpen(false)}
+          title="Navigering"
+          className="navigation-drawer"
+        >
+          <AppSidebar onNavigate={() => setMobileNavigationOpen(false)} />
+        </Dialog>
+        <div className="app-body min-w-0 lg:pl-[var(--sidebar-width)]">
+          <AppTopbar
+            activeOrganization={activeOrganization}
+            activeOrganizationId={activeOrganizationId}
+            onOpenNavigation={() => setMobileNavigationOpen(true)}
+            onOrganizationChange={setActiveOrganizationId}
+            onSignOut={handleSignOut}
+            organizations={organizations}
+            organizationsStatus={organizationsStatus}
+            user={user}
           />
-          <aside
-            aria-label="Mobilnavigering"
-            className="absolute inset-y-0 left-0 w-[18rem] max-w-[86vw] bg-[#102f42] shadow-[18px_0_42px_rgba(8,32,46,0.28)]"
-          >
-            <Button
-              aria-label="Stäng navigering"
-              className="absolute right-3 top-4 z-10 text-[#d8e8ee] hover:bg-[#285268] hover:text-white"
-              onClick={() => setMobileNavigationOpen(false)}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              ×
-            </Button>
-            <AppSidebar onNavigate={() => setMobileNavigationOpen(false)} />
-          </aside>
+          <main id="workspace-main" tabIndex={-1} className="workspace-content">
+            {children}
+          </main>
         </div>
-      ) : null}
-
-      <div className="lg:pl-[17.5rem] print:pl-0">
-        <AppTopbar
-          activeOrganization={activeOrganization}
-          activeOrganizationId={activeOrganizationId}
-          onOpenNavigation={() => setMobileNavigationOpen(true)}
-          onOrganizationChange={setActiveOrganizationId}
-          onSignOut={handleSignOut}
-          organizations={organizations}
-          organizationsStatus={organizationsStatus}
-          user={user}
-        />
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
-          {children}
-        </main>
       </div>
-    </div>
+    </FiscalYearProvider>
   );
 }
 
-function LoadingScreen({ message }: Readonly<{ message: string }>) {
+function LoadingScreen({ message, action }: Readonly<{ message: string; action?: ReactNode }>) {
   return (
-    <main className="grid min-h-screen place-items-center bg-[#eef4f6] px-5 text-center text-[#527080]">
-      <p>{message}</p>
+    <main className="grid min-h-screen place-items-center bg-background px-5 text-center text-secondary">
+      <section className="surface-panel max-w-lg">
+        <LoadingState label={message} />
+        {action && <div className="flex flex-wrap items-center justify-center gap-4">{action}</div>}
+      </section>
     </main>
   );
 }

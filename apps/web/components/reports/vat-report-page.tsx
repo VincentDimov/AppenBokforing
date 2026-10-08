@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { ReportTools } from "./report-tools";
+import { FiscalYearSelect } from "./fiscal-year-select";
+import { PageHeader, EmptyState, LoadingState } from "@/components/ui/workspace";
 
 import { useReportRequest } from "@/lib/use-report-request";
 
@@ -37,7 +39,7 @@ type VatReport = {
     nonVatBase: string;
   };
 };
-const inputClass = "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-sm";
+const inputClass = "h-10 rounded-md border border-border bg-white px-3 text-sm";
 
 export function VatReportPage() {
   const { activeOrganizationId } = useAuth();
@@ -49,7 +51,7 @@ function OrganizationVatReportPage() {
   const [fiscalYear, setFiscalYear] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const { report, error, setError, load, loadedUrl } = useReportRequest<VatReport>();
+  const { report, error, setError, load, loadedUrl, loading } = useReportRequest<VatReport>();
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate)
       return setError("Välj räkenskapsår och datumintervall.");
@@ -64,33 +66,34 @@ function OrganizationVatReportPage() {
 
   return (
     <div className="mx-auto max-w-5xl print:max-w-none">
-      <header className="border-b border-[#ccdce4] pb-6">
-        <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
-        <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Momsrapport</h1>
-      </header>
+      <PageHeader
+        title="Momsrapport"
+        context="Rapporter"
+        description="Välj räkenskapsår och urval. Rapporten baseras på bokförda transaktioner."
+      />
       <ReportTools report={report} url={loadedUrl} />
-      <section className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4">
-        <input
-          aria-label="Räkenskapsår"
-          className={inputClass}
-          placeholder="Räkenskapsår-ID"
-          value={fiscalYear}
-          onChange={(event) => setFiscalYear(event.target.value)}
-        />
-        <input
-          aria-label="Från datum"
-          className={inputClass}
-          type="date"
-          value={fromDate}
-          onChange={(event) => setFromDate(event.target.value)}
-        />
-        <input
-          aria-label="Till datum"
-          className={inputClass}
-          type="date"
-          value={toDate}
-          onChange={(event) => setToDate(event.target.value)}
-        />
+      <section className="report-filters mt-6 grid gap-3 border border-border bg-white p-5 md:grid-cols-4">
+        <FiscalYearSelect className={inputClass} value={fiscalYear} onChange={setFiscalYear} />
+        <label>
+          Från datum
+          <input
+            aria-label="Från datum"
+            className={inputClass}
+            type="date"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Till datum
+          <input
+            aria-label="Till datum"
+            className={inputClass}
+            type="date"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+          />
+        </label>
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => void run()}>
             Visa rapport
@@ -100,15 +103,22 @@ function OrganizationVatReportPage() {
           </Button>
         </div>
       </section>
-      <p className="mt-2 text-xs text-[#638292]">
-        Rapporten bygger på organisationens konfigurerade VAT-koder och kräver manuell kontroll före
+      <p className="mt-2 text-xs text-muted">
+        Rapporten bygger på organisationens konfigurerade momskoder och kräver manuell kontroll före
         deklaration.
       </p>
       {error ? (
-        <p role="alert" className="mt-4 text-sm text-red-700">
+        <p role="alert" className="mt-4 text-sm text-danger">
           {error}
         </p>
       ) : null}
+      {loading && <LoadingState label="Hämtar rapport…" />}
+      {!report && !error && !loading && (
+        <EmptyState
+          title="Din rapport visas här"
+          description="Välj år och datum, och tryck på Visa rapport."
+        />
+      )}
       {report ? (
         <section className="mt-6 space-y-6 bg-white print:mt-0">
           <p>
@@ -121,38 +131,40 @@ function OrganizationVatReportPage() {
             <Summary label="Underlag utan moms" value={report.totals.nonVatBase} />
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Summary label="Ingående VAT" value={report.totals.inputVat} />
-            <Summary label="Utgående VAT" value={report.totals.outputVat} />
-            <Summary label="VAT-position" value={report.totals.vatPosition} />
+            <Summary label="Ingående moms" value={report.totals.inputVat} />
+            <Summary label="Utgående moms" value={report.totals.outputVat} />
+            <Summary label="Momsposition" value={report.totals.vatPosition} />
           </div>
-          <article className="border border-[#d6e3e9]">
-            <h2 className="border-b p-4 font-semibold text-[#17384b]">
-              Konfigurerade VAT-koder med bokförda belopp
+          <article className="border border-border">
+            <h2 className="border-b p-4 font-semibold text-ink">
+              Konfigurerade momskoder med bokförda belopp
             </h2>
-            <table className="w-full text-sm">
-              <thead>
-                <tr>
-                  <th className="p-3 text-left">Kod</th>
-                  <th className="p-3 text-left">Namn</th>
-                  <th className="p-3 text-right">Sats</th>
-                  <th className="p-3 text-right">Underlag</th>
-                  <th className="p-3 text-right">Ingående</th>
-                  <th className="p-3 text-right">Utgående</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.codes.map((code) => (
-                  <tr key={`${code.id ?? code.code}-${code.configurationVersion}-${code.rate}`}>
-                    <td className="p-3 font-medium">{code.code}</td>
-                    <td className="p-3">{code.name}</td>
-                    <td className="p-3 text-right">{code.rate} %</td>
-                    <td className="p-3 text-right">{code.taxableBase}</td>
-                    <td className="p-3 text-right">{code.inputAmount}</td>
-                    <td className="p-3 text-right">{code.outputAmount}</td>
+            <div className="table-frame" tabIndex={0}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="p-3 text-left">Kod</th>
+                    <th className="p-3 text-left">Namn</th>
+                    <th className="p-3 text-right">Sats</th>
+                    <th className="p-3 text-right">Underlag</th>
+                    <th className="p-3 text-right">Ingående</th>
+                    <th className="p-3 text-right">Utgående</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {report.codes.map((code) => (
+                    <tr key={`${code.id ?? code.code}-${code.configurationVersion}-${code.rate}`}>
+                      <td className="p-3 font-medium">{code.code}</td>
+                      <td className="p-3">{code.name}</td>
+                      <td className="p-3 text-right">{code.rate} %</td>
+                      <td className="p-3 text-right">{code.taxableBase}</td>
+                      <td className="p-3 text-right">{code.inputAmount}</td>
+                      <td className="p-3 text-right">{code.outputAmount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </article>
           <article className="border p-4">
             <h2>
@@ -170,16 +182,16 @@ function OrganizationVatReportPage() {
               </p>
             ))}
           </article>
-          <article className="border border-[#ead4a1] bg-[#fffaf0]">
-            <h2 className="border-b border-[#ead4a1] p-4 font-semibold text-[#72520e]">
+          <article className="border border-border bg-warning-soft">
+            <h2 className="border-b border-border p-4 font-semibold text-warning">
               Avvikelser att granska ({report.anomalies.length})
             </h2>
             {report.anomalies.length === 0 ? (
-              <p className="p-4 text-sm text-[#5d715f]">
+              <p className="p-4 text-sm text-success">
                 Inga metadata- eller balansavvikelser hittades i urvalet.
               </p>
             ) : (
-              <ul className="divide-y divide-[#eadfbe]">
+              <ul className="divide-y divide-border">
                 {report.anomalies.map((anomaly, index) => (
                   <li
                     className="p-4 text-sm"
@@ -187,7 +199,7 @@ function OrganizationVatReportPage() {
                   >
                     <span className="font-semibold">{anomaly.code}</span>
                     <span className="ml-2">{anomaly.message}</span>
-                    <span className="ml-2 text-[#806f51]">
+                    <span className="ml-2 text-warning">
                       {anomaly.account}
                       {anomaly.voucher ? ` · ${anomaly.voucher}` : ""}
                     </span>
@@ -203,9 +215,9 @@ function OrganizationVatReportPage() {
 }
 function Summary({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-[#d6e3e9] p-4">
-      <p className="text-xs font-medium text-[#638292]">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-[#17384b]">{value}</p>
+    <div className="border border-border p-4">
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
     </div>
   );
 }

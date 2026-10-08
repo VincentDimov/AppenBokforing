@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useFiscalYears, type FiscalYearChoice } from "@/lib/use-fiscal-years";
 import { workspaceRequest } from "@/lib/workspace-api";
@@ -52,8 +54,12 @@ function OpeningWorkspace({ org, role }: { org: string; role: string }) {
   const years = useFiscalYears(org);
   const canWrite = ["OWNER", "ADMIN", "ACCOUNTANT"].includes(role);
   return (
-    <section className="rounded-xl bg-white p-6">
-      <h1 className="text-2xl font-semibold">Ingående balans och årsöverföring</h1>
+    <section className="space-y-6">
+      <PageHeader
+        title="Ingående balans"
+        context="Inställningar"
+        description="Registrera ingående balanser eller granska en årsöverföring."
+      />
       <label className="my-4 block">
         Räkenskapsår
         <select
@@ -140,7 +146,7 @@ function OpeningEditor({ org, year, canWrite }: { org: string; year: string; can
         }
       );
       setData({ ...data, fingerprint: response.fingerprint });
-      setMessage("IB sparad atomiskt.");
+      setMessage("Ingående balans sparad.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Kunde inte spara IB.");
     } finally {
@@ -154,42 +160,44 @@ function OpeningEditor({ org, year, canWrite }: { org: string; year: string; can
         periodlås eller årsstängning.
       </p>
       <fieldset disabled={!canWrite || !data?.editable || busy}>
-        <table className="w-full text-left">
-          <thead>
-            <tr>
-              <th>Konto</th>
-              <th>Namn</th>
-              <th>Debet</th>
-              <th>Kredit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => (
-              <tr key={row.accountId} className="border-t">
-                <td>{data?.accounts[index]?.accountNumber}</td>
-                <td>{data?.accounts[index]?.name}</td>
-                <td>
-                  <input
-                    className="my-2 w-32 border p-2"
-                    aria-label={`IB debet ${data?.accounts[index]?.accountNumber}`}
-                    inputMode="decimal"
-                    value={row.debit}
-                    onChange={(event) => edit(index, "debit", event.target.value)}
-                  />
-                </td>
-                <td>
-                  <input
-                    className="my-2 w-32 border p-2"
-                    aria-label={`IB kredit ${data?.accounts[index]?.accountNumber}`}
-                    inputMode="decimal"
-                    value={row.credit}
-                    onChange={(event) => edit(index, "credit", event.target.value)}
-                  />
-                </td>
+        <div className="table-frame" tabIndex={0}>
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                <th>Konto</th>
+                <th>Namn</th>
+                <th className="text-right">Debet</th>
+                <th className="text-right">Kredit</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={row.accountId} className="border-t">
+                  <td>{data?.accounts[index]?.accountNumber}</td>
+                  <td>{data?.accounts[index]?.name}</td>
+                  <td>
+                    <input
+                      className="my-2 w-32 border p-2"
+                      aria-label={`IB debet ${data?.accounts[index]?.accountNumber}`}
+                      inputMode="decimal"
+                      value={row.debit}
+                      onChange={(event) => edit(index, "debit", event.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="my-2 w-32 border p-2"
+                      aria-label={`IB kredit ${data?.accounts[index]?.accountNumber}`}
+                      inputMode="decimal"
+                      value={row.credit}
+                      onChange={(event) => edit(index, "credit", event.target.value)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <p className="my-4">
           Debet: {totals ? formatOre(totals.debit) : "Ogiltigt"} · Kredit:{" "}
           {totals ? formatOre(totals.credit) : "Ogiltigt"} · Differens:{" "}
@@ -197,7 +205,7 @@ function OpeningEditor({ org, year, canWrite }: { org: string; year: string; can
         </p>
         {canWrite && (
           <button
-            className="rounded bg-[#17384b] p-3 text-white"
+            className="rounded bg-accent p-3 text-white"
             disabled={!valid || !data?.editable || busy}
             onClick={() => void save()}
           >
@@ -215,6 +223,7 @@ function CarryForward({ org, years }: { org: string; years: FiscalYearChoice[] }
   const [account, setAccount] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -239,7 +248,10 @@ function CarryForward({ org, years }: { org: string; years: FiscalYearChoice[] }
       });
     return () => controller.abort();
   }, [org]);
+  const carryInFlight = useRef(false);
   async function run(confirm: boolean) {
+    if (carryInFlight.current) return;
+    carryInFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -266,6 +278,7 @@ function CarryForward({ org, years }: { org: string; years: FiscalYearChoice[] }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Överföringen kunde inte genomföras.");
     } finally {
+      carryInFlight.current = false;
       setBusy(false);
     }
   }
@@ -350,44 +363,55 @@ function CarryForward({ org, years }: { org: string; years: FiscalYearChoice[] }
             Resultatnetto (debet − kredit): {preview.resultNet}. Vald resultatdestination ingår i
             målårets IB.
           </p>
-          <table className="my-3 w-full text-left">
-            <thead>
-              <tr>
-                <th>Konto</th>
-                <th>UB före resultatöverföring</th>
-                <th>Ny IB debet</th>
-                <th>Ny IB kredit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.map((row) => (
-                <tr key={row.accountId}>
-                  <td>
-                    {row.number} {row.name}
-                  </td>
-                  <td>{row.closingBalance}</td>
-                  <td>{row.debit}</td>
-                  <td>{row.credit}</td>
+          <div className="table-frame" tabIndex={0}>
+            <table className="my-3 w-full text-left">
+              <thead>
+                <tr>
+                  <th>Konto</th>
+                  <th>UB före resultatöverföring</th>
+                  <th>Ny IB debet</th>
+                  <th>Ny IB kredit</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {preview.rows.map((row) => (
+                  <tr key={row.accountId}>
+                    <td>
+                      {row.number} {row.name}
+                    </td>
+                    <td className="text-right tabular-nums">{row.closingBalance}</td>
+                    <td className="text-right tabular-nums">{row.debit}</td>
+                    <td className="text-right tabular-nums">{row.credit}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <p>
             Totalt debet {preview.totals.debit} · kredit {preview.totals.credit}
           </p>
           <button
             disabled={busy}
-            className="my-3 rounded bg-[#17384b] p-3 text-white"
-            onClick={() => {
-              if (confirm("Bekräfta årsöverföringen? Ingen befintlig IB skrivs över."))
-                void run(true);
-            }}
+            className="my-3 rounded bg-accent p-3 text-white"
+            onClick={() => setConfirmOpen(true)}
           >
             Bekräfta årsöverföring
           </button>
         </div>
       )}
       <p role="status">{message}</p>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Bekräfta årsöverföringen?"
+        description="Den granskade förhandsvisningen förs till målårets ingående balans. Ingen befintlig IB skrivs över. Kontrollera år och resultatkonto innan du fortsätter."
+        confirmLabel="Genomför årsöverföring"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void run(true);
+        }}
+        busy={busy}
+      />
     </section>
   );
 }

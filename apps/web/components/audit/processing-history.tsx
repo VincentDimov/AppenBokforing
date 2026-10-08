@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { PageHeader } from "@/components/ui/workspace";
 import { Button } from "@/components/ui/button";
 
 const actions: Record<string, string> = {
@@ -46,7 +47,7 @@ type Event = {
   requestId: string | null;
 };
 type History = { events: Event[]; page: number; hasMore: boolean };
-const inputClass = "h-10 w-full rounded-md border border-[#b9cbd4] bg-white px-3 text-sm";
+const inputClass = "h-10 w-full rounded-md border border-border bg-white px-3 text-sm";
 
 export function ProcessingHistory() {
   const { activeOrganizationId } = useAuth();
@@ -109,15 +110,13 @@ function OrganizationProcessingHistory() {
   }, [activeOrganizationId, applied, page]);
   return (
     <div className="mx-auto max-w-6xl">
-      <header>
-        <p className="text-sm text-[#638292]">Inställningar</p>
-        <h1 className="mt-2 text-3xl font-semibold">Behandlingshistorik</h1>
-        <p className="mt-3 text-sm text-[#527080]">
-          Följ organisationens bokföringsåtgärder och behörighetsändringar.
-        </p>
-      </header>
+      <PageHeader
+        title="Behandlingshistorik"
+        context="Inställningar"
+        description="Följ bokföringsåtgärder och behörighetsändringar. Historiken är skrivskyddad."
+      />
       <form
-        className="mt-6 grid gap-4 rounded-xl border border-[#d6e3e9] bg-white p-5 sm:grid-cols-3"
+        className="mt-6 grid gap-4 rounded-lg border border-border bg-white p-5 sm:grid-cols-3"
         onSubmit={(event) => {
           event.preventDefault();
           setPage(1);
@@ -181,15 +180,15 @@ function OrganizationProcessingHistory() {
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="mt-5 text-red-700">
+        <p role="alert" className="mt-5 text-danger">
           {error}
         </p>
       ) : null}
       {result ? (
         <>
-          <div className="mt-6 overflow-x-auto rounded-xl border border-[#d6e3e9] bg-white">
+          <div className="table-frame mt-6" tabIndex={0}>
             <table className="w-full text-left text-sm">
-              <thead className="bg-[#f1f6f8]">
+              <thead className="bg-surface-muted">
                 <tr>
                   {["Tidpunkt", "Användare", "Åtgärd", "Objekt", "Detaljer"].map((title) => (
                     <th className="p-4" key={title} scope="col">
@@ -200,7 +199,7 @@ function OrganizationProcessingHistory() {
               </thead>
               <tbody>
                 {result.events.map((event) => (
-                  <tr key={event.id} className="border-t border-[#d6e3e9] align-top">
+                  <tr key={event.id} className="border-t border-border align-top">
                     <td className="whitespace-nowrap p-4">
                       <time dateTime={event.timestamp}>
                         {new Date(event.timestamp).toLocaleString("sv-SE", {
@@ -208,17 +207,9 @@ function OrganizationProcessingHistory() {
                         })}
                       </time>
                     </td>
-                    <td className="p-4">
-                      {event.actor?.displayName ?? "System / okänd aktör"}
-                      <span className="mt-1 block text-xs text-[#638292]">{event.actorUserId}</span>
-                    </td>
+                    <td className="p-4">{event.actor?.displayName ?? "System / okänd aktör"}</td>
                     <td className="p-4">{actions[event.action] ?? event.action}</td>
-                    <td className="p-4">
-                      {entities[event.entityType] ?? event.entityType}
-                      <span className="mt-1 block break-all text-xs text-[#638292]">
-                        {event.entityId}
-                      </span>
-                    </td>
+                    <td className="p-4">{entities[event.entityType] ?? event.entityType}</td>
                     <td className="p-4">
                       <details>
                         <summary className="cursor-pointer">Visa detaljer</summary>
@@ -226,6 +217,10 @@ function OrganizationProcessingHistory() {
                           {JSON.stringify(event.metadata, null, 2)}
                         </pre>
                         <p className="mt-2 break-all text-xs">
+                          Aktörs-ID: {event.actorUserId ?? "System"}
+                          <br />
+                          Objekt-ID: {event.entityId}
+                          <br />
                           Händelse: {event.id}
                           <br />
                           Förfrågan: {event.requestId ?? "Saknas i äldre historik"}
@@ -237,7 +232,7 @@ function OrganizationProcessingHistory() {
               </tbody>
             </table>
             {!result.events.length ? (
-              <p className="p-6 text-[#527080]">Inga händelser matchar urvalet.</p>
+              <p className="p-6 text-secondary">Inga händelser matchar urvalet.</p>
             ) : null}
           </div>
           <div className="mt-4 flex items-center justify-end gap-3">

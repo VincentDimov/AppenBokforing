@@ -1,5 +1,13 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode
+} from "react";
 import { workspaceRequest } from "./workspace-api";
 export interface FiscalYearChoice {
   id: string;
@@ -8,13 +16,27 @@ export interface FiscalYearChoice {
   endDate: string;
   status: "OPEN" | "CLOSED";
 }
-export function useFiscalYears(organizationId: string) {
+function readPreference(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function useFiscalYearsSource(organizationId: string) {
   const [state, setState] = useState<{
     organizationId: string;
     years: FiscalYearChoice[];
     selected: string;
   }>({ organizationId: "", years: [], selected: "" });
   const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!organizationId) return;
+    const reload = () => setRevision((value) => value + 1);
+    window.addEventListener("ledgerapp:fiscal-years-changed", reload);
+    return () => window.removeEventListener("ledgerapp:fiscal-years-changed", reload);
+  }, [organizationId]);
   useEffect(() => {
     if (!organizationId) return;
     const controller = new AbortController();
@@ -24,7 +46,7 @@ export function useFiscalYears(organizationId: string) {
     })
       .then((years) => {
         if (!Array.isArray(years)) throw new Error("Kunde inte läsa räkenskapsåren.");
-        const saved = localStorage.getItem(`ledgerapp:fiscal-year:${organizationId}`);
+        const saved = readPreference(`ledgerapp:fiscal-year:${organizationId}`);
         const today = new Date().toISOString().slice(0, 10);
         const selected =
           years.find((year) => year.id === saved)?.id ??
@@ -39,10 +61,11 @@ export function useFiscalYears(organizationId: string) {
         if (!controller.signal.aborted) setError(error.message);
       });
     return () => controller.abort();
-  }, [organizationId]);
+  }, [organizationId, revision]);
   useEffect(() => {
+    if (!organizationId) return;
     const synchronize = () => {
-      const id = localStorage.getItem(`ledgerapp:fiscal-year:${organizationId}`);
+      const id = readPreference(`ledgerapp:fiscal-year:${organizationId}`);
       setState((current) =>
         current.organizationId === organizationId && current.years.some((year) => year.id === id)
           ? { ...current, selected: id! }
@@ -60,7 +83,11 @@ export function useFiscalYears(organizationId: string) {
     (id: string) => {
       if (state.organizationId !== organizationId || !state.years.some((year) => year.id === id))
         return;
-      localStorage.setItem(`ledgerapp:fiscal-year:${organizationId}`, id);
+      try {
+        localStorage.setItem(`ledgerapp:fiscal-year:${organizationId}`, id);
+      } catch {
+        /* Preference storage is optional, never an accounting authority. */
+      }
       window.dispatchEvent(new Event("ledgerapp:fiscal-year"));
       setState((current) => {
         if (
@@ -68,7 +95,6 @@ export function useFiscalYears(organizationId: string) {
           !current.years.some((year) => year.id === id)
         )
           return current;
-        localStorage.setItem(`ledgerapp:fiscal-year:${organizationId}`, id);
         return { ...current, selected: id };
       });
     },
@@ -76,5 +102,34 @@ export function useFiscalYears(organizationId: string) {
   );
   const years = state.organizationId === organizationId ? state.years : [];
   const selected = state.organizationId === organizationId ? state.selected : "";
-  return { years, selected, select, error, activeYear: years.find((year) => year.id === selected) };
+  const retry = useCallback(() => setRevision((value) => value + 1), []);
+  return {
+    years,
+    selected,
+    select,
+    error,
+    retry,
+    activeYear: years.find((year) => year.id === selected)
+  };
+}
+
+const FiscalYearContext = createContext<{
+  organizationId: string;
+  value: ReturnType<typeof useFiscalYearsSource>;
+} | null>(null);
+export function FiscalYearProvider({
+  organizationId,
+  children
+}: {
+  organizationId: string;
+  children: ReactNode;
+}) {
+  const value = useFiscalYearsSource(organizationId);
+  return createElement(FiscalYearContext.Provider, { value: { organizationId, value } }, children);
+}
+export function useFiscalYears(organizationId: string) {
+  const context = useContext(FiscalYearContext);
+  const shared = context?.organizationId === organizationId;
+  const fallback = useFiscalYearsSource(shared ? "" : organizationId);
+  return shared ? context.value : fallback;
 }

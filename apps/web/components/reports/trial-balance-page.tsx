@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { ReportTools } from "./report-tools";
+import { FiscalYearSelect } from "./fiscal-year-select";
+import { PageHeader, EmptyState, LoadingState } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { useReportRequest } from "@/lib/use-report-request";
@@ -23,7 +25,7 @@ interface TrialBalanceReport {
   totals: Amounts;
 }
 const inputClassName =
-  "h-10 rounded-md border border-[#b9cbd4] bg-white px-3 text-sm focus:ring-2 focus:ring-[#b8d6e4]";
+  "h-10 rounded-md border border-border bg-white px-3 text-sm focus:ring-2 focus:ring-focus";
 
 export function TrialBalancePage() {
   const { activeOrganizationId } = useAuth();
@@ -35,7 +37,8 @@ function OrganizationTrialBalancePage() {
   const [fiscalYear, setFiscalYear] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const { report, error, setError, load, loadedUrl } = useReportRequest<TrialBalanceReport>();
+  const { report, error, setError, load, loadedUrl, loading } =
+    useReportRequest<TrialBalanceReport>();
   async function run() {
     if (!activeOrganizationId || !fiscalYear || !fromDate || !toDate) {
       setError("Välj räkenskapsår och datumintervall.");
@@ -53,51 +56,58 @@ function OrganizationTrialBalancePage() {
   }
   return (
     <div className="mx-auto max-w-6xl print:max-w-none">
-      <header className="border-b border-[#ccdce4] pb-6">
-        <p className="text-xs font-semibold tracking-[.1em] uppercase text-[#638292]">Rapporter</p>
-        <h1 className="mt-2 text-3xl font-semibold text-[#12374c]">Saldobalans</h1>
-      </header>
+      <PageHeader
+        title="Saldobalans"
+        context="Rapporter"
+        description="Välj räkenskapsår och urval. Rapporten baseras på bokförda transaktioner."
+      />
       <ReportTools report={report} url={loadedUrl} />
       <section
-        className="report-filters mt-6 grid gap-3 border border-[#d6e3e9] bg-white p-5 md:grid-cols-4 print:hidden"
+        className="report-filters mt-6 grid gap-3 border border-border bg-white p-5 md:grid-cols-4 print:hidden"
         aria-label="Rapportfilter"
       >
-        <input
-          aria-label="Räkenskapsår"
-          className={inputClassName}
-          placeholder="Räkenskapsår-ID"
-          value={fiscalYear}
-          onChange={(event) => setFiscalYear(event.target.value)}
-        />
-        <input
-          aria-label="Från datum"
-          className={inputClassName}
-          type="date"
-          value={fromDate}
-          onChange={(event) => setFromDate(event.target.value)}
-        />
-        <input
-          aria-label="Till datum"
-          className={inputClassName}
-          type="date"
-          value={toDate}
-          onChange={(event) => setToDate(event.target.value)}
-        />
+        <FiscalYearSelect className={inputClassName} value={fiscalYear} onChange={setFiscalYear} />
+        <label>
+          Från datum
+          <input
+            aria-label="Från datum"
+            className={inputClassName}
+            type="date"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Till datum
+          <input
+            aria-label="Till datum"
+            className={inputClassName}
+            type="date"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+          />
+        </label>
         <Button type="button" onClick={() => void run()}>
           Visa rapport
         </Button>
       </section>
-      <p className="mt-2 text-xs text-[#638292] print:hidden">
-        Ange räkenskapsårets ID. IB är årets ingående saldo plus bokförda rörelser före intervallet.
-        Inga dimensionsfilter.
+      <p className="mt-2 text-xs text-muted print:hidden">
+        IB är årets ingående saldo plus bokförda rörelser före intervallet. Inga dimensionsfilter.
       </p>
       {error ? (
-        <p role="alert" className="mt-4 text-sm text-red-700">
+        <p role="alert" className="mt-4 text-sm text-danger">
           {error}
         </p>
       ) : null}
+      {loading && <LoadingState label="Hämtar rapport…" />}
+      {!report && !error && !loading && (
+        <EmptyState
+          title="Din rapport visas här"
+          description="Välj år och datum, och tryck på Visa rapport."
+        />
+      )}
       {report ? (
-        <section className="mt-6 border border-[#d6e3e9] bg-white p-5">
+        <section className="mt-6 border border-border bg-white p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-semibold">
               {activeOrganization?.name} · {report.fiscalYear.name} · {report.fromDate} –{" "}
@@ -113,53 +123,55 @@ function OrganizationTrialBalancePage() {
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <caption className="sr-only">
-                Saldobalans med ingående saldo, periodens rörelser och utgående saldo
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col" className="p-2 text-left">
-                    Konto
-                  </th>
-                  <th scope="col" className="p-2 text-left">
-                    Namn
-                  </th>
-                  {columns.map(([key, label]) => (
-                    <th scope="col" key={key} className="p-2 text-right">
-                      {label}
+            <div className="table-frame" tabIndex={0}>
+              <table className="w-full text-sm">
+                <caption className="sr-only">
+                  Saldobalans med ingående saldo, periodens rörelser och utgående saldo
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col" className="p-2 text-left">
+                      Konto
                     </th>
+                    <th scope="col" className="p-2 text-left">
+                      Namn
+                    </th>
+                    {columns.map(([key, label]) => (
+                      <th scope="col" key={key} className="p-2 text-right">
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.accounts.map((account) => (
+                    <tr key={account.id} className="border-t">
+                      <th scope="row" className="p-2 text-left font-normal">
+                        {account.number}
+                      </th>
+                      <td className="p-2">{account.name}</td>
+                      {columns.map(([key]) => (
+                        <td key={key} className="p-2 text-right tabular-nums">
+                          {account[key]}
+                        </td>
+                      ))}
+                    </tr>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {report.accounts.map((account) => (
-                  <tr key={account.id} className="border-t">
-                    <th scope="row" className="p-2 text-left font-normal">
-                      {account.number}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 font-semibold">
+                    <th scope="row" colSpan={2} className="p-2 text-left">
+                      Totalt
                     </th>
-                    <td className="p-2">{account.name}</td>
                     {columns.map(([key]) => (
                       <td key={key} className="p-2 text-right tabular-nums">
-                        {account[key]}
+                        {report.totals[key]}
                       </td>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 font-semibold">
-                  <th scope="row" colSpan={2} className="p-2 text-left">
-                    Totalt
-                  </th>
-                  {columns.map(([key]) => (
-                    <td key={key} className="p-2 text-right tabular-nums">
-                      {report.totals[key]}
-                    </td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
+                </tfoot>
+              </table>
+            </div>
           </div>
           {report.accounts.length === 0 ? (
             <p className="mt-4">Inga konton finns för organisationen.</p>

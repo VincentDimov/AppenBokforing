@@ -1,7 +1,13 @@
 # FAS 30–34 — implementation och lokal releasegate
 
+> Historisk lokal ögonblicksbild. Git-/CI-/FAS 35-statusen nedan är ersatt:
+> FAS 30–34 ingår nu i acbba5434321f0d5bfaf68b1a152d46d8e765b7e, med
+> verify/browser-e2e/recovery-runtime-gate SUCCESS i GitHub-run 37785265772.
+> Se [aktuell FAS 35-rapport](fas35-ui-ux.md). Äldre lokala testbevis behålls.
+
 2026-10-08. Detta är lokal implementation/verifiering, inte en produktion-,
-regel-, redovisnings- eller SIE-certifiering. FAS 35 har inte påbörjats.
+regel-, redovisnings- eller SIE-certifiering. Vid denna historiska ögonblicksbild
+hade FAS 35 ännu inte påbörjats; det är inte dagens fasstatus.
 Tidigare fasrapporter är historiska och deras testantal/gitstatus är inte dagens.
 
 ## 1. Commit och arbetskopia

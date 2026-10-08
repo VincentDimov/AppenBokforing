@@ -7,6 +7,7 @@ export function useReportRequest<T>() {
   const [report, setReport] = useState<T | null>(null);
   const [loadedUrl, setLoadedUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const request = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
@@ -19,6 +20,7 @@ export function useReportRequest<T>() {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
+    setLoading(true);
     setReport(null);
     setLoadedUrl("");
     setError(null);
@@ -47,7 +49,9 @@ export function useReportRequest<T>() {
         setError(
           caughtError instanceof Error ? caughtError.message : "Rapporten kunde inte laddas."
         );
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
-  return { report, error, setError, load, loadedUrl };
+  return { report, error, setError, load, loadedUrl, loading };
 }

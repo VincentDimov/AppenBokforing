@@ -17,7 +17,7 @@ const SelectTrigger = forwardRef<
 >(({ children, className, ...props }, ref) => (
   <SelectPrimitive.Trigger
     className={cn(
-      "flex h-10 min-w-0 items-center justify-between gap-2 rounded-lg border border-[#cbdbe3] bg-white px-3 text-left text-sm font-medium text-[#17384b] outline-none transition hover:border-[#a9c4d0] focus:ring-2 focus:ring-[#72b1cc] disabled:cursor-not-allowed disabled:opacity-50",
+      "flex h-10 min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 text-left text-sm font-medium text-ink outline-none transition hover:border-border focus:ring-2 focus:ring-focus disabled:cursor-not-allowed disabled:opacity-50",
       className
     )}
     ref={ref}
@@ -25,7 +25,7 @@ const SelectTrigger = forwardRef<
   >
     <span className="min-w-0 truncate">{children}</span>
     <SelectPrimitive.Icon asChild>
-      <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-[#668291]" />
+      <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted" />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
@@ -38,7 +38,7 @@ const SelectContent = forwardRef<
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       className={cn(
-        "relative z-50 max-h-72 min-w-[10rem] overflow-hidden rounded-lg border border-[#cbdbe3] bg-white p-1 text-[#17384b] shadow-[0_16px_36px_rgba(16,47,66,0.16)]",
+        "relative z-50 max-h-72 min-w-[10rem] overflow-hidden rounded-lg border border-border bg-white p-1 text-ink shadow-lg",
         position === "popper" && "translate-y-1",
         className
       )}
@@ -65,7 +65,7 @@ const SelectItem = forwardRef<
 >(({ children, className, ...props }, ref) => (
   <SelectPrimitive.Item
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-md py-2 pl-8 pr-3 text-sm outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-[#e8f2f6] data-[disabled]:opacity-50",
+      "relative flex w-full cursor-default select-none items-center rounded-md py-2 pl-8 pr-3 text-sm outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-accent-soft data-[disabled]:opacity-50",
       className
     )}
     ref={ref}
@@ -73,7 +73,7 @@ const SelectItem = forwardRef<
   >
     <span className="absolute left-2 flex size-4 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <Check aria-hidden="true" className="size-3.5 text-[#1f6b86]" />
+        <Check aria-hidden="true" className="size-3.5 text-secondary" />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
@@ -89,7 +89,7 @@ function SelectLabel({
   return (
     <SelectPrimitive.Label
       className={cn(
-        "px-2 py-1.5 text-xs font-semibold tracking-[0.08em] text-[#668291] uppercase",
+        "px-2 py-1.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase",
         className
       )}
       {...props}

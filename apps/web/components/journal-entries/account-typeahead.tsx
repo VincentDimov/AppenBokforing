@@ -1,7 +1,8 @@
 "use client";
 
+import { FloatingOptions } from "@/components/ui/floating-options";
 import { Search } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { getAccounts, type Account } from "@/lib/api/accounts";
 
@@ -13,6 +14,7 @@ export interface AccountChoice {
 
 interface AccountTypeaheadProps {
   account: AccountChoice | null;
+  ariaLabel?: string;
   disabled?: boolean;
   id: string;
   onAdvance?: () => void;
@@ -22,6 +24,7 @@ interface AccountTypeaheadProps {
 
 export function AccountTypeahead({
   account,
+  ariaLabel,
   disabled = false,
   id,
   onAdvance,
@@ -29,6 +32,7 @@ export function AccountTypeahead({
   organizationId
 }: Readonly<AccountTypeaheadProps>) {
   const listboxId = useId();
+  const anchor = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [matches, setMatches] = useState<Account[]>([]);
@@ -67,17 +71,21 @@ export function AccountTypeahead({
   }
 
   return (
-    <div className="relative min-w-[12rem]">
+    <div ref={anchor} className="relative min-w-[12rem]">
       <Search
         aria-hidden="true"
-        className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[#70909e]"
+        className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted"
       />
       <input
+        aria-label={ariaLabel}
+        aria-activedescendant={
+          isOpen && matches[activeIndex] ? `${listboxId}-${activeIndex}` : undefined
+        }
         aria-autocomplete="list"
         aria-controls={isOpen ? listboxId : undefined}
         aria-expanded={isOpen}
         autoComplete="off"
-        className="h-9 w-full rounded-md border border-[#cadbe3] bg-white py-1.5 pl-8 pr-2 text-sm text-[#17384b] outline-none transition placeholder:text-[#8aa0aa] focus:border-[#4b90aa] focus:ring-3 focus:ring-[#d8edf5] disabled:bg-[#f3f6f7]"
+        className="h-9 w-full rounded-md border border-border bg-white py-1.5 pl-8 pr-2 text-sm text-ink outline-none transition placeholder:text-muted focus:border-border focus:ring-3 focus:ring-focus disabled:bg-surface-muted"
         disabled={disabled}
         id={id}
         onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
@@ -120,37 +128,45 @@ export function AccountTypeahead({
         value={query}
       />
       {isOpen ? (
-        <ul
-          className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-[#bcd3de] bg-white py-1 shadow-[0_12px_26px_rgba(16,47,66,0.16)]"
-          id={listboxId}
-          role="listbox"
-        >
-          {matches.length > 0 ? (
-            matches.map((candidate, index) => (
+        <FloatingOptions anchor={anchor}>
+          <ul
+            className="w-full rounded-md border border-border bg-white py-1 shadow-lg"
+            id={listboxId}
+            role="listbox"
+          >
+            {matches.length > 0 ? (
+              matches.map((candidate, index) => (
+                <li
+                  id={`${listboxId}-${index}`}
+                  aria-selected={index === activeIndex}
+                  className={`cursor-pointer px-3 py-2 text-sm ${
+                    index === activeIndex
+                      ? "bg-accent-soft text-ink"
+                      : "text-secondary hover:bg-surface-muted"
+                  }`}
+                  key={candidate.id}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    selectAccount(candidate);
+                  }}
+                  role="option"
+                >
+                  <span className="font-semibold">{candidate.number}</span>
+                  <span className="ml-2 text-muted">{candidate.name}</span>
+                </li>
+              ))
+            ) : (
               <li
-                aria-selected={index === activeIndex}
-                className={`cursor-pointer px-3 py-2 text-sm ${
-                  index === activeIndex
-                    ? "bg-[#e4f2f7] text-[#10384c]"
-                    : "text-[#365968] hover:bg-[#f1f7f9]"
-                }`}
-                key={candidate.id}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  selectAccount(candidate);
-                }}
+                className="px-3 py-3 text-sm text-muted"
                 role="option"
+                aria-disabled="true"
+                aria-selected="false"
               >
-                <span className="font-semibold">{candidate.number}</span>
-                <span className="ml-2 text-[#5d7784]">{candidate.name}</span>
+                Inga aktiva konton matchar sökningen.
               </li>
-            ))
-          ) : (
-            <li className="px-3 py-3 text-sm text-[#6d8792]" role="option">
-              Inga aktiva konton matchar sökningen.
-            </li>
-          )}
-        </ul>
+            )}
+          </ul>
+        </FloatingOptions>
       ) : null}
     </div>
   );

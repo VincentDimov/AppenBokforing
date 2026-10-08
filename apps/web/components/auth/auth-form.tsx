@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 type AuthMode = "login" | "register";
 
@@ -30,6 +30,8 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [invitationToken, setInvitationToken] = useState("");
@@ -40,6 +42,8 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     setIsSubmitting(true);
 
@@ -60,7 +64,11 @@ export function AuthForm({ mode }: AuthFormProps) {
           payload = undefined;
         }
 
-        setError(getErrorMessage(payload));
+        setError(
+          response.status === 429
+            ? "För många försök. Vänta en stund och försök igen."
+            : getErrorMessage(payload)
+        );
         return;
       }
 
@@ -69,6 +77,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     } catch {
       setError("Kunde inte ansluta till tjänsten. Försök igen.");
     } finally {
+      inFlight.current = false;
       setIsSubmitting(false);
     }
   }
@@ -76,11 +85,11 @@ export function AuthForm({ mode }: AuthFormProps) {
   return (
     <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
       {isRegister ? (
-        <label className="block text-sm font-medium text-[#294942]">
+        <label className="block text-sm font-medium text-ink">
           Namn
           <input
             autoComplete="name"
-            className="mt-2 w-full rounded-xl border border-[#cbdcd3] bg-white px-3.5 py-3 text-[#183532] outline-none transition focus:border-[#26725f] focus:ring-4 focus:ring-[#cde7da]"
+            className="mt-2 w-full rounded-lg border border-border bg-white px-3.5 py-3 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
             maxLength={160}
             onChange={(event) => setDisplayName(event.target.value)}
             required
@@ -89,11 +98,11 @@ export function AuthForm({ mode }: AuthFormProps) {
         </label>
       ) : null}
 
-      <label className="block text-sm font-medium text-[#294942]">
+      <label className="block text-sm font-medium text-ink">
         E-postadress
         <input
           autoComplete="email"
-          className="mt-2 w-full rounded-xl border border-[#cbdcd3] bg-white px-3.5 py-3 text-[#183532] outline-none transition focus:border-[#26725f] focus:ring-4 focus:ring-[#cde7da]"
+          className="mt-2 w-full rounded-lg border border-border bg-white px-3.5 py-3 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
           onChange={(event) => setEmail(event.target.value)}
           required
           type="email"
@@ -101,43 +110,58 @@ export function AuthForm({ mode }: AuthFormProps) {
         />
       </label>
 
-      <label className="block text-sm font-medium text-[#294942]">
+      <label className="block text-sm font-medium text-ink">
         Lösenord
         <input
           autoComplete={isRegister ? "new-password" : "current-password"}
-          className="mt-2 w-full rounded-xl border border-[#cbdcd3] bg-white px-3.5 py-3 text-[#183532] outline-none transition focus:border-[#26725f] focus:ring-4 focus:ring-[#cde7da]"
+          aria-label="Lösenord"
+          className="mt-2 w-full rounded-lg border border-border bg-white px-3.5 py-3 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
           minLength={isRegister ? 12 : 1}
           onChange={(event) => setPassword(event.target.value)}
           required
-          type="password"
+          aria-describedby={error ? "auth-error" : isRegister ? "password-help" : undefined}
+          aria-invalid={Boolean(error)}
+          type={showPassword ? "text" : "password"}
           value={password}
         />
+        <button
+          type="button"
+          className="mt-2 text-xs font-medium text-accent hover:underline"
+          aria-pressed={showPassword}
+          onClick={() => setShowPassword((value) => !value)}
+        >
+          {showPassword ? "Dölj lösenord" : "Visa lösenord"}
+        </button>
         {isRegister ? (
-          <span className="mt-1.5 block text-xs font-normal text-[#647b73]">Minst 12 tecken.</span>
+          <span id="password-help" className="mt-1.5 block text-xs font-normal text-muted">
+            Minst 12 tecken.
+          </span>
         ) : null}
       </label>
 
       {error ? (
         <p
+          id="auth-error"
+          role="alert"
           aria-live="polite"
-          className="rounded-xl bg-[#fff0ed] px-3.5 py-3 text-sm text-[#9c3127]"
+          className="rounded-lg bg-danger-soft px-3.5 py-3 text-sm text-danger"
         >
           {error}
         </p>
       ) : null}
 
       <button
-        className="w-full rounded-xl bg-[#1d4d46] px-4 py-3 font-semibold text-white transition hover:bg-[#173f39] disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-lg bg-accent px-4 py-3 font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
         disabled={isSubmitting}
         type="submit"
       >
         {isSubmitting ? "Arbetar…" : isRegister ? "Skapa konto" : "Logga in"}
       </button>
 
-      <p className="text-center text-sm text-[#647b73]">
+      <p className="text-center text-sm text-muted">
         {isRegister ? "Har du redan ett konto?" : "Saknar du ett konto?"}{" "}
         <Link
-          className="font-semibold text-[#1d6557] hover:underline"
+          className="font-semibold text-secondary hover:underline"
           href={`${isRegister ? "/login" : "/register"}${invitationToken ? `#invitation=${invitationToken}` : ""}`}
         >
           {isRegister ? "Logga in" : "Registrera dig"}

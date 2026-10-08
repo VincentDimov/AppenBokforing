@@ -62,6 +62,17 @@ async function editExisting() {
   fireEvent.change(screen.getByLabelText("Kredit rad 2"), { target: { value: "5000,00" } });
 }
 describe("canonical posting flow", () => {
+  it("never saves or posts before explicit confirmation, and cancellation retains exact visible values", async () => {
+    render(<VoucherEditor entryId={demoEntry.id} />);
+    await editExisting();
+    fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
+    expect(screen.getByRole("dialog", { name: "Bokför verifikationen?" })).toBeVisible();
+    expect(mutations()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: /^Avbryt$/ }));
+    expect(mutations()).toHaveLength(0);
+    expect(screen.getByLabelText("Debet rad 1")).toHaveValue("5000,00");
+    expect(screen.getByLabelText("Kredit rad 2")).toHaveValue("5000,00");
+  });
   it("retains local edits on version conflict and explicitly reloads latest values", async () => {
     const normal = fetchMock.getMockImplementation()!;
     fetchMock.mockImplementation(async (url, init) => {
@@ -78,6 +89,7 @@ describe("canonical posting flow", () => {
     render(<VoucherEditor entryId={demoEntry.id} />);
     await editExisting();
     fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bekräfta bokföring" }));
     expect(
       await screen.findByText("Verifikationen har ändrats av en annan användare.")
     ).toBeInTheDocument();
@@ -99,6 +111,7 @@ describe("canonical posting flow", () => {
     fireEvent.change(screen.getByLabelText("Momsroll rad 2"), { target: { value: "TAX" } });
     fireEvent.change(screen.getByLabelText("Momsgrupp rad 1"), { target: { value: "sale" } });
     fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bekräfta bokföring" }));
     await waitFor(() => expect(mutations()).toHaveLength(2));
     expect(JSON.parse(String(mutations()[0]?.[1]?.body)).lines).toEqual([
       expect.objectContaining({ vatRole: "BASE", vatGroup: "sale" }),
@@ -114,6 +127,7 @@ describe("canonical posting flow", () => {
         fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
       else
         fireEvent.keyDown(screen.getByLabelText("Kredit rad 2"), { key: "Enter", ctrlKey: true });
+      fireEvent.click(screen.getByRole("button", { name: "Bekräfta bokföring" }));
       await waitFor(() => expect(mutations()).toHaveLength(2));
       expect(mutations()[0]).toEqual([
         "/api/journal-entries/entry-a",
@@ -141,6 +155,11 @@ describe("canonical posting flow", () => {
       fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
       fireEvent.keyDown(screen.getByLabelText("Kredit rad 2"), { key: "Enter", ctrlKey: true });
     });
+    const confirmation = screen.getByRole("button", { name: "Bekräfta bokföring" });
+    act(() => {
+      fireEvent.click(confirmation);
+      fireEvent.click(confirmation);
+    });
     expect(mutations()).toHaveLength(1);
     await act(async () => pending.resolve(jsonResponse(demoEntry)));
     await waitFor(() => expect(mutations()).toHaveLength(2));
@@ -157,6 +176,7 @@ describe("canonical posting flow", () => {
     render(<VoucherEditor entryId={demoEntry.id} />);
     await editExisting();
     fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bekräfta bokföring" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Save failed");
     expect(screen.getByLabelText("Debet rad 1")).toHaveValue("5000,00");
     expect(mutations()).toHaveLength(1);
@@ -192,6 +212,11 @@ describe("canonical posting flow", () => {
       fireEvent.click(button);
       fireEvent.click(button);
       fireEvent.keyDown(screen.getByLabelText("Kredit rad 2"), { key: "Enter", metaKey: true });
+    });
+    const confirmation = screen.getByRole("button", { name: "Bekräfta bokföring" });
+    act(() => {
+      fireEvent.click(confirmation);
+      fireEvent.click(confirmation);
     });
     expect(mutations()).toHaveLength(1);
     expect(JSON.parse(String(mutations()[0]?.[1]?.body))).toMatchObject({
@@ -239,6 +264,7 @@ describe("canonical posting flow", () => {
     const view = render(<VoucherEditor entryId={demoEntry.id} />);
     await editExisting();
     fireEvent.click(screen.getByRole("button", { name: "Bokför verifikation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bekräfta bokföring" }));
     organizationId = "org-b";
     view.rerender(<VoucherEditor entryId={demoEntry.id} />);
     await act(async () => pending.resolve(jsonResponse(demoEntry)));

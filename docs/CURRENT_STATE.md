@@ -1,17 +1,27 @@
 # LedgerApp — faktiskt nuläge
 
-## FAS 30–34 — aktuellt lokalt arbete, 2026-10-08
+## FAS 35 — aktuell arbetskopia, 2026-10-08
+
+Gemensamt designsystem och UI-genomgång av arbetsyta, register, rapporter,
+auth/onboarding och startsida. [Aktuell fasrapport och kontroller](fas35-ui-ux.md)
+anger exakta resultat och begränsningar. Endast lokala ändringar, ingen FAS 35-release.
+Tre genererade tsbuildinfo-filer tas bort från Git-spårning och ignoreras.
+
+## Historik: FAS 30–34 — ersatt lokal status
 
 [Aktuell slutrapport](fas30-34-release-gate.md) ersätter äldre status/testantal.
-Bascommit/master är `441567e0379a1703fe48462408eebe16963bdd06` (FAS 29);
-nya ändringar är lokala/ocommittade. Ingen ny remote CI eller deployment utförd.
+Nuvarande bascommit/master är `acbba5434321f0d5bfaf68b1a152d46d8e765b7e`.
+FAS 30–34 är inkluderade. GitHub API verifierade run 37785265772: samma SHA,
+completed/success och verify/browser-e2e/recovery-runtime-gate SUCCESS.
+Vercel READY för bascommit uppges av användaren; inte självständigt verifierat här.
+Gamla daterade lokala/opushade statusuppgifter är historiska, inte dagens status.
 
 Mallhantering och kopiering till vanliga utkast, PC8-preview/bekräftelse/historik,
 alla befintliga tenantbilagor med keyset-sökning, oföränderlig kontosnapshot för
 nya bokföringar/verifikationsrapport, CSV/utskrift för fem rapporter och verkliga
 dashboard-KPI:er är implementerade. Samma Decimal-, behörighets-, snapshot-,
 periodlås-, revisions- och återställningskontrakt återanvänds.
-Fyra nya migrationer ger 23 totalt. FAS 35 är inte påbörjad.
+Fyra migrationer gav 23 totalt; FAS 35 ändrar inga databasmigrationer.
 
 Kontrakt: [mallar](posting-templates.md), [SIE UI](sie-ui.md),
 [arkiv](attachment-archive.md), [export](report-exports.md), [dashboard](dashboard.md).

@@ -9,10 +9,10 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const badgeVariants: Record<BadgeVariant, string> = {
-  default: "border-transparent bg-[#dceef5] text-[#1a516a]",
-  outline: "border-[#c8d8e1] bg-white text-[#426173]",
-  success: "border-transparent bg-[#dff3e8] text-[#176246]",
-  warning: "border-transparent bg-[#fff1d9] text-[#8c5617]"
+  default: "border-transparent bg-accent-soft text-secondary",
+  outline: "border-border bg-white text-secondary",
+  success: "border-transparent bg-success-soft text-success",
+  warning: "border-transparent bg-warning-soft text-warning"
 };
 
 export function Badge({ className, variant = "default", ...props }: BadgeProps) {

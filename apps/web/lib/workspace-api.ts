@@ -7,6 +7,8 @@ export async function workspaceRequest<T>(path: string, init?: RequestInit): Pro
   });
   const data = await response.json();
   if (!response.ok) {
+    if (response.status === 429)
+      throw new Error("För många försök. Vänta en stund och försök igen.");
     const message = Array.isArray(data.message) ? data.message.join(" ") : data.message;
     throw new Error(message ?? "Åtgärden kunde inte genomföras.");
   }

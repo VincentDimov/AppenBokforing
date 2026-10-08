@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { PageHeader } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useFiscalYears } from "@/lib/use-fiscal-years";
 import { workspaceRequest } from "@/lib/workspace-api";
@@ -105,8 +106,12 @@ function SeriesManagement({
     }
   }
   return (
-    <section className="rounded-xl bg-white p-6">
-      <h1 className="text-2xl font-semibold">Verifikationsserier</h1>
+    <section className="space-y-6">
+      <PageHeader
+        title="Verifikationsserier"
+        context="Inställningar"
+        description="Varje serie och år har en egen nummerföljd."
+      />
       <label className="my-4 block">
         Räkenskapsår
         <select
@@ -126,46 +131,52 @@ function SeriesManagement({
         räknarändring.
       </p>
       <p role="status">{message || years.error}</p>
-      <table className="my-5 w-full text-left">
-        <thead>
-          <tr>
-            <th>Kod</th>
-            <th>Namn</th>
-            <th>Status</th>
-            <th>Nästa nummer</th>
-            <th>Användning</th>
-            <th>Åtgärd</th>
-          </tr>
-        </thead>
-        <tbody>
-          {series.map((item) => (
-            <tr className="border-t" key={item.id}>
-              <td>
-                {item.code}
-                {item.code === defaultCode && " · standard"}
-              </td>
-              <td className="p-3">{item.name}</td>
-              <td>{item.isActive ? "Aktiv" : "Inaktiv"}</td>
-              <td>{item.nextVoucherNumber}</td>
-              <td>{item._count.journalEntries}</td>
-              <td>
-                {canWrite && <button onClick={() => setEditing(item)}>Redigera</button>}
-                {["OWNER", "ADMIN"].includes(role) && item.isActive && (
-                  <button
-                    className="ml-3"
-                    disabled={busy}
-                    onClick={() => void setDefault(item.code)}
-                  >
-                    Använd som standard
-                  </button>
-                )}
-              </td>
+      <div className="table-frame" tabIndex={0}>
+        <table className="my-5 w-full text-left">
+          <thead>
+            <tr>
+              <th>Kod</th>
+              <th>Namn</th>
+              <th>Status</th>
+              <th>Nästa nummer</th>
+              <th>Användning</th>
+              <th>Åtgärd</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {series.map((item) => (
+              <tr className="border-t" key={item.id}>
+                <td>
+                  {item.code}
+                  {item.code === defaultCode && " · standard"}
+                </td>
+                <td className="p-3">{item.name}</td>
+                <td>{item.isActive ? "Aktiv" : "Inaktiv"}</td>
+                <td>{item.nextVoucherNumber}</td>
+                <td>{item._count.journalEntries}</td>
+                <td>
+                  {canWrite && <button onClick={() => setEditing(item)}>Redigera</button>}
+                  {["OWNER", "ADMIN"].includes(role) && item.isActive && (
+                    <button
+                      className="ml-3"
+                      disabled={busy}
+                      onClick={() => void setDefault(item.code)}
+                    >
+                      Använd som standard
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {canWrite && (
-        <form className="space-y-3" key={editing?.id ?? `new:${years.selected}`} onSubmit={save}>
+        <form
+          className="space-y-3 register-editor"
+          key={editing?.id ?? `new:${years.selected}`}
+          onSubmit={save}
+        >
           <h2 className="text-lg font-semibold">{editing ? "Redigera serie" : "Ny serie"}</h2>
           <fieldset
             className="space-y-3"
@@ -205,7 +216,7 @@ function SeriesManagement({
                 <input name="active" type="checkbox" defaultChecked={editing.isActive} /> Aktiv
               </label>
             )}
-            <button className="rounded bg-[#17384b] p-3 text-white">Spara serie</button>
+            <button className="rounded bg-accent p-3 text-white">Spara serie</button>
             {editing && (
               <button className="ml-3" type="button" onClick={() => setEditing(null)}>
                 Avbryt

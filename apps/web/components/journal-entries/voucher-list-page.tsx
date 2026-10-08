@@ -5,23 +5,24 @@ import Link from "next/link";
 import { useDeferredValue, useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth/auth-provider";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, EmptyState, LoadingState, PageHeader } from "@/components/ui/workspace";
 import { Button } from "@/components/ui/button";
-import {
-  getJournalEntries,
-  type JournalEntry,
-  type JournalEntryStatus
-} from "@/lib/api/journal-entries";
+import { getJournalEntries, type JournalEntry } from "@/lib/api/journal-entries";
 import { formatOre, parseMoneyToOre } from "@/lib/vouchers";
 
 const writeRoles = new Set(["OWNER", "ADMIN", "ACCOUNTANT"]);
 
-export function VoucherListPage() {
+export function VoucherListPage({ reportMode = false }: { reportMode?: boolean } = {}) {
   const { activeOrganizationId } = useAuth();
-  return <OrganizationVoucherListPage key={activeOrganizationId ?? "no-organization"} />;
+  return (
+    <OrganizationVoucherListPage
+      key={activeOrganizationId ?? "no-organization"}
+      reportMode={reportMode}
+    />
+  );
 }
 
-function OrganizationVoucherListPage() {
+function OrganizationVoucherListPage({ reportMode }: { reportMode: boolean }) {
   const { activeOrganization, activeOrganizationId, organizationsStatus } = useAuth();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -93,64 +94,74 @@ function OrganizationVoucherListPage() {
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <header className="flex flex-col justify-between gap-5 border-b border-[#ccdce4] pb-6 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-xs font-semibold tracking-[0.13em] text-[#638292] uppercase">
-            Bokföring
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-[#12374c] sm:text-4xl">
-            Verifikationer
-          </h1>
-          <p className="mt-3 text-base leading-7 text-[#58717e]">
-            Granska utkast och bokförda verifikationer för{" "}
-            <span className="font-medium text-[#294f62]">{activeOrganization.name}</span>.
-          </p>
-        </div>
-        {canWrite ? (
-          <Button asChild size="wide">
-            <Link href="/app/bookkeeping/vouchers/new">
-              <Plus aria-hidden="true" className="size-4" />
-              Ny verifikation
-            </Link>
-          </Button>
-        ) : null}
-      </header>
+      <PageHeader
+        title={reportMode ? "Verifikationslista" : "Verifikationer"}
+        context={reportMode ? "Rapporter" : "Bokföring"}
+        description={<>Utkast och bokförda verifikationer för {activeOrganization.name}.</>}
+        action={
+          reportMode ? (
+            <Button variant="outline" onClick={() => window.print()}>
+              Skriv ut
+            </Button>
+          ) : (
+            canWrite && (
+              <Button asChild>
+                <Link href="/app/bookkeeping/vouchers/new">
+                  <Plus className="size-4" aria-hidden="true" />
+                  Ny verifikation
+                </Link>
+              </Button>
+            )
+          )
+        }
+      />
 
-      <section className="mt-6 border border-[#d6e3e9] bg-white shadow-[0_8px_22px_rgba(16,47,66,0.035)]">
-        <div className="flex flex-col gap-4 border-b border-[#e1ebef] p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <section className="mt-6 border border-border bg-white shadow-none">
+        <div className="report-filters flex flex-col gap-4 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <label className="relative block w-full sm:max-w-md">
             <span className="sr-only">Sök verifikation</span>
             <Search
               aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#6b8997]"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
             />
             <input
-              className="h-10 w-full rounded-lg border border-[#cbdbe3] bg-white py-2 pl-9 pr-3 text-sm text-[#17384b] outline-none transition placeholder:text-[#8097a2] focus:border-[#4a8fa9] focus:ring-4 focus:ring-[#d8edf5]"
+              className="h-10 w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-border focus:ring-4 focus:ring-focus"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Sök datum, beskrivning eller nummer"
               type="search"
               value={search}
             />
           </label>
-          <p className="shrink-0 text-sm text-[#668291]">
+          <p className="shrink-0 text-sm text-muted">
             {isLoading ? "Hämtar…" : `${filteredEntries.length} verifikationer`}
           </p>
         </div>
 
         {error ? (
-          <p className="m-5 border-l-2 border-[#c76b52] bg-[#fff6f2] px-4 py-4 text-sm leading-6 text-[#914a38] sm:m-6">
+          <p className="m-5 border-l-2 border-danger bg-danger-soft px-4 py-4 text-sm leading-6 text-danger sm:m-6">
             {error}
           </p>
         ) : null}
         {!error && isLoading && entries.length === 0 ? (
-          <p className="px-5 py-12 text-sm text-[#668291] sm:px-6">Hämtar verifikationer…</p>
+          <LoadingState label="Hämtar verifikationer…" />
         ) : null}
         {!error && !isLoading && filteredEntries.length === 0 ? (
-          <p className="px-5 py-12 text-sm leading-6 text-[#668291] sm:px-6">
-            {search
-              ? "Inga verifikationer matchar sökningen."
-              : "Inga verifikationer ännu. Skapa ett utkast för att börja bokföra."}
-          </p>
+          <EmptyState
+            title={search ? "Inga verifikationer matchar sökningen" : "Inga verifikationer ännu"}
+            description={
+              search
+                ? "Prova ett annat datum, nummer eller en beskrivning."
+                : "Börja med ett utkast. Verifikationsnummer tilldelas först när du bokför."
+            }
+            action={
+              !search &&
+              canWrite && (
+                <Button asChild variant="outline">
+                  <Link href="/app/bookkeeping/vouchers/new">Skapa första utkastet</Link>
+                </Button>
+              )
+            }
+          />
         ) : null}
         {filteredEntries.length > 0 ? <VoucherTable entries={filteredEntries} /> : null}
       </section>
@@ -160,9 +171,9 @@ function OrganizationVoucherListPage() {
 
 function VoucherTable({ entries }: Readonly<{ entries: JournalEntry[] }>) {
   return (
-    <div className="overflow-x-auto">
+    <div className="table-frame" tabIndex={0}>
       <table className="w-full min-w-[46rem] text-left text-sm">
-        <thead className="border-b border-[#e5edf1] bg-[#f7fafb] text-xs font-semibold tracking-[0.08em] text-[#6c8490] uppercase">
+        <thead className="border-b border-border bg-surface-muted text-xs font-semibold tracking-[0.08em] text-muted uppercase">
           <tr>
             <th className="px-5 py-3.5 font-semibold sm:px-6">Datum</th>
             <th className="px-5 py-3.5 font-semibold">Verifikation</th>
@@ -174,15 +185,15 @@ function VoucherTable({ entries }: Readonly<{ entries: JournalEntry[] }>) {
         <tbody>
           {entries.map((entry) => (
             <tr
-              className="border-b border-[#edf2f4] last:border-b-0 hover:bg-[#f9fcfd]"
+              className="border-b border-border last:border-b-0 hover:bg-surface-muted"
               key={entry.id}
             >
-              <td className="whitespace-nowrap px-5 py-4 text-[#66808d] sm:px-6">
+              <td className="whitespace-nowrap px-5 py-4 text-muted sm:px-6">
                 {entry.transactionDate}
               </td>
-              <td className="whitespace-nowrap px-5 py-4 font-semibold text-[#1f4960]">
+              <td className="whitespace-nowrap px-5 py-4 font-semibold text-secondary">
                 <Link
-                  className="hover:text-[#0d2f42] hover:underline"
+                  className="hover:text-ink hover:underline"
                   href={`/app/bookkeeping/vouchers/${entry.id}`}
                 >
                   {entry.voucherNumber
@@ -190,8 +201,8 @@ function VoucherTable({ entries }: Readonly<{ entries: JournalEntry[] }>) {
                     : "Utkast"}
                 </Link>
               </td>
-              <td className="max-w-96 truncate px-5 py-4 text-[#466471]">{entry.description}</td>
-              <td className="whitespace-nowrap px-5 py-4 text-right font-medium tabular-nums text-[#1d5267]">
+              <td className="max-w-96 truncate px-5 py-4 text-secondary">{entry.description}</td>
+              <td className="whitespace-nowrap px-5 py-4 text-right font-medium tabular-nums text-secondary">
                 {formatOre(parseMoneyToOre(entry.totals.debit) ?? 0n)}
               </td>
               <td className="whitespace-nowrap px-5 py-4 text-right sm:px-6">
@@ -205,21 +216,9 @@ function VoucherTable({ entries }: Readonly<{ entries: JournalEntry[] }>) {
   );
 }
 
-function StatusBadge({ status }: Readonly<{ status: JournalEntryStatus }>) {
-  if (status === "POSTED") {
-    return <Badge variant="success">Bokförd</Badge>;
-  }
-
-  if (status === "REVERSED") {
-    return <Badge variant="outline">Makulerad</Badge>;
-  }
-
-  return <Badge variant="warning">Utkast</Badge>;
-}
-
 function VoucherListMessage({ message }: Readonly<{ message: string }>) {
   return (
-    <section className="mx-auto max-w-4xl border border-[#d6e3e9] bg-white p-6 text-sm leading-6 text-[#58717e] shadow-[0_8px_22px_rgba(16,47,66,0.035)] sm:p-8">
+    <section className="mx-auto max-w-4xl border border-border bg-white p-6 text-sm leading-6 text-secondary shadow-none sm:p-8">
       {message}
     </section>
   );

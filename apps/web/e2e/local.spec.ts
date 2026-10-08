@@ -54,6 +54,7 @@ test("two browser contexts cannot overwrite or post a stale voucher", async ({ b
     await pages[0]!.getByRole("button", { name: "Spara utkast" }).click();
     expect((await saved).status()).toBe(200);
     await pages[1]!.getByRole("button", { name: "Bokför verifikation" }).click();
+    await pages[1]!.getByRole("button", { name: "Bekräfta bokföring" }).click();
     await expect(
       pages[1]!.getByText("Verifikationen har ändrats av en annan användare.")
     ).toBeVisible();
@@ -70,6 +71,7 @@ test("two browser contexts cannot overwrite or post a stale voucher", async ({ b
       r.url().endsWith(`/journal-entries/${entry.id}/post`)
     );
     await pages[1]!.getByRole("button", { name: "Bokför verifikation" }).click();
+    await pages[1]!.getByRole("button", { name: "Bekräfta bokföring" }).click();
     expect((await posted).status()).toBe(201);
     expect(
       (
@@ -200,8 +202,8 @@ async function open(page: Page, org: Organization, route: string) {
   await page.goto(route ? "/app/" + route : "/app");
   await selectOrg(page, org);
 }
-async function fillVoucher(page: Page, amount: string) {
-  for (const [index, number] of ["1930", "3000"].entries()) {
+async function fillVoucher(page: Page, amount: string, revenueAccount = "3000") {
+  for (const [index, number] of ["1930", revenueAccount].entries()) {
     const input = page.getByRole("table").locator('input[id^="voucher-account-"]').nth(index);
     await input.fill(number);
     await page.getByRole("option", { name: new RegExp("^" + number) }).click();
@@ -278,6 +280,7 @@ test("posting template create → use → change amount → normal posting", asy
   await page.getByLabel("Debet rad 1").fill("234.56");
   await page.getByLabel("Kredit rad 2").fill("234.56");
   await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
   expect((await storedEntry(id)).lines[0]!.debitAmount.toFixed(2)).toBe("234.56");
 });
@@ -324,7 +327,7 @@ test("SIE UI PC8 file → preview warnings → explicit confirm → report → b
   await page.goto("/app/bookkeeping/vouchers");
   await expect(page.getByRole("table")).toContainText("Oberoende");
   await page.goto("/app/reports/trial-balance");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(org.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(org.yearId);
   await page.getByLabel("Från datum").fill("2026-01-01");
   await page.getByLabel("Till datum").fill("2026-12-31");
   await page.getByRole("button", { name: "Visa rapport" }).click();
@@ -346,12 +349,13 @@ test("real draft attachment → posted voucher → global archive search → aut
     .setInputFiles({ name: "Arkivkvitto.pdf", mimeType: "application/pdf", buffer: bytes });
   await expect(page.getByText("Arkivkvitto.pdf", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Bokför verifikation" }).click();
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
   await page.goto("/app/bookkeeping/attachments");
   await page.getByLabel("Filnamn (minst 3 tecken)").fill("Arkivkvitto");
   await page.getByRole("button", { name: "Sök bilagor", exact: true }).click();
   await expect(page.getByRole("table")).toContainText("Arkivkvitto.pdf");
-  await expect(page.getByRole("table")).toContainText("POSTED");
+  await expect(page.getByRole("table")).toContainText("Bokförd");
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Ladda ner Arkivkvitto.pdf" }).click();
   const downloaded = await downloading;
@@ -386,7 +390,8 @@ async function onboardWorkspace(name: string): Promise<Organization> {
   };
 }
 
-test("voucher print report preserves values and correction links", async ({ page }) => {
+test("voucher print report preserves values and correction links", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const org = await onboardWorkspace("E2E voucher report"),
     original = await posted(org, "123.01");
   const correction = await api.post(`/api/journal-entries/${original.id}/reverse`, {
@@ -397,15 +402,20 @@ test("voucher print report preserves values and correction links", async ({ page
   await expect(page.getByRole("heading", { name: /Verifikationsrapport/ })).toBeVisible();
   await expect(page.getByRole("table").locator("tfoot")).toContainText("123.01");
   await expect(page.getByRole("link", { name: /Rättelseverifikation/ })).toBeVisible();
+  await noPageOverflow(page, "voucher print report");
+  await accessible(page);
+  await page.screenshot({ path: testInfo.outputPath("voucher-report-mobile.png"), fullPage: true });
   await page.emulateMedia({ media: "print" });
   await expect(page.getByRole("button", { name: "Skriv ut / Spara PDF" })).toBeHidden();
   await page.emulateMedia({ media: "screen" });
   await page.getByRole("link", { name: /Rättelseverifikation/ }).click();
   await expect(page.getByRole("link", { name: /Ursprunglig verifikation/ })).toBeVisible();
+  await noPageOverflow(page, "posted correction detail");
+  await page.screenshot({ path: testInfo.outputPath("voucher-detail-mobile.png"), fullPage: true });
 });
 test("Golden report CSV exports exact accounting totals and filter metadata", async ({ page }) => {
   await open(page, goldenOrg, "reports/trial-balance");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(goldenOrg.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(goldenOrg.yearId);
   await page.getByLabel("Från datum").fill(golden.year.startDate);
   await page.getByLabel("Till datum").fill(golden.year.endDate);
   await page.getByRole("button", { name: "Visa rapport", exact: true }).click();
@@ -426,7 +436,7 @@ test("Golden report CSV exports exact accounting totals and filter metadata", as
     ["vat", '"vatPosition";"0.00"']
   ]) {
     await open(page, goldenOrg, `reports/${kind}`);
-    await page.getByLabel("Räkenskapsår", { exact: true }).fill(goldenOrg.yearId);
+    await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(goldenOrg.yearId);
     if (kind === "balance-sheet") {
       await page.getByLabel("Rapportdatum").fill(golden.year.endDate);
       await page.getByLabel("Jämförelsedatum").fill("2026-06-30");
@@ -504,7 +514,10 @@ test("invitation UI → new user's registration → acceptance → read-only bou
   const link = page.getByLabel("Endast utveckling/test: inbjudningslänk");
   await expect(link).toHaveValue(/#.{43}$/);
   const invitationPath = new URL(await link.inputValue());
-  const context = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  const context = await browser.newContext({
+    baseURL: new URL(page.url()).origin,
+    viewport: { width: 390, height: 844 }
+  });
   try {
     const recipient = await context.newPage();
     await recipient.goto(invitationPath.pathname + invitationPath.hash);
@@ -513,6 +526,11 @@ test("invitation UI → new user's registration → acceptance → read-only bou
     await recipient.getByLabel("E-postadress").fill(email);
     await recipient.locator('input[type="password"]').fill(password);
     await recipient.getByRole("button", { name: "Skapa konto", exact: true }).click();
+    await expect(
+      recipient.getByRole("button", { name: "Acceptera inbjudan", exact: true })
+    ).toBeVisible();
+    await noPageOverflow(recipient, "invitation acceptance");
+    await accessible(recipient);
     await recipient.getByRole("button", { name: "Acceptera inbjudan", exact: true }).click();
     await expect(recipient).toHaveURL(/\/app$/);
     await recipient.goto("/settings/members");
@@ -540,6 +558,7 @@ test("managed series UI → new voucher → sequential B1", async ({ page }) => 
   await page.getByLabel("Serie", { exact: true }).selectOption({ label: "B — Browser manual B" });
   const posting = page.waitForResponse((r) => /\/journal-entries\/[^/]+\/post$/.test(r.url()));
   await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   const result = await posting;
   expect(result.status()).toBe(201);
   expect(await result.json()).toMatchObject({ voucherNumber: 1, voucherSeries: { code: "B" } });
@@ -550,9 +569,9 @@ test("balanced IB UI → authoritative trial balance and balance sheet", async (
   await page.getByLabel("IB debet 1930").fill("1000,00");
   await page.getByLabel("IB kredit 2091").fill("1000,00");
   await page.getByRole("button", { name: "Spara ingående balans" }).click();
-  await expect(page.getByText("IB sparad atomiskt.")).toBeVisible();
+  await expect(page.getByText("Ingående balans sparad.")).toBeVisible();
   await page.goto("/reports/trial-balance");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(org.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(org.yearId);
   await page.getByLabel("Från datum").fill(year + "-01-01");
   await page.getByLabel("Till datum").fill(year + "-12-31");
   await page.getByRole("button", { name: "Visa rapport", exact: true }).click();
@@ -614,8 +633,8 @@ test("carry-forward UI preview and confirmation → balanced target IB", async (
   await page.getByLabel("Resultatkonto i eget kapital").selectOption(org.accounts["2091"]!);
   await page.getByRole("button", { name: "Förhandsgranska årsöverföring" }).click();
   await expect(page.getByText("Totalt debet 1100.00 · kredit 1100.00")).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Bekräfta årsöverföring", exact: true }).click();
+  await page.getByRole("button", { name: "Genomför årsöverföring", exact: true }).click();
   await expect(page.getByText(/Årsöverföringen är bekräftad/)).toBeVisible();
   const tb = await api.get(
     `/api/reports/trial-balance?organizationId=${org.id}&fiscalYear=${target.id}&fromDate=${next}-01-01&toDate=${next}-12-31`
@@ -643,6 +662,7 @@ test("dimension register UI → typeahead → posted snapshots → report and SI
   await page.getByRole("option", { name: "K_UI · Ängelholm" }).click();
   const posting = page.waitForResponse((r) => /\/journal-entries\/[^/]+\/post$/.test(r.url()));
   await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   const response = await posting;
   expect(response.status()).toBe(201);
   const entry = await response.json();
@@ -651,10 +671,11 @@ test("dimension register UI → typeahead → posted snapshots → report and SI
     name: "Östprojekt"
   });
   await page.goto("/reports/general-ledger");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(org.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(org.yearId);
   await page.getByLabel("Från datum").fill(year + "-01-01");
   await page.getByLabel("Till datum").fill(year + "-12-31");
   await page.getByLabel("Projekt", { exact: true }).fill("P_UI");
+  await page.getByRole("option", { name: "P_UI · Östprojekt" }).click();
   await page.getByRole("button", { name: "Visa rapport", exact: true }).click();
   await expect(
     page.getByRole("article").filter({ hasText: "1930 — Bank" }).getByRole("table")
@@ -707,10 +728,13 @@ test("explicit VAT roles → browser posting → frozen DB → base/tax report",
   expect(response.status()).toBe(201);
   const id = ((await response.json()) as { id: string }).id;
   await open(page, org, "bookkeeping/vouchers/" + id);
+  await page.getByLabel("Momsmetadata rad 1").click();
+  await page.getByLabel("Momsmetadata rad 2").click();
   await page.getByLabel("Momsroll rad 1").selectOption("BASE");
   await page.getByLabel("Momsroll rad 2").selectOption("TAX");
   const posting = page.waitForResponse((r) => r.url().endsWith(`/journal-entries/${id}/post`));
   await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   expect((await posting).status()).toBe(201);
   const stored = await storedEntry(id);
   expect(stored.lines[0]!.vatRole).toBe("BASE");
@@ -720,7 +744,7 @@ test("explicit VAT roles → browser posting → frozen DB → base/tax report",
     configurationVersion: "SE-DOMESTIC-2026-01"
   });
   await page.goto("/app/reports/vat");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(org.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(org.yearId);
   await page.getByLabel("Från datum").fill("2026-01-01");
   await page.getByLabel("Till datum").fill("2026-01-31");
   const report = page.waitForResponse((r) => r.url().includes("/api/reports/vat?"));
@@ -824,7 +848,7 @@ async function provisionGolden(): Promise<Organization> {
 
 test("Golden IB → real reports → browser trial-balance sides reconcile", async ({ page }) => {
   await open(page, goldenOrg, "reports/trial-balance");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(goldenOrg.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(goldenOrg.yearId);
   await page.getByLabel("Från datum").fill(golden.year.startDate);
   await page.getByLabel("Till datum").fill(golden.year.endDate);
   const response = page.waitForResponse(
@@ -880,13 +904,13 @@ test("Golden IB → real reports → browser trial-balance sides reconcile", asy
   ).toBe("10000.00");
   await selectOrg(page, b);
   await expect(page.getByRole("table")).toHaveCount(0);
-  await expect(page.getByLabel("Räkenskapsår", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Räkenskapsår", { exact: true })).toHaveValue(b.yearId);
 });
 
 test("browser registration, persisted cookies, logout home and protected redirect", async ({
   page,
   context
-}) => {
+}, testInfo) => {
   await context.clearCookies();
   await page.goto("/register");
   await page.getByLabel("Namn").fill("Browser user");
@@ -894,7 +918,12 @@ test("browser registration, persisted cookies, logout home and protected redirec
   await page.locator('input[type="password"]').fill(password);
   await page.getByRole("button", { name: "Skapa konto", exact: true }).click();
   await expect(page).toHaveURL(/\/onboarding$/);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
+  await expect(page.getByLabel("Företagsnamn")).toBeVisible();
+  await noPageOverflow(page, "onboarding");
+  await accessible(page);
+  await page.screenshot({ path: testInfo.outputPath("onboarding-mobile.png"), fullPage: true });
   await page.getByLabel("Företagsnamn").fill("Browser starter company");
   await page.getByLabel("Organisationsnummer").fill("556123-4567");
   await page.getByRole("button", { name: "Skapa arbetsyta" }).click();
@@ -961,6 +990,10 @@ test("mandatory unsaved 1000 → 5000 posting, double click, immutable and corre
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
     });
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).evaluate((button) => {
+    (button as HTMLButtonElement).click();
+    (button as HTMLButtonElement).click();
+  });
   await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
   const original = await storedEntry(id);
   expect(original.status).toBe("POSTED");
@@ -1029,6 +1062,7 @@ test("unbalanced / invalid UI rejects posting; keyboard uses visible values", as
   await page.getByLabel("Debet rad 1").fill("250");
   await page.getByLabel("Kredit rad 2").fill("250");
   await page.getByLabel("Kredit rad 2").press("Control+Enter");
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Debet rad 1")).toBeDisabled();
   expect((await storedEntry(id)).lines[0]!.debitAmount.toFixed(2)).toBe("250.00");
@@ -1056,7 +1090,7 @@ test("visible general ledger, income statement and balance sheet agree with post
   expect(lines).toHaveLength(4);
   for (const report of ["general-ledger", "income-statement", "balance-sheet"]) {
     await open(page, reports, "reports/" + report);
-    await page.getByLabel("Räkenskapsår", { exact: true }).fill(reports.yearId);
+    await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(reports.yearId);
     if (report === "balance-sheet") await page.getByLabel("Rapportdatum").fill(date);
     else {
       await page.getByLabel("Från datum").fill(year + "-01-01");
@@ -1077,14 +1111,14 @@ test("visible general ledger, income statement and balance sheet agree with post
       await expect(page.getByText("Kontrolldifferens: 0.00", { exact: true })).toBeVisible();
     }
     await selectOrg(page, b);
-    await expect(page.getByLabel("Räkenskapsår", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("Räkenskapsår", { exact: true })).toHaveValue(b.yearId);
     await expect(page.locator("article")).toHaveCount(0);
   }
 });
 
 test("late report response cannot overwrite new organization's cleared state", async ({ page }) => {
   await open(page, reports, "reports/income-statement");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(reports.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(reports.yearId);
   await page.getByLabel("Från datum").fill(year + "-01-01");
   await page.getByLabel("Till datum").fill(date);
   let release!: () => void;
@@ -1107,7 +1141,7 @@ test("late report response cannot overwrite new organization's cleared state", a
   await started;
   await selectOrg(page, b);
   release();
-  await expect(page.getByLabel("Räkenskapsår", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Räkenskapsår", { exact: true })).toHaveValue(b.yearId);
   await expect(page.getByText("Periodens resultat: 800.00", { exact: true })).toHaveCount(0);
 });
 
@@ -1140,6 +1174,7 @@ test("locked period rejects backend posting and displays browser failure", async
     ).status()
   ).toBe(409);
   await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   await expect(page.getByRole("main").getByRole("alert")).toContainText(/locked|låst/i);
   expect((await storedEntry(entry.id)).status).toBe("DRAFT");
 });
@@ -1175,7 +1210,7 @@ test("real 400 / 403 / 404 boundaries plus explicit injected 500 and network UX"
   await open(page, b, "bookkeeping/vouchers/new");
   await expect(page.getByText("Du har läsbehörighet.", { exact: false })).toBeVisible();
   await open(page, a, "reports/income-statement");
-  await page.getByLabel("Räkenskapsår", { exact: true }).fill(a.yearId);
+  await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(a.yearId);
   await page.getByLabel("Från datum").fill(year + "-01-01");
   await page.getByLabel("Till datum").fill(date);
   await page.route("**/api/reports/income-statement?**", (route) =>
@@ -1197,4 +1232,205 @@ test("real 400 / 403 / 404 boundaries plus explicit injected 500 and network UX"
     /Failed to fetch|kunde inte/i
   );
   await expect(page.locator("article")).toHaveCount(0);
+});
+const reviewRoutes = [
+  ["bookkeeping/vouchers", "Verifikationer"],
+  ["bookkeeping/vouchers/new", "Ny verifikation"],
+  ["bookkeeping/posting-templates", "Konteringsmallar"],
+  ["bookkeeping/attachments", "Bilagor"],
+  ["reports/general-ledger", "Huvudbok"],
+  ["reports/trial-balance", "Saldobalans"],
+  ["reports/voucher-list", "Verifikationslista"],
+  ["reports/income-statement", "Resultaträkning"],
+  ["reports/balance-sheet", "Balansräkning"],
+  ["reports/vat", "Momsrapport"],
+  ["registers/accounts", "Konton"],
+  ["registers/projects", "Projekt"],
+  ["registers/cost-centers", "Kostnadsställen"],
+  ["settings/organization", "Företag"],
+  ["settings/fiscal-years", "Räkenskapsår"],
+  ["settings/opening-balances", "Ingående balans"],
+  ["settings/voucher-series", "Verifikationsserier"],
+  ["settings/users", "Användare"],
+  ["settings/import-export", "Import / export"],
+  ["settings/processing-history", "Behandlingshistorik"]
+] as const;
+
+async function noPageOverflow(page: Page, route: string) {
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+    route
+  ).toBe(true);
+}
+async function accessible(page: Page) {
+  const { default: AxeBuilder } = await import("@axe-core/playwright");
+  const result = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    result.violations.map(({ id, nodes }) => ({
+      id,
+      nodes: nodes.map((n) => ({ target: n.target, summary: n.failureSummary }))
+    }))
+  ).toEqual([]);
+}
+
+for (const width of [1440, 1024, 768, 390]) {
+  test(`premium workspace routes, keyboard navigation and reports at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    // This route sweep is intentionally faster than normal human use. Reserve a
+    // real read window; never disable the API limiter or retry accounting writes.
+    const probe = await api.get(`/api/fiscal-years?organizationId=${goldenOrg.id}`);
+    const remaining = probe.headers()["x-ratelimit-remaining"];
+    if (probe.status() === 429 || (remaining !== undefined && Number(remaining) < 30)) {
+      const seconds = Number(
+        probe.headers()["retry-after"] ?? probe.headers()["x-ratelimit-reset"] ?? 60
+      );
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(60, Math.max(1, seconds)) * 1000)
+      );
+      expect((await api.get(`/api/fiscal-years?organizationId=${goldenOrg.id}`)).status()).toBe(
+        200
+      );
+    } else expect(probe.status()).toBe(200);
+    await page.setViewportSize({ width, height: 1000 });
+    await open(page, goldenOrg, "");
+    await expect(
+      page.getByRole("heading", { name: "Översikt", exact: true, level: 1 })
+    ).toBeVisible();
+    await expect(page.getByRole("region", { name: "Ekonomisk översikt" })).toBeVisible();
+    await noPageOverflow(page, "dashboard");
+    await accessible(page);
+    await page.screenshot({ path: testInfo.outputPath("dashboard.png"), fullPage: true });
+    for (const [route, label] of reviewRoutes) {
+      if (width < 1024) {
+        await page.getByRole("button", { name: "Öppna navigering" }).click();
+        const drawer = page.getByRole("dialog", { name: "Navigering" });
+        await expect(drawer).toBeVisible();
+        await page.keyboard.press("Tab");
+        expect(await drawer.evaluate((d) => d.contains(document.activeElement))).toBe(true);
+        await drawer.getByRole("link", { name: label, exact: true }).click();
+        await expect(drawer).not.toBeVisible();
+      } else {
+        await page
+          .locator("aside.app-sidebar")
+          .getByRole("link", { name: label, exact: true })
+          .click();
+      }
+      await expect(page).toHaveURL(new RegExp("/app/" + route + "$"));
+      await expect(page.locator("main h1")).toHaveCount(1);
+      await expect(page.getByText(/^Hämtar/i)).toHaveCount(0);
+      await noPageOverflow(page, route);
+      await page.screenshot({
+        path: testInfo.outputPath(route.replaceAll("/", "-") + "-review.png"),
+        fullPage: true
+      });
+      if (route === "bookkeeping/vouchers/new") {
+        await fillVoucher(page, "10.01", "3010");
+        await expect(page.getByLabel("Debet rad 1")).toHaveCSS("min-width", "112px");
+        await expect(page.getByLabel("Kredit rad 2")).toHaveCSS("min-width", "112px");
+        await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+        const confirmation = page.getByRole("dialog", { name: "Bokför verifikationen?" });
+        await expect(confirmation).toContainText("10,01");
+        await confirmation.getByRole("button", { name: "Avbryt", exact: true }).click();
+        await expect(page.getByLabel("Debet rad 1")).toHaveValue("10.01");
+        await page
+          .getByRole("button", { name: "Spara utkast", exact: true })
+          .scrollIntoViewIfNeeded();
+        await expect(
+          page.getByRole("button", { name: "Spara utkast", exact: true })
+        ).toBeInViewport();
+      }
+      if (
+        [
+          "registers/accounts",
+          "bookkeeping/vouchers/new",
+          "settings/import-export",
+          "settings/users"
+        ].includes(route)
+      ) {
+        await accessible(page);
+        await page.screenshot({
+          path: testInfo.outputPath(route.replaceAll("/", "-") + ".png"),
+          fullPage: true
+        });
+      }
+      if (
+        [
+          "reports/general-ledger",
+          "reports/trial-balance",
+          "reports/income-statement",
+          "reports/balance-sheet",
+          "reports/vat"
+        ].includes(route)
+      ) {
+        await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(goldenOrg.yearId);
+        if (route === "reports/balance-sheet")
+          await page.getByLabel("Rapportdatum").fill(year + "-12-31");
+        else {
+          await page.getByLabel("Från datum").fill(year + "-01-01");
+          await page.getByLabel("Till datum").fill(year + "-12-31");
+        }
+        const loaded = page.waitForResponse(
+          (r) => r.url().includes("/api/reports/") && r.status() === 200
+        );
+        await page.getByRole("button", { name: "Visa rapport" }).click();
+        await loaded;
+        await expect(page.getByRole("button", { name: "Exportera CSV" })).toBeVisible();
+        await noPageOverflow(page, route + " loaded");
+        await page.screenshot({
+          path: testInfo.outputPath(route.replaceAll("/", "-") + "-loaded.png"),
+          fullPage: true
+        });
+        if (route === "reports/trial-balance") {
+          await accessible(page);
+          await page.screenshot({ path: testInfo.outputPath("trial-balance.png"), fullPage: true });
+          await page.emulateMedia({ media: "print" });
+          await expect(page.locator("aside.app-sidebar")).not.toBeVisible();
+          await expect(page.getByRole("table")).toBeVisible();
+          await page.emulateMedia({ media: "screen" });
+        }
+      }
+    }
+    if (width < 1024) {
+      const opener = page.getByRole("button", { name: "Öppna navigering" });
+      await opener.click();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog", { name: "Navigering" })).not.toBeVisible();
+      await expect(opener).toBeFocused();
+    } else {
+      await page.getByRole("button", { name: "Fäll ihop navigering" }).click();
+      await expect(page.getByRole("button", { name: "Expandera navigering" })).toBeVisible();
+      expect(await page.evaluate(() => localStorage.getItem("ledgerapp:sidebar:v1"))).toBe(
+        "collapsed"
+      );
+    }
+  });
+}
+
+test("public landing and authentication remain usable and accessible on mobile", async ({
+  browser,
+  baseURL
+}, testInfo) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 } });
+  try {
+    const page = await context.newPage();
+    for (const route of ["/", "/login", "/register"]) {
+      await page.goto(route);
+      await expect(page.locator("h1")).toHaveCount(1);
+      await noPageOverflow(page, route);
+      await accessible(page);
+      await page.screenshot({
+        path: testInfo.outputPath(route === "/" ? "home.png" : route.slice(1) + ".png"),
+        fullPage: true
+      });
+    }
+    await expect(page.getByRole("button", { name: "Skapa konto", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Visa lösenord" }).click();
+    await expect(page.getByLabel("Lösenord", { exact: true })).toHaveAttribute("type", "text");
+  } finally {
+    await context.close();
+  }
 });

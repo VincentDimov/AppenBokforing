@@ -34,4 +34,4 @@ FAS 31  SIE import/export UI
 FAS 32  Bilagearkiv
 FAS 33  Verifikationsrapport + förbättrade rapportexporter
 FAS 34  Riktig dashboard
-FAS 35  Full UI/UX-polish
+FAS 35  Full PREMIUM UI/UX-polish

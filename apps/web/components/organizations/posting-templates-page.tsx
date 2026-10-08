@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { PageHeader, EmptyState, LoadingState } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { workspaceRequest } from "@/lib/workspace-api";
 import {
@@ -57,6 +58,7 @@ export function PostingTemplatesPage() {
   );
 }
 function Register({ org, role }: { org: string; role: string }) {
+  const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<Template[]>([]),
     [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Template | null>(null),
@@ -72,6 +74,7 @@ function Register({ org, role }: { org: string; role: string }) {
   const base = `/organizations/${org}/posting-templates`;
   useEffect(() => {
     mounted.current = true;
+    setLoading(true);
     const controller = new AbortController();
     Promise.all([
       workspaceRequest<Template[]>(`${base}?${new URLSearchParams({ search })}`, {
@@ -93,6 +96,9 @@ function Register({ org, role }: { org: string; role: string }) {
       })
       .catch(() => {
         if (!controller.signal.aborted) setMessage("Kunde inte läsa mallregistret.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
     return () => {
       mounted.current = false;
@@ -189,8 +195,12 @@ function Register({ org, role }: { org: string; role: string }) {
     }
   }
   return (
-    <section className="rounded-xl bg-white p-6">
-      <h1 className="text-2xl font-semibold">Konteringsmallar</h1>
+    <section className="space-y-6">
+      <PageHeader
+        title="Konteringsmallar"
+        context="Register"
+        description="Återanvänd kontering och komplettera beloppen på verifikationen."
+      />
       <p className="my-3">
         Återanvänd rader, inte bokföringsbeslut. Tomt belopp fylls i på verifikationen. Ingen
         automatisk balanseringsrad skapas.
@@ -204,39 +214,48 @@ function Register({ org, role }: { org: string; role: string }) {
         />
       </label>
       <p role="status">{message}</p>
-      <table className="my-4 w-full text-left">
-        <thead>
-          <tr>
-            <th>Kod</th>
-            <th>Namn</th>
-            <th>Status</th>
-            <th>Åtgärder</th>
-          </tr>
-        </thead>
-        <tbody>
-          {templates.map((template) => (
-            <tr key={template.id} className="border-t">
-              <td>{template.code}</td>
-              <td>{template.name}</td>
-              <td>{template.isActive ? "Aktiv" : "Inaktiv"}</td>
-              <td>
-                {canWrite && (
-                  <>
-                    <button className="p-2" onClick={() => edit(template)}>
-                      Redigera
-                    </button>
-                    <button className="p-2" onClick={() => edit(template, true)}>
-                      Duplicera
-                    </button>
-                  </>
-                )}
-              </td>
+      <div className="table-frame" tabIndex={0}>
+        <table className="my-4 w-full text-left">
+          <thead>
+            <tr>
+              <th>Kod</th>
+              <th>Namn</th>
+              <th>Status</th>
+              <th>Åtgärder</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {templates.map((template) => (
+              <tr key={template.id} className="border-t">
+                <td>{template.code}</td>
+                <td>{template.name}</td>
+                <td>{template.isActive ? "Aktiv" : "Inaktiv"}</td>
+                <td>
+                  {canWrite && (
+                    <>
+                      <button className="p-2" onClick={() => edit(template)}>
+                        Redigera
+                      </button>
+                      <button className="p-2" onClick={() => edit(template, true)}>
+                        Duplicera
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {loading && <LoadingState label="Hämtar konteringsmallar…" />}
+      {!loading && !templates.length && !message && (
+        <EmptyState
+          title="Inga konteringsmallar i urvalet"
+          description="Sök på ett annat namn eller skapa en mall för återkommande kontering."
+        />
+      )}
       {canWrite && (
-        <form key={editorKey} onSubmit={save}>
+        <form key={editorKey} onSubmit={save} className="register-editor">
           <h2>{editing?.id ? "Redigera mall" : "Skapa mall"}</h2>
           <fieldset disabled={busy} className="space-y-3">
             <label className="block">
@@ -313,8 +332,8 @@ function Register({ org, role }: { org: string; role: string }) {
                       change(row.key, { side: event.target.value as Row["side"] })
                     }
                   >
-                    <option>DEBIT</option>
-                    <option>CREDIT</option>
+                    <option value="DEBIT">Debet</option>
+                    <option value="CREDIT">Kredit</option>
                   </select>
                 </label>
                 <label>
@@ -336,22 +355,28 @@ function Register({ org, role }: { org: string; role: string }) {
                     onChange={(event) => change(row.key, { description: event.target.value })}
                   />
                 </label>
-                <DimensionTypeahead
-                  org={org}
-                  kind="projects"
-                  value={row.projectCode}
-                  disabled={busy}
-                  label={`Projekt ${index + 1}`}
-                  onChange={(projectCode) => change(row.key, { projectCode })}
-                />
-                <DimensionTypeahead
-                  org={org}
-                  kind="cost-centers"
-                  value={row.costCenterCode}
-                  disabled={busy}
-                  label={`Kostnadsställe ${index + 1}`}
-                  onChange={(costCenterCode) => change(row.key, { costCenterCode })}
-                />
+                <div>
+                  <span className="block text-xs text-secondary">Projekt</span>
+                  <DimensionTypeahead
+                    org={org}
+                    kind="projects"
+                    value={row.projectCode}
+                    disabled={busy}
+                    label={`Projekt ${index + 1}`}
+                    onChange={(projectCode) => change(row.key, { projectCode })}
+                  />
+                </div>
+                <div>
+                  <span className="block text-xs text-secondary">Kostnadsställe</span>
+                  <DimensionTypeahead
+                    org={org}
+                    kind="cost-centers"
+                    value={row.costCenterCode}
+                    disabled={busy}
+                    label={`Kostnadsställe ${index + 1}`}
+                    onChange={(costCenterCode) => change(row.key, { costCenterCode })}
+                  />
+                </div>
                 <button
                   type="button"
                   disabled={rows.length <= 2}
@@ -369,7 +394,7 @@ function Register({ org, role }: { org: string; role: string }) {
             >
               Lägg till mallrad
             </button>
-            <button className="rounded bg-[#17384b] p-3 text-white">Spara mall</button>
+            <button className="rounded bg-accent p-3 text-white">Spara mall</button>
             <button type="button" className="ml-3" onClick={() => edit(null)}>
               Ny mall / avbryt
             </button>

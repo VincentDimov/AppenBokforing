@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useFiscalYears } from "@/lib/use-fiscal-years";
 import { workspaceRequest } from "@/lib/workspace-api";
@@ -56,6 +57,7 @@ function Workspace({ org, role }: { org: string; role: string }) {
   const [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [revision, setRevision] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const inFlight = useRef(false),
     request = useRef<AbortController | null>(null),
     fileGeneration = useRef(0);
@@ -68,6 +70,7 @@ function Workspace({ org, role }: { org: string; role: string }) {
   }, [calendar.selected]);
   useEffect(() => {
     const controller = new AbortController();
+    setHistoryLoading(true);
     workspaceRequest<{ imports: HistoryItem[]; exports: HistoryItem[] }>(
       `/organizations/${org}/sie/history`,
       { signal: controller.signal }
@@ -77,6 +80,9 @@ function Workspace({ org, role }: { org: string; role: string }) {
       })
       .catch(() => {
         if (!controller.signal.aborted) setMessage("Kunde inte läsa SIE-historiken.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoryLoading(false);
       });
     return () => controller.abort();
   }, [org, revision]);
@@ -174,12 +180,16 @@ function Workspace({ org, role }: { org: string; role: string }) {
     }
   }
   return (
-    <section className="space-y-5 rounded-xl bg-white p-6">
-      <h1 className="text-2xl font-semibold">SIE import / export</h1>
+    <section className="space-y-6">
+      <PageHeader
+        title="SIE import / export"
+        context="Bokföring"
+        description="Granska en fil före import eller exportera årets bokföring."
+      />
       <p>
-        SIE 4B, begränsad PC8-subset. Dimension 1 (kostnadsställe) och 6 (projekt) stöds. Andra
-        materiella poster kan blockera import/export. Momsklassificering måste granskas separat;
-        ingen certifiering påstås.
+        SIE 4B med stöd för kostnadsställen och projekt. Stödet är begränsat: granskningen visar
+        poster som inte kan hanteras. Kontrollera momsinställningarna separat. Ingen
+        SIE-certifiering påstås.
       </p>
       <label>
         Räkenskapsår för SIE{" "}
@@ -199,7 +209,7 @@ function Workspace({ org, role }: { org: string; role: string }) {
         </select>
       </label>
       <p role="alert">{message || calendar.error}</p>
-      <section className="rounded border p-4">
+      <section className="surface-panel">
         <h2 className="text-xl font-semibold">Importera SIE</h2>
         {canWrite ? (
           <fieldset disabled={busy}>
@@ -251,7 +261,7 @@ function Workspace({ org, role }: { org: string; role: string }) {
                 Konton skapade: {preview.accountsCreated}; återanvända: {preview.accountsReused}
               </p>
             )}
-            <h4>INFO — Ingående balanser</h4>
+            <h4>Information · Ingående balanser</h4>
             <ul>
               {preview.openingBalances.map((row, index) => (
                 <li key={`${row.account}:${index}`}>
@@ -259,13 +269,13 @@ function Workspace({ org, role }: { org: string; role: string }) {
                 </li>
               ))}
             </ul>
-            <h4>VARNINGAR</h4>
+            <h4>Varningar</h4>
             <ul>
               {preview.warnings.map((warning, index) => (
                 <li key={index}>{warning}</li>
               ))}
             </ul>
-            <h4>BLOCKERANDE FEL / ej stödda poster</h4>
+            <h4>Fel som behöver åtgärdas</h4>
             <ul>
               {preview.validationErrors.map((error, index) => (
                 <li key={index}>{error}</li>
@@ -284,7 +294,7 @@ function Workspace({ org, role }: { org: string; role: string }) {
                 <button
                   type="button"
                   disabled={!reviewed || !file}
-                  className="my-3 rounded bg-[#17384b] p-3 text-white"
+                  className="my-3 rounded bg-accent p-3 text-white"
                   onClick={() => void submit(true)}
                 >
                   Bekräfta import
@@ -301,7 +311,7 @@ function Workspace({ org, role }: { org: string; role: string }) {
           </section>
         )}
       </section>
-      <section className="rounded border p-4">
+      <section className="surface-panel">
         <h2 className="text-xl font-semibold">Exportera SIE</h2>
         <p>
           Exporten innehåller IB och bokförda verifikationer för valt år. Original och rättelser
@@ -316,57 +326,66 @@ function Workspace({ org, role }: { org: string; role: string }) {
           Ladda ner SIE
         </button>
       </section>
-      <section className="rounded border p-4">
+      <section className="surface-panel">
         <h2 className="text-xl font-semibold">Historik</h2>
         <p>
           Senaste 100 importer och exporter. Endast lyckade bekräftelser skrivs atomärt till
           historiken. Källfilen lagras inte automatiskt.
         </p>
-        <table className="w-full text-left">
-          <thead>
-            <tr>
-              <th>Tid</th>
-              <th>Typ / fil</th>
-              <th>År</th>
-              <th>Aktör</th>
-              <th>Status / antal</th>
-              <th>SHA-256 / varningar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history?.imports.map((row) => (
-              <tr key={row.id}>
-                <td>{row.createdAt}</td>
-                <td>{row.sourceFileName ?? "SIE-import"}</td>
-                <td>{row.fiscalYear?.name}</td>
-                <td>{row.importedBy?.displayName}</td>
-                <td>
-                  {row.status} · {row.importedEntryCount}
-                </td>
-                <td className="max-w-72 break-all">
-                  {row.sourceSha256}
-                  <ul>
-                    {row.summary?.warnings?.map((warning, index) => (
-                      <li key={index}>{warning}</li>
-                    ))}
-                  </ul>
-                </td>
+        <div className="table-frame" tabIndex={0}>
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                <th>Tid</th>
+                <th>Typ / fil</th>
+                <th>År</th>
+                <th>Aktör</th>
+                <th>Status / antal</th>
+                <th>SHA-256 / varningar</th>
               </tr>
-            ))}
-            {history?.exports.map((row) => (
-              <tr key={row.id}>
-                <td>{row.createdAt}</td>
-                <td>SIE-export</td>
-                <td>{row.fiscalYear?.name}</td>
-                <td>{row.exportedBy?.displayName}</td>
-                <td>
-                  {row.status} · {row.exportedEntryCount}
-                </td>
-                <td>Export kontrollerad av servern</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {history?.imports.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.createdAt}</td>
+                  <td>{row.sourceFileName ?? "SIE-import"}</td>
+                  <td>{row.fiscalYear?.name}</td>
+                  <td>{row.importedBy?.displayName}</td>
+                  <td>
+                    <StatusBadge status={row.status} /> · {row.importedEntryCount}
+                  </td>
+                  <td className="max-w-72 break-all">
+                    {row.sourceSha256}
+                    <ul>
+                      {row.summary?.warnings?.map((warning, index) => (
+                        <li key={index}>{warning}</li>
+                      ))}
+                    </ul>
+                  </td>
+                </tr>
+              ))}
+              {history?.exports.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.createdAt}</td>
+                  <td>SIE-export</td>
+                  <td>{row.fiscalYear?.name}</td>
+                  <td>{row.exportedBy?.displayName}</td>
+                  <td>
+                    <StatusBadge status={row.status} /> · {row.exportedEntryCount}
+                  </td>
+                  <td>Export kontrollerad av servern</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {historyLoading && <LoadingState label="Hämtar SIE-historik…" />}
+        {!historyLoading && history && !history.imports.length && !history.exports.length && (
+          <EmptyState
+            title="Ingen SIE-historik ännu"
+            description="Bekräftade importer och genomförda exporter visas här."
+          />
+        )}
       </section>
     </section>
   );

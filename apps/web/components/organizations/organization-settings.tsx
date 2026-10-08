@@ -1,5 +1,6 @@
 "use client";
 import { useState, type FormEvent } from "react";
+import { PageHeader } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { workspaceRequest } from "@/lib/workspace-api";
 
@@ -47,8 +48,12 @@ function OrganizationForm({
     }
   }
   return (
-    <section className="max-w-2xl rounded-xl bg-white p-6">
-      <h1 className="text-2xl font-semibold">Organisation</h1>
+    <section className="max-w-3xl space-y-6">
+      <PageHeader
+        title="Företagsinställningar"
+        context="Inställningar"
+        description="Företagsuppgifter, adress och bokföringskontext."
+      />
       <p className="my-3">
         Identitet och valuta låses efter bokföringsstart. Organisationsnummer är endast
         formatkontrollerat.
@@ -87,7 +92,7 @@ function OrganizationForm({
             {organization.countryCode ?? "SE"} · {organization.defaultCurrency}
           </p>
           {canWrite && (
-            <button className="rounded bg-[#17384b] p-3 text-white">Spara organisation</button>
+            <button className="rounded bg-accent p-3 text-white">Spara organisation</button>
           )}
         </fieldset>
         <p role="status">{message}</p>

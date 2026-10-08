@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { PageHeader, StatusBadge } from "@/components/ui/workspace";
 import { Button } from "@/components/ui/button";
 
 type Period = {
@@ -103,6 +104,7 @@ function OrganizationFiscalYears() {
       if (organizationRef.current === organizationId) {
         setConfirmation(null);
         setRevision((value) => value + 1);
+        window.dispatchEvent(new Event("ledgerapp:fiscal-years-changed"));
       }
     } catch (reason) {
       if (organizationRef.current === organizationId)
@@ -114,21 +116,19 @@ function OrganizationFiscalYears() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Räkenskapsår</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Låsta perioder är tillgängliga för visning och rapporter, men kan inte ändras eller ta
-          emot bokföring.
-        </p>
-      </div>
+      <PageHeader
+        title="Räkenskapsår"
+        context="Inställningar"
+        description="Hantera år och perioder. Låsning stoppar ändringar, inte visning eller rapporter."
+      />
       {error && (
-        <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-800">
+        <p role="alert" className="rounded-lg bg-danger-soft p-4 text-danger">
           {error}
         </p>
       )}
       {canManage && (
         <form
-          className="flex flex-wrap items-end gap-3 rounded-xl border bg-white p-5"
+          className="flex flex-wrap items-end gap-3 rounded-lg border bg-white p-5"
           onSubmit={(event) => {
             event.preventDefault();
             void write("fiscal-years", form);
@@ -171,7 +171,7 @@ function OrganizationFiscalYears() {
       {loading && <p role="status">Hämtar räkenskapsår…</p>}
       {!loading && !years.length && <p>Inga räkenskapsår finns för organisationen.</p>}
       {years.map((year) => (
-        <article key={year.id} className="overflow-hidden rounded-xl border bg-white">
+        <article key={year.id} className="overflow-hidden rounded-lg border bg-white">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
             <div>
               <h2 className="font-semibold">
@@ -197,9 +197,9 @@ function OrganizationFiscalYears() {
               </Button>
             )}
           </header>
-          <div className="overflow-x-auto">
+          <div className="table-frame" tabIndex={0}>
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50">
+              <thead className="bg-surface-muted">
                 <tr>
                   <th className="p-4">Period</th>
                   <th className="p-4">Datum</th>
@@ -214,7 +214,9 @@ function OrganizationFiscalYears() {
                     <td className="p-4">
                       {date(period.startDate)} – {date(period.endDate)}
                     </td>
-                    <td className="p-4">{period.status === "LOCKED" ? "Låst" : "Öppen"}</td>
+                    <td className="p-4">
+                      <StatusBadge status={period.status} />
+                    </td>
                     <td className="p-4">
                       {canLock && year.status === "OPEN" && (
                         <Button
@@ -250,7 +252,7 @@ function OrganizationFiscalYears() {
             else setConfirmation(null);
           }}
           aria-labelledby="calendar-confirm-title"
-          className="m-auto max-w-lg space-y-5 rounded-xl bg-white p-6 shadow-xl backdrop:bg-slate-950/40"
+          className="m-auto max-w-lg space-y-5 rounded-lg bg-white p-6 shadow-lg backdrop:bg-ink/40"
         >
           <h2 id="calendar-confirm-title" className="text-lg font-semibold">
             Bekräfta ändring

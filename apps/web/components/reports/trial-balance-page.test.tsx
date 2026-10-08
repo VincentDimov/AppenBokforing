@@ -1,3 +1,18 @@
+jest.mock("@/lib/use-fiscal-years", () => ({
+  useFiscalYears: () => ({
+    selected: "",
+    error: "",
+    years: [
+      {
+        id: "golden-year",
+        name: "2026",
+        status: "OPEN",
+        startDate: "2026-01-01",
+        endDate: "2026-12-31"
+      }
+    ]
+  })
+}));
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { TrialBalancePage } from "./trial-balance-page";
 import { goldenAccounting as golden } from "../../../../tests/fixtures/accounting-golden";

@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ConfirmDialog } from "@/components/ui/dialog";
+import { PageHeader, roleLabels, LoadingState, EmptyState } from "@/components/ui/workspace";
 import { useAuth } from "@/components/auth/auth-provider";
 import { workspaceRequest } from "@/lib/workspace-api";
 type Role = "OWNER" | "ADMIN" | "ACCOUNTANT" | "MEMBER" | "READ_ONLY";
@@ -41,6 +43,14 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
   const [message, setMessage] = useState("");
   const [developmentUrl, setDevelopmentUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const [pending, setPending] = useState<{
+    title: string;
+    description: string;
+    path: string;
+    method: string;
+    body?: object;
+  } | null>(null);
   const base = `/organizations/${org}`;
   const canManage = ["OWNER", "ADMIN"].includes(role);
   useEffect(() => {
@@ -57,6 +67,8 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
     };
   }, [base]);
   async function action(path: string, method: string, body?: object) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setMessage("");
     setDevelopmentUrl("");
@@ -72,6 +84,7 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Kunde inte spara.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -81,10 +94,14 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
     void action("/invitations", "POST", { email: form.get("email"), role: form.get("role") });
   }
   return (
-    <section className="rounded-xl bg-white p-6">
-      <h1 className="text-2xl font-semibold">Medlemmar och inbjudningar</h1>
+    <section className="space-y-6">
+      <PageHeader
+        title="Medlemmar och inbjudningar"
+        context="Inställningar"
+        description="Hantera företagets medlemmar och deras åtkomst."
+      />
       {canManage && (
-        <form onSubmit={invite} className="my-5 flex flex-wrap gap-3">
+        <form onSubmit={invite} className="my-5 flex flex-wrap items-end gap-3">
           <label>
             E-post
             <input className="block border p-2" type="email" name="email" required />
@@ -98,11 +115,13 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
               aria-label="Roll"
             >
               {roles.map((value) => (
-                <option key={value}>{value}</option>
+                <option key={value} value={value}>
+                  {roleLabels[value]}
+                </option>
               ))}
             </select>
           </label>
-          <button className="rounded bg-[#17384b] p-3 text-white" disabled={busy}>
+          <button className="rounded bg-accent p-3 text-white" disabled={busy}>
             Bjud in
           </button>
         </form>
@@ -119,82 +138,106 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
         </label>
       )}
       <p role="status">{message}</p>
-      <table className="my-5 w-full text-left">
-        <thead>
-          <tr>
-            <th>Namn / e-post</th>
-            <th>Roll</th>
-            <th>Status</th>
-            <th>Åtgärder</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data?.members.map((member) => (
-            <tr key={member.id} className="border-t">
-              <td className="p-3">
-                {member.user.displayName}
-                <br />
-                {member.user.email}
-                <br />
-                <small>{member.createdAt.slice(0, 10)}</small>
-              </td>
-              <td>
-                {canManage && !member.removedAt && member.role !== "OWNER" ? (
-                  <select
-                    aria-label={`Roll för ${member.user.email}`}
-                    disabled={busy}
-                    value={member.role}
-                    onChange={(event) =>
-                      void action(`/members/${member.id}`, "PATCH", { role: event.target.value })
-                    }
-                  >
-                    {roles.map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
-                ) : (
-                  member.role
-                )}
-              </td>
-              <td>{member.removedAt ? "Borttagen" : "Aktiv"}</td>
-              <td>
-                {canManage && !member.removedAt && (
-                  <>
-                    <button
+      {!data && !message && <LoadingState label="Hämtar medlemmar…" />}
+      <div className="table-frame" tabIndex={0}>
+        <table className="my-5 w-full text-left">
+          <thead>
+            <tr>
+              <th>Namn / e-post</th>
+              <th>Roll</th>
+              <th>Status</th>
+              <th>Åtgärder</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data?.members.map((member) => (
+              <tr key={member.id} className="border-t">
+                <td className="p-3">
+                  {member.user.displayName}
+                  <br />
+                  {member.user.email}
+                  <br />
+                  <small>{member.createdAt.slice(0, 10)}</small>
+                </td>
+                <td>
+                  {canManage && !member.removedAt && member.role !== "OWNER" ? (
+                    <select
+                      aria-label={`Roll för ${member.user.email}`}
                       disabled={busy}
-                      onClick={() => {
-                        if (confirm(`Ta bort ${member.user.email} från organisationen?`))
-                          void action(`/members/${member.id}`, "DELETE");
-                      }}
+                      value={member.role}
+                      onChange={(event) =>
+                        setPending({
+                          title: "Ändra behörighet?",
+                          description: `${member.user.email} får rollen ${roleLabels[event.target.value]}. Ändringen påverkar åtkomsten till företaget.`,
+                          path: `/members/${member.id}`,
+                          method: "PATCH",
+                          body: { role: event.target.value }
+                        })
+                      }
                     >
-                      Ta bort
-                    </button>
-                    {role === "OWNER" && member.role !== "OWNER" && (
+                      {roles.map((value) => (
+                        <option key={value} value={value}>
+                          {roleLabels[value]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    roleLabels[member.role]
+                  )}
+                </td>
+                <td>{member.removedAt ? "Borttagen" : "Aktiv"}</td>
+                <td>
+                  {canManage && !member.removedAt && (
+                    <>
                       <button
-                        className="ml-3"
                         disabled={busy}
                         onClick={() => {
-                          if (
-                            confirm(`Överför ägarskapet till ${member.user.email}? Du blir ADMIN.`)
-                          )
-                            void action("/transfer-ownership", "POST", { memberId: member.id });
+                          setPending({
+                            title: "Ta bort medlemskap?",
+                            description: `${member.user.email} förlorar åtkomsten. Bokföringshistoriken behålls.`,
+                            path: `/members/${member.id}`,
+                            method: "DELETE"
+                          });
                         }}
                       >
-                        Överför ägarskap
+                        Ta bort
                       </button>
-                    )}
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                      {role === "OWNER" && member.role !== "OWNER" && (
+                        <button
+                          className="ml-3"
+                          disabled={busy}
+                          onClick={() => {
+                            setPending({
+                              title: "Överför ägarskapet?",
+                              description: `${member.user.email} blir ägare. Du får rollen Administratör.`,
+                              path: "/transfer-ownership",
+                              method: "POST",
+                              body: { memberId: member.id }
+                            });
+                          }}
+                        >
+                          Överför ägarskap
+                        </button>
+                      )}
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <h2 className="text-lg font-semibold">Inbjudningar</h2>
+      {data && !data.invitations.length && (
+        <EmptyState
+          title="Inga inbjudningar"
+          description="Aktiva och tidigare inbjudningar visas här."
+        />
+      )}
       <ul>
         {data?.invitations.map((invite) => (
           <li className="my-3" key={invite.id}>
-            {invite.email} · {invite.role} ·{" "}
+            {invite.email} · {roleLabels[invite.role]} ·{" "}
             {invite.acceptedAt
               ? "Accepterad"
               : invite.revokedAt
@@ -207,7 +250,14 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
                 <button
                   className="ml-3"
                   disabled={busy}
-                  onClick={() => void action(`/invitations/${invite.id}`, "DELETE")}
+                  onClick={() =>
+                    setPending({
+                      title: "Återkalla inbjudan?",
+                      description: `Inbjudningslänken för ${invite.email} slutar att fungera.`,
+                      path: `/invitations/${invite.id}`,
+                      method: "DELETE"
+                    })
+                  }
                 >
                   Återkalla
                 </button>
@@ -225,6 +275,19 @@ function MemberManagement({ org, role }: { org: string; role: Role }) {
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        open={Boolean(pending)}
+        title={pending?.title ?? "Bekräfta ändring"}
+        description={pending?.description}
+        confirmLabel="Genomför ändringen"
+        busy={busy}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const next = pending;
+          setPending(null);
+          if (next) void action(next.path, next.method, next.body);
+        }}
+      />
     </section>
   );
 }
