@@ -14,6 +14,10 @@ export interface AuthenticatedUser {
   displayName: string;
   email: string;
   id: string;
+  canAccessPlatformAdmin?: boolean;
+  platformRole?: "SUPER_ADMIN" | "PLATFORM_ADMIN" | "SUPPORT_ADMIN" | "PLATFORM_VIEWER";
+  mustChangePassword?: boolean;
+  requiresAdminSecuritySetup?: boolean;
 }
 
 export interface OrganizationSummary {

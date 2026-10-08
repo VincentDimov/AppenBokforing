@@ -14,6 +14,12 @@ GRANT INSERT, UPDATE ON users, sessions, organizations, organization_members,
   posting_templates, posting_template_lines, opening_balances, sie_imports,
   sie_exports TO ledgerapp_runtime;
 GRANT INSERT ON audit_events TO ledgerapp_runtime;
+GRANT SELECT, INSERT, UPDATE ON platform_administrators, platform_admin_mfa_credentials TO ledgerapp_runtime;
+GRANT SELECT, INSERT ON platform_admin_recovery_codes, platform_admin_audit_events TO ledgerapp_runtime;
+GRANT UPDATE (used_at) ON platform_admin_recovery_codes TO ledgerapp_runtime;
+-- Bootstrap state belongs to the explicitly authorized operator, not runtime.
+GRANT SELECT ON platform_admin_bootstrap TO ledgerapp_runtime;
+-- No UPDATE/DELETE/TRUNCATE on platform audit/bootstrap; no runtime DDL.
 GRANT INSERT ON organization_invitations, year_carry_forwards TO ledgerapp_runtime;
 GRANT UPDATE (accepted_at, revoked_at, updated_at) ON organization_invitations TO ledgerapp_runtime;
 GRANT UPDATE (confirmed_at) ON year_carry_forwards TO ledgerapp_runtime;

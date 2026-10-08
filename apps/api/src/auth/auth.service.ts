@@ -62,6 +62,16 @@ export class AuthService {
           data: sessionBundle.session
         });
 
+        await transaction.platformAdminAuditEvent.create({
+          data: {
+            actorUserId: userId,
+            targetType: "USER",
+            targetId: userId,
+            action: "USER_REGISTERED",
+            requestId: metadata.requestId
+          }
+        });
+
         return createdUser;
       });
 
@@ -91,21 +101,62 @@ export class AuthService {
       if (!user?.passwordHash) {
         await this.hash(dto.password);
       }
+      if (
+        user &&
+        (await this.database.prisma.platformAdministrator.findUnique({
+          where: { userId: user.id },
+          select: { id: true }
+        }))
+      ) {
+        await this.database.prisma.platformAdminAuditEvent.create({
+          data: {
+            actorUserId: user.id,
+            action: "ADMIN_LOGIN_FAILED",
+            requestId: metadata.requestId,
+            targetType: "USER",
+            targetId: user.id,
+            result: "DENIED"
+          }
+        });
+      }
 
       throw this.invalidCredentials();
     }
 
     const sessionBundle = await this.createSessionBundle(user.id, metadata);
 
-    await this.database.prisma.$transaction([
-      this.database.prisma.user.update({
+    await this.database.prisma.$transaction(async (transaction) => {
+      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(36036,1)`;
+      const current = await transaction.user.findUnique({
+        where: { id: user.id },
+        select: { passwordHash: true, isActive: true }
+      });
+      if (!current?.isActive || current.passwordHash !== user.passwordHash)
+        throw this.invalidCredentials();
+      await transaction.user.update({
         where: { id: user.id },
         data: { lastLoginAt: new Date() }
-      }),
-      this.database.prisma.session.create({
+      });
+      await transaction.session.create({
         data: sessionBundle.session
-      })
-    ]);
+      });
+      if (
+        await transaction.platformAdministrator.findUnique({
+          where: { userId: user.id },
+          select: { id: true }
+        })
+      ) {
+        await transaction.platformAdminAuditEvent.create({
+          data: {
+            actorUserId: user.id,
+            action: "ADMIN_LOGIN_SUCCEEDED",
+            requestId: metadata.requestId,
+            targetType: "USER",
+            targetId: user.id
+          }
+        });
+      }
+    });
 
     return {
       tokens: sessionBundle.tokens,
@@ -169,7 +220,7 @@ export class AuthService {
         // The old session's replacedById has a real foreign key. Insert the child
         // first, then atomically claim and revoke the presented session below.
         await transaction.session.create({
-          data: sessionBundle.session
+          data: { ...sessionBundle.session, adminMfaVerifiedAt: current.adminMfaVerifiedAt }
         });
 
         const replaced = await transaction.session.updateMany({
@@ -265,7 +316,8 @@ export class AuthService {
       displayName: session.user.displayName,
       email: session.user.email,
       id: session.user.id,
-      sessionId: session.id
+      sessionId: session.id,
+      mustChangePassword: session.user.mustChangePassword
     };
   }
 
@@ -280,6 +332,43 @@ export class AuthService {
       ...this.settings.cookieOptions,
       maxAge: Math.max(0, tokens.refreshExpiresAt.getTime() - now)
     });
+  }
+
+  async profile(user: AuthenticatedUser) {
+    const [grant, mfa, session] = await Promise.all([
+      this.database.prisma.platformAdministrator.findUnique({
+        where: { userId: user.id },
+        select: { role: true, isActive: true, revokedAt: true, mustChangePassword: true }
+      }),
+      this.database.prisma.platformAdminMfaCredential.findUnique({
+        where: { userId: user.id },
+        select: { verifiedAt: true }
+      }),
+      this.database.prisma.session.findUnique({
+        where: { id: user.sessionId },
+        select: { adminMfaVerifiedAt: true }
+      })
+    ]);
+    const canAccessPlatformAdmin = Boolean(grant?.isActive && !grant.revokedAt);
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        mustChangePassword: Boolean(user.mustChangePassword),
+        canAccessPlatformAdmin,
+        platformRole: canAccessPlatformAdmin ? grant?.role : undefined,
+        requiresAdminSecuritySetup:
+          canAccessPlatformAdmin &&
+          Boolean(
+            grant?.mustChangePassword ||
+            user.mustChangePassword ||
+            !mfa?.verifiedAt ||
+            !session?.adminMfaVerifiedAt ||
+            Date.now() - session.adminMfaVerifiedAt.getTime() > 12 * 3600000
+          )
+      }
+    };
   }
 
   clearAuthCookies(response: AuthResponse): void {

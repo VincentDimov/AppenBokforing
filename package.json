@@ -24,6 +24,7 @@
     "dev": "turbo run dev",
     "dev:api": "corepack pnpm --filter @ledgerapp/db build && corepack pnpm --filter @ledgerapp/api dev",
     "dev:web": "corepack pnpm --filter @ledgerapp/web dev",
+    "admin:bootstrap": "node scripts/admin-bootstrap.cjs",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

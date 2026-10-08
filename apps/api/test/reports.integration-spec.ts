@@ -353,7 +353,10 @@ async function createLedgerFixture(
         ]
       })
       .expect(201);
-    await agent.post(`/journal-entries/${draft.body.id}/post`).send({ expectedVersion: 1 }).expect(201);
+    await agent
+      .post(`/journal-entries/${draft.body.id}/post`)
+      .send({ expectedVersion: 1 })
+      .expect(201);
   }
   const invoice = await agent
     .post("/journal-entries")
@@ -368,7 +371,10 @@ async function createLedgerFixture(
       ]
     })
     .expect(201);
-  await agent.post(`/journal-entries/${invoice.body.id}/post`).send({ expectedVersion: 1 }).expect(201);
+  await agent
+    .post(`/journal-entries/${invoice.body.id}/post`)
+    .send({ expectedVersion: 1 })
+    .expect(201);
   return fiscalYear.id;
 }
 
@@ -415,5 +421,8 @@ async function createEntry(
     })
     .expect(201);
   if (input.status === JournalEntryStatus.POSTED)
-    await agent.post(`/journal-entries/${draft.body.id}/post`).send({ expectedVersion: 1 }).expect(201);
+    await agent
+      .post(`/journal-entries/${draft.body.id}/post`)
+      .send({ expectedVersion: 1 })
+      .expect(201);
 }

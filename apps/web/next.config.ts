@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import { contentSecurityPolicy } from "./lib/content-security-policy";
+
 const configuredApiInternalUrl = process.env.API_INTERNAL_URL?.trim();
 
 if (process.env.NODE_ENV === "production" && !configuredApiInternalUrl) {
@@ -22,8 +24,7 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           {
             key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            value: contentSecurityPolicy(process.env.NODE_ENV)
           }
         ]
       }

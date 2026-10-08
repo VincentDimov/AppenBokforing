@@ -23,13 +23,17 @@ import { CurrentUser } from "./decorators/current-user.decorator";
 import { Public } from "./decorators/public.decorator";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { PlatformAdminSecurityService } from "../platform-admin/platform-admin-security.service";
+import { ChangePasswordDto } from "../platform-admin/platform-admin.dto";
+import { adminContext } from "../platform-admin/platform-admin.guard";
 
 @ApiTags("Authentication")
 @Controller("auth")
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly settings: AuthSettingsService
+    private readonly settings: AuthSettingsService,
+    private readonly security: PlatformAdminSecurityService
   ) {}
 
   @Post("register")
@@ -115,17 +119,29 @@ export class AuthController {
       throw new UnauthorizedException("Authentication is required.");
     }
 
-    return {
-      user: {
-        displayName: user.displayName,
-        email: user.email,
-        id: user.id
-      }
-    };
+    return this.authService.profile(user);
+  }
+
+  @Post("password")
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  async password(
+    @Body() dto: ChangePasswordDto,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: AuthResponse
+  ) {
+    const result = await this.security.changePassword(
+      adminContext(request),
+      dto.currentPassword,
+      dto.newPassword
+    );
+    this.authService.clearAuthCookies(response);
+    return result;
   }
 
   private getRequestMetadata(request: AuthenticatedRequest): RequestMetadata {
     return {
+      requestId: request.header("x-request-id"),
       ipAddress: request.ip?.slice(0, 64),
       userAgent: request.header("user-agent")?.slice(0, 512)
     };

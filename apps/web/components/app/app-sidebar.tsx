@@ -17,6 +17,7 @@ import {
   Upload,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldCheck,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
@@ -31,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { isNavigationActive } from "@/lib/app-navigation";
+import { useAuth } from "@/components/auth/auth-provider";
 
 const navigationIcons: Record<NavigationIconName, LucideIcon> = {
   archive: Archive,
@@ -62,6 +64,7 @@ export function AppSidebar({
   onToggle
 }: Readonly<AppSidebarProps>) {
   const pathname = usePathname();
+  const { user } = useAuth();
   return (
     <nav aria-label="Huvudnavigering" className={cn("flex h-full flex-col", className)}>
       <Link
@@ -92,6 +95,21 @@ export function AppSidebar({
           onNavigate={onNavigate}
           collapsed={collapsed}
         />
+        {user?.canAccessPlatformAdmin && (
+          <Link
+            href="/admin"
+            onClick={onNavigate}
+            aria-label={collapsed ? "Admin" : undefined}
+            aria-current={pathname.startsWith("/admin") ? "page" : undefined}
+            className={cn(
+              "flex min-h-9 items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium text-sidebar-text hover:bg-white/6 hover:text-white",
+              collapsed && "justify-center px-0"
+            )}
+          >
+            <ShieldCheck aria-hidden="true" className="size-4 shrink-0 text-sidebar-muted" />
+            {!collapsed && <span>Admin</span>}
+          </Link>
+        )}
         {navigationGroups.map((group) => (
           <section className="mt-5" key={group.label}>
             {!collapsed && (

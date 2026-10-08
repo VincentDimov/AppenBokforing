@@ -18,8 +18,9 @@ describe("fiscal calendar HTTP authorization and confirmation", () => {
       .useValue({
         prisma: {
           organizationMember: {
-            findUnique: jest.fn(async (query) =>
-              query.where.organizationId_userId.organizationId === organizationId
+            findFirst: jest.fn(async (query) =>
+              query.where.organizationId === organizationId &&
+              query.where.organization.isActive === true
                 ? { id, organizationId, role }
                 : null
             )
@@ -80,6 +81,12 @@ describe("fiscal calendar HTTP authorization and confirmation", () => {
       .post(`/fiscal-years/${id}/close`)
       .send({ organizationId, confirm: true })
       .expect(403);
-    expect(setPeriodStatus).toHaveBeenCalledWith(organizationId, id, id, true, expect.stringMatching(/^[a-f0-9-]{36}$/));
+    expect(setPeriodStatus).toHaveBeenCalledWith(
+      organizationId,
+      id,
+      id,
+      true,
+      expect.stringMatching(/^[a-f0-9-]{36}$/)
+    );
   });
 });

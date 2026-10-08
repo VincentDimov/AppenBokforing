@@ -6,6 +6,7 @@ import { useFiscalYears, type FiscalYearChoice } from "@/lib/use-fiscal-years";
 import { workspaceRequest } from "@/lib/workspace-api";
 import { PageHeader, StatusBadge } from "@/components/ui/workspace";
 import { Button } from "@/components/ui/button";
+import { AdminOverviewPage } from "@/components/platform-admin/admin-overview";
 export interface DashboardData {
   organizationId: string;
   fiscalYear: { id: string; name: string };
@@ -64,7 +65,8 @@ export function barWidth(value: string, max: bigint) {
   return `${ratio / 100n}.${(ratio % 100n).toString().padStart(2, "0")}%`;
 }
 export function DashboardOverview() {
-  const { activeOrganizationId } = useAuth();
+  const { activeOrganizationId, user } = useAuth();
+  if (!activeOrganizationId && user?.canAccessPlatformAdmin) return <AdminOverviewPage embedded />;
   if (!activeOrganizationId) return <p>Välj organisation för att visa ekonomin.</p>;
   return <Dashboard key={activeOrganizationId} org={activeOrganizationId} />;
 }

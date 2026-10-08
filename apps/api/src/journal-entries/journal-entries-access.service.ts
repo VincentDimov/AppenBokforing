@@ -22,12 +22,11 @@ export class JournalEntriesAccessService {
     organizationId: string,
     permissions: readonly OrganizationPermission[]
   ): Promise<JournalEntriesOrganizationMembership> {
-    const membership = await this.database.prisma.organizationMember.findUnique({
+    const membership = await this.database.prisma.organizationMember.findFirst({
       where: {
-        organizationId_userId: {
-          organizationId,
-          userId
-        }
+        organizationId,
+        userId,
+        organization: { isActive: true }
       }
     });
 

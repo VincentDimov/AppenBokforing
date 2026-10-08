@@ -12,7 +12,7 @@ const baseURL = process.env.E2E_BASE_URL || "http://127.0.0.1:4310";
 const apiURL = process.env.E2E_API_URL || "http://127.0.0.1:4410";
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "**/local.spec.ts",
+  testMatch: ["**/local.spec.ts", "**/platform-admin.spec.ts"],
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -40,6 +40,8 @@ export default defineConfig({
         JWT_REFRESH_SECRET: process.env.E2E_REFRESH_SECRET || randomBytes(48).toString("hex"),
         ARGON2_MEMORY_COST: "8192",
         ARGON2_TIME_COST: "2",
+        PLATFORM_ADMIN_MFA_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+        PLATFORM_ADMIN_MFA_KEY_ID: "e2e-v1",
         CORS_ORIGIN: baseURL
       }
     },
@@ -62,6 +64,9 @@ export default defineConfig({
         JWT_REFRESH_SECRET: "",
         E2E_ACCESS_SECRET: "",
         E2E_REFRESH_SECRET: "",
+        PLATFORM_ADMIN_MFA_ENCRYPTION_KEY: "",
+        MASTER_ADMIN_BOOTSTRAP_ENABLED: "false",
+        MASTER_ADMIN_BOOTSTRAP_PASSWORD: "",
         S3_ACCESS_KEY_ID: "",
         S3_SECRET_ACCESS_KEY: ""
       }

@@ -58,11 +58,21 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
   }, [pathname, router, status]);
 
   useEffect(() => {
-    if (status === "authenticated" && organizationsStatus === "ready") {
-      if (!organizations.length && pathname !== "/onboarding") router.replace("/onboarding");
+    if (status === "authenticated") {
+      if (user?.mustChangePassword) {
+        router.replace("/security/password");
+        return;
+      }
+      if (user?.canAccessPlatformAdmin && user.requiresAdminSecuritySetup) {
+        router.replace("/admin/security-setup");
+        return;
+      }
+      if (organizationsStatus !== "ready") return;
+      if (!organizations.length && !user?.canAccessPlatformAdmin && pathname !== "/onboarding")
+        router.replace("/onboarding");
       else if (organizations.length && pathname === "/onboarding") router.replace("/app");
     }
-  }, [status, organizationsStatus, organizations.length, pathname, router]);
+  }, [status, organizationsStatus, organizations.length, pathname, router, user]);
 
   if (status === "loading") {
     return <LoadingScreen message="Återställer din säkra session…" />;
@@ -85,9 +95,22 @@ export function ApplicationShell({ children }: Readonly<{ children: ReactNode }>
   if (status === "anonymous" || !user) {
     return <LoadingScreen message="Tar dig till inloggningen…" />;
   }
+  if (pathname === "/security/password")
+    return <main className="workspace-content mx-auto max-w-2xl p-8">{children}</main>;
+  if (user.mustChangePassword || (user.canAccessPlatformAdmin && user.requiresAdminSecuritySetup))
+    return (
+      <LoadingScreen
+        message="Förbereder säkerhetsinställningar…"
+        action={
+          <Link href={user.mustChangePassword ? "/security/password" : "/admin/security-setup"}>
+            Säkerhetsinställningar
+          </Link>
+        }
+      />
+    );
   if (pathname === "/onboarding")
     return <main className="workspace-content mx-auto max-w-2xl p-8">{children}</main>;
-  if (organizationsStatus === "ready" && !organizations.length)
+  if (organizationsStatus === "ready" && !organizations.length && !user.canAccessPlatformAdmin)
     return <LoadingScreen message="Förbereder din arbetsyta…" />;
 
   async function handleSignOut() {

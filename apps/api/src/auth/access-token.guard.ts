@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException
+} from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
 import { AuthService } from "./auth.service";
@@ -33,6 +39,20 @@ export class AccessTokenGuard implements CanActivate {
     }
 
     request.auth = await this.authService.authenticateAccessToken(accessToken);
+
+    if (
+      request.auth.mustChangePassword &&
+      ![
+        "/auth/me",
+        "/auth/password",
+        "/platform-admin/security-setup/status",
+        "/platform-admin/security-setup/recover"
+      ].includes(context.switchToHttp().getRequest<{ path: string }>().path)
+    )
+      throw new ForbiddenException({
+        code: "PASSWORD_CHANGE_REQUIRED",
+        message: "Du måste byta lösenord innan kontot används."
+      });
 
     return true;
   }

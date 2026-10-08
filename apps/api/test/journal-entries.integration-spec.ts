@@ -140,7 +140,10 @@ describe("journal entries and double-entry bookkeeping", () => {
       voucherNumber: null
     });
 
-    const posted = await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(201);
+    const posted = await ownerAgent
+      .post(`/journal-entries/${created.id}/post`)
+      .send({ expectedVersion: 1 })
+      .expect(201);
 
     expect(posted.body).toMatchObject({
       id: created.id,
@@ -167,8 +170,14 @@ describe("journal entries and double-entry bookkeeping", () => {
       { accountId: accountA, credit: "0.00", debit: "5000.00" },
       { accountId: revenueAccountA, credit: "5000.00", debit: "0.00" }
     ];
-    await ownerAgent.patch(`/journal-entries/${created.id}`).send({ expectedVersion: 1, lines }).expect(200);
-    const posted = await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 2 }).expect(201);
+    await ownerAgent
+      .patch(`/journal-entries/${created.id}`)
+      .send({ expectedVersion: 1, lines })
+      .expect(200);
+    const posted = await ownerAgent
+      .post(`/journal-entries/${created.id}/post`)
+      .send({ expectedVersion: 2 })
+      .expect(201);
     expect(posted.body.totals).toEqual({ debit: "5000.00", credit: "5000.00", difference: "0.00" });
     const stored = await prisma.journalLine.findMany({
       where: { journalEntryId: created.id },
@@ -192,7 +201,10 @@ describe("journal entries and double-entry bookkeeping", () => {
       { accountId: revenueAccountA, credit: "99.99", debit: "0.00" }
     ]);
 
-    await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(400);
+    await ownerAgent
+      .post(`/journal-entries/${created.id}/post`)
+      .send({ expectedVersion: 1 })
+      .expect(400);
 
     const unchanged = await ownerAgent.get(`/journal-entries/${created.id}`).expect(200);
     expect(unchanged.body).toMatchObject({ status: "DRAFT", voucherNumber: null });
@@ -209,7 +221,10 @@ describe("journal entries and double-entry bookkeeping", () => {
       data: { status: "LOCKED" }
     });
     expect(created.accountingPeriod.id).toBe(calendarA.lockedPeriodId);
-    await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(409);
+    await ownerAgent
+      .post(`/journal-entries/${created.id}/post`)
+      .send({ expectedVersion: 1 })
+      .expect(409);
   });
 
   it("rejects invalid and cross-organization account references", async () => {
@@ -264,7 +279,10 @@ describe("journal entries and double-entry bookkeeping", () => {
 
   it("refuses arbitrary changes after posting and keeps read-only members from writing", async () => {
     const created = await createDraft(ownerAgent, balancedLines());
-    await ownerAgent.post(`/journal-entries/${created.id}/post`).send({ expectedVersion: 1 }).expect(201);
+    await ownerAgent
+      .post(`/journal-entries/${created.id}/post`)
+      .send({ expectedVersion: 1 })
+      .expect(201);
 
     await ownerAgent
       .patch(`/journal-entries/${created.id}`)
@@ -519,7 +537,10 @@ describe("journal entries and double-entry bookkeeping", () => {
     transactionDate = "2026-01-15"
   ): Promise<JournalEntryResponse> {
     const draft = await createDraft(agent, lines, transactionDate);
-    const response = await agent.post(`/journal-entries/${draft.id}/post`).send({ expectedVersion: 1 }).expect(201);
+    const response = await agent
+      .post(`/journal-entries/${draft.id}/post`)
+      .send({ expectedVersion: 1 })
+      .expect(201);
 
     return response.body as JournalEntryResponse;
   }

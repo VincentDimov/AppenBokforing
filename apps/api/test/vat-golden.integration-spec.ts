@@ -128,7 +128,10 @@ describe("VAT Golden / real POSTED PostgreSQL vouchers", () => {
           }))
         })
         .expect(201);
-      await owner.post(`/journal-entries/${draft.body.id}/post`).send({ expectedVersion: 1 }).expect(201);
+      await owner
+        .post(`/journal-entries/${draft.body.id}/post`)
+        .send({ expectedVersion: 1 })
+        .expect(201);
       if (c.name === "A") originalId = draft.body.id;
     }
     // Huge VAT draft must not contribute; its original code snapshot does not exist yet.

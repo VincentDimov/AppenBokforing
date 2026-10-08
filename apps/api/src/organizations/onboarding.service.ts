@@ -119,6 +119,16 @@ export class OnboardingService {
           }
         }
       });
+      await tx.platformAdminAuditEvent.create({
+        data: {
+          actorUserId: actor,
+          organizationId: organization.id,
+          targetType: "ORGANIZATION",
+          targetId: organization.id,
+          action: "ORGANIZATION_CREATED",
+          requestId
+        }
+      });
       return { organization, fiscalYear };
     });
   }

@@ -28,6 +28,7 @@ export interface AuthenticatedUser {
   email: string;
   displayName: string;
   sessionId: string;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthenticatedRequest extends HttpRequest {
@@ -40,6 +41,7 @@ export interface AuthenticatedRequest extends HttpRequest {
 }
 
 export interface RequestMetadata {
+  requestId?: string;
   ipAddress?: string;
   userAgent?: string;
 }

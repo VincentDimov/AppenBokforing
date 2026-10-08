@@ -7,6 +7,7 @@ import { AccessTokenGuard } from "./access-token.guard";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { AuthSettingsService } from "./auth-settings.service";
+import { PlatformAdminSecurityService } from "../platform-admin/platform-admin-security.service";
 
 @Module({
   imports: [DatabaseModule, JwtModule.register({})],
@@ -14,12 +15,13 @@ import { AuthSettingsService } from "./auth-settings.service";
   providers: [
     AuthSettingsService,
     AuthService,
+    PlatformAdminSecurityService,
     AccessTokenGuard,
     {
       provide: APP_GUARD,
       useClass: AccessTokenGuard
     }
   ],
-  exports: [AccessTokenGuard, AuthService, AuthSettingsService]
+  exports: [AccessTokenGuard, AuthService, AuthSettingsService, PlatformAdminSecurityService]
 })
 export class AuthModule {}

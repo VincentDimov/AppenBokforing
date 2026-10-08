@@ -1,5 +1,15 @@
 # LedgerApp — roadmap från nuvarande implementation
 
+## Efter FAS 36 – inga nya faser startas automatiskt
+
+Se [aktuell slutrapport/gate](fas36-release-gate.md). Begär kod-/säkerhetsgranskning,
+kör remote CI för denna arbetskopia och planera samordnad API/web-release.
+Verifiera backup, ICU/extensions, migration 24, runtime-GRANTs och separat skyddad
+MFA-nyckel innan explicit bootstrap i rätt databas. Lägg inte bootstraphemligheter
+i normal runtime. Verifierad mail och identitets-/nyckelåterställning kräver eget
+auktoriserat infrastrukturarbete. Tidigare redovisnings-/SIE-/drift-P0 kvarstår.
+STOPP efter FAS 36; FAS 37 ingår inte.
+
 ## Efter FAS 35-arbetskopian
 
 [UI/UX-rapport](fas35-ui-ux.md) och [designsystem](ui-design-system.md) beskriver

@@ -71,6 +71,16 @@ export class OrganizationsService {
           }
         });
 
+        await transaction.platformAdminAuditEvent.create({
+          data: {
+            actorUserId: userId,
+            organizationId: created.id,
+            targetType: "ORGANIZATION",
+            targetId: created.id,
+            action: "ORGANIZATION_CREATED",
+            requestId: metadata.requestId
+          }
+        });
         return created;
       });
 

@@ -1,5 +1,17 @@
 # LedgerApp — faktiskt nuläge
 
+## FAS 36 – aktuell lokal arbetskopia
+
+Separat global administration är integrerad ovanpå FAS 35. Databasen har nu
+24 framåtmigrationer. Persistenta grants/MFA/recovery/audit skiljs från företagets
+OWNER/ADMIN, utan implicit bokföringsåtkomst eller historikradering.
+Den [aktuella 42-punktsrapporten och releasegaten](fas36-release-gate.md) är
+auktoritativ för dagens testantal/status; äldre avsnitt nedan är historik.
+Se [funktion/API](platform-admin.md), [säkerhet](platform-admin-security.md) och
+[bootstrap](platform-admin-bootstrap.md). Faktiskt konto i avsedd databas,
+operatörens secrets/GRANTs, remote CI och cloud-release är inte utförda här.
+Verifierad mailleverans/identitetsåterställning är fortfarande otillgänglig.
+
 ## FAS 35 — aktuell arbetskopia, 2026-10-08
 
 Gemensamt designsystem och UI-genomgång av arbetsyta, register, rapporter,

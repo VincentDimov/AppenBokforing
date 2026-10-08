@@ -28,7 +28,10 @@ const migrations = fs
   .readdirSync(path.join(schemaRoot, "migrations"))
   .filter((name) => /^\d/.test(name))
   .sort();
-for (const name of migrations.slice(0, 14))
+const baselineCount = Number(process.env.UPGRADE_BASE_MIGRATION_COUNT || "14");
+if (!Number.isInteger(baselineCount) || baselineCount < 14 || baselineCount >= migrations.length)
+  throw new Error("Prior migration baseline must leave at least one forward migration.");
+for (const name of migrations.slice(0, baselineCount))
   fs.cpSync(path.join(schemaRoot, "migrations", name), path.join(temporary, "migrations", name), {
     recursive: true
   });
@@ -114,22 +117,50 @@ async function main() {
         await db.$queryRawUnsafe(`SELECT ${snapshot.columns} FROM ${table} ORDER BY id`),
         snapshot.rows
       );
-    assert.equal(
-      (await db.journalLine.findFirstOrThrow()).projectSnapshot,
-      null,
-      "No fabricated historical backfill"
-    );
-    assert.equal(
-      (await db.journalLine.findFirstOrThrow()).accountSnapshot,
-      null,
-      "No fabricated legacy account-name backfill"
-    );
-    await assert.rejects(
-      db.account.update({ where: { id: bank }, data: { name: "Rewrite legacy account" } })
-    );
-    await assert.rejects(
-      db.project.update({ where: { id: project }, data: { name: "Rewrite legacy history" } })
-    );
+    if (baselineCount < 19)
+      assert.equal(
+        (await db.journalLine.findFirstOrThrow()).projectSnapshot,
+        null,
+        "No fabricated historical backfill"
+      );
+    if (baselineCount < 23)
+      assert.equal(
+        (await db.journalLine.findFirstOrThrow()).accountSnapshot,
+        null,
+        "No fabricated legacy account-name backfill"
+      );
+    if (baselineCount < 23)
+      await assert.rejects(
+        db.account.update({ where: { id: bank }, data: { name: "Rewrite legacy account" } })
+      );
+    else {
+      const snapshot = (await db.journalLine.findFirstOrThrow({ where: { accountId: bank } }))
+        .accountSnapshot;
+      await db.account.update({
+        where: { id: bank },
+        data: { name: "New label, historical snapshot unchanged" }
+      });
+      assert.deepEqual(
+        (await db.journalLine.findFirstOrThrow({ where: { accountId: bank } })).accountSnapshot,
+        snapshot
+      );
+    }
+    if (baselineCount < 19)
+      await assert.rejects(
+        db.project.update({ where: { id: project }, data: { name: "Rewrite legacy history" } })
+      );
+    else {
+      const snapshot = (await db.journalLine.findFirstOrThrow({ where: { projectId: project } }))
+        .projectSnapshot;
+      await db.project.update({
+        where: { id: project },
+        data: { name: "New project label, historical snapshot unchanged" }
+      });
+      assert.deepEqual(
+        (await db.journalLine.findFirstOrThrow({ where: { projectId: project } })).projectSnapshot,
+        snapshot
+      );
+    }
     const applied = await db.$queryRawUnsafe(
       "SELECT count(*)::int AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL"
     );
@@ -137,8 +168,8 @@ async function main() {
     console.log(
       JSON.stringify({
         migrationUpgrade: "PASS",
-        earlierMigrations: 14,
-        sequentialRecentMigrations: migrations.length - 14,
+        earlierMigrations: baselineCount,
+        sequentialRecentMigrations: migrations.length - baselineCount,
         preservedModels: Object.keys(before).length,
         historicalMigrationsEdited: false,
         dbPush: false

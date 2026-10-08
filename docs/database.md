@@ -7,6 +7,73 @@ triggers that Prisma cannot express.
 
 ## ER model
 
+### FAS 36: separate global administration
+
+Migration 24 adds the following relationships without changing accounting deletion
+or tenant identity rules. References use RESTRICT. User gains account status,
+mandatory-password-change and internal notes; Session gains a persisted MFA approval
+timestamp. The one-time bootstrap marker intentionally has singleton integer key 1,
+not a second user identity. Global grants never create OrganizationMember rows.
+
+```mermaid
+erDiagram
+  USER ||--o| PLATFORM_ADMINISTRATOR : global_grant
+  USER ||--o| PLATFORM_ADMIN_MFA_CREDENTIAL : encrypted_credential
+  USER ||--o{ PLATFORM_ADMIN_RECOVERY_CODE : hashed_one_time_proof
+  USER ||--o{ PLATFORM_ADMIN_AUDIT_EVENT : actor
+  USER ||--o| PLATFORM_ADMIN_BOOTSTRAP : initial_operator_marker
+  USER ||--o{ SESSION : authenticated_session
+  ORGANIZATION o|--o{ PLATFORM_ADMIN_AUDIT_EVENT : metadata_target
+  PLATFORM_ADMINISTRATOR {
+    uuid id PK
+    uuid user_id UK
+    enum role
+    boolean is_active
+    boolean must_change_password
+    timestamp granted_at
+    uuid granted_by_id FK
+    timestamp revoked_at
+    uuid revoked_by_id FK
+  }
+  PLATFORM_ADMIN_MFA_CREDENTIAL {
+    uuid id PK
+    uuid user_id UK
+    string encrypted_secret
+    string key_id
+    bigint last_used_counter
+    timestamp verified_at
+  }
+  PLATFORM_ADMIN_RECOVERY_CODE {
+    uuid id PK
+    uuid user_id FK
+    string code_hash
+    timestamp used_at
+  }
+  PLATFORM_ADMIN_AUDIT_EVENT {
+    uuid id PK
+    uuid actor_user_id FK
+    uuid organization_id FK
+    string action
+    string target_type
+    uuid target_id
+    json before_metadata
+    json after_metadata
+    string result
+    string request_id
+    timestamp timestamp
+  }
+  PLATFORM_ADMIN_BOOTSTRAP {
+    int id PK
+    uuid user_id UK
+    timestamp completed_at
+  }
+```
+
+See [platform administration](platform-admin.md) and its separate
+[security boundary](platform-admin-security.md).
+
+### Accounting domain
+
 ```mermaid
 erDiagram
   USER {

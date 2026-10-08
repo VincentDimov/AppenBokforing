@@ -1,5 +1,19 @@
 # LedgerApp — GAP-analys
 
+## Aktuellt efter FAS 36
+
+Global metadataadministration, roller, första lösenordsbyte/MFA, sessioner,
+användar-/företagsprofiler, explicit medlemskap och immutable audit är implementerade.
+[FAS 36-gate](fas36-release-gate.md) ersätter tidigare aktuella fas-/testantal.
+Bootstrapmekanism är inte samma sak som skapat Master Admin-konto i avsedd databas.
+
+Kvarvarande releasegränser: remote CI/deployment, faktisk operatörsbootstrap,
+MFA-key custody/rotation och återställning vid förlust av både lösenord/proof,
+verifierad email/reset/resend/ownership, extern tamper evidence/telemetry,
+hostad least privilege/TLS/backups samt tidigare P0-03/07/10/11/13 och extern
+redovisnings-/SIE-granskning. Ett grovt globalt säkerhetslås behöver volymgranskas.
+Lokala PASS stänger inte drift-, regel- eller historiska metadata-risker.
+
 ## Aktuellt efter UI-arbetet i FAS 35
 
 [FAS 35-rapport](fas35-ui-ux.md) ersätter tidigare aktuell UI/git-status.

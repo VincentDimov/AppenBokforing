@@ -15,6 +15,7 @@ import { ReportsModule } from "./reports/reports.module";
 import { SieModule } from "./sie/sie.module";
 import { AuditModule } from "./audit/audit.module";
 import { FiscalYearsModule } from "./fiscal-years/fiscal-years.module";
+import { PlatformAdminModule } from "./platform-admin/platform-admin.module";
 
 @Module({
   imports: [
@@ -39,7 +40,8 @@ import { FiscalYearsModule } from "./fiscal-years/fiscal-years.module";
     ReportsModule,
     SieModule,
     AuditModule,
-    FiscalYearsModule
+    FiscalYearsModule,
+    PlatformAdminModule
   ],
   controllers: [HealthController, ReadinessController],
   providers: [

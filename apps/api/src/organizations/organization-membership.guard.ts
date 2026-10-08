@@ -42,12 +42,11 @@ export class OrganizationMembershipGuard implements CanActivate {
       throw new NotFoundException("Organization not found.");
     }
 
-    const membership = await this.database.prisma.organizationMember.findUnique({
+    const membership = await this.database.prisma.organizationMember.findFirst({
       where: {
-        organizationId_userId: {
-          organizationId,
-          userId: request.auth.id
-        }
+        organizationId,
+        userId: request.auth.id,
+        organization: { isActive: true }
       }
     });
 

@@ -1,5 +1,27 @@
 # LedgerApp
 
+## FAS 36 – Master Admin & Platform Administration
+
+Separat global administration med persistenta roller, obligatoriskt första
+lösenordsbyte/MFA, användar-/företagsprofiler, medlemskap, sessionsrevokering och
+oföränderlig global audit. Framåtmigration 24 tillkommer; bokföringens tidigare
+migrationer och behörighetsgränser bevaras. FAS 35-designsystemet återanvänds.
+Se [funktioner/API](docs/platform-admin.md), [säkerhet](docs/platform-admin-security.md),
+[explicit operatörsbootstrap](docs/platform-admin-bootstrap.md) och
+[42-punktsrapport med aktuella verifieringsresultat](docs/fas36-release-gate.md).
+
+Inget faktiskt Master Admin-konto har skapats i avsedd lokal/cloud-databas.
+Adminåtkomst är fail-closed utan API:ts skyddade MFA-krypteringsnyckel.
+Bootstrap körs aldrig automatiskt; credentials får inte hamna i kod/loggar/Git.
+E-poståterställning, e-postbyte och resend är uttryckligen otillgängliga utan
+verifierad leverans-/identitetsinfrastruktur. Ingen commit/push/deployment ingår.
+
+För lokal vanlig användning: `corepack pnpm@9.15.4 infra:up`, kontrollera den
+lokala DATABASE_URL-adressen, `corepack pnpm@9.15.4 db:deploy`, därefter
+`corepack pnpm@9.15.4 dev`. Kopiera bara `.env.example` om lokal `.env` saknas;
+skriv aldrig över den med produktionskonfiguration. MFA-konfiguration krävs
+för globala adminfunktioner, inte för vanliga lokala login/register-flöden.
+
 ## FAS 35 — gemensam UI/UX, 2026-10-08
 
 Nordisk arbetsyta med gemensamma tokens, kompakt navigation, mobildialog,
@@ -194,6 +216,15 @@ corepack pnpm@9.15.4 dev
 
 Webb: `http://localhost:3000`, API liveness: `http://localhost:4000/health`,
 Swagger: `http://localhost:4000/docs`, lokal storagekonsol: `http://localhost:9001`.
+Efter koduppdateringar behöver även den befintliga lokala databasen uppdateras:
+ta backup, kontrollera att `.env` pekar på `localhost:5433/ledgerapp` och kör
+`corepack pnpm@9.15.4 db:deploy` innan utvecklingsservrarna startas igen.
+Skriv inte över `.env`, använd inte reset och kör inte seed för att reparera
+inloggning. För lokal webb ska `API_INTERNAL_URL` vara `http://localhost:4000`
+eller lämnas osatt så utvecklingsstandardvärdet används, inte byggexemplets
+`example.invalid`-adress. Next.js utvecklingsläge har en uttrycklig CSP-exception
+för `'unsafe-eval'`; produktionspolicyn är oförändrad och tillåter inte detta.
+
 Compose startbarhet är inte verifierad. En separat PostgreSQL 16-testcontainer
 har körts; Docker krävde åtkomst utanför sandboxen. Infrastrukturvolymer är inte backup.
 

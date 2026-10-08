@@ -103,15 +103,15 @@ are copied verbatim for legacy reversals. No existing migration is rewritten.
 
 `tests/fixtures/vat-golden.ts` is shared by engine and PostgreSQL tests.
 
-| Case | Explicit base | Input VAT | Output VAT |
-| --- | ---: | ---: | ---: |
-| A ordinary 25% sale | 1,000.00 | 0.00 | 250.00 |
-| B 12% sale | 1,000.00 | 0.00 | 120.00 |
-| C 6% sale | 1,000.00 | 0.00 | 60.00 |
-| D 25% purchase | 1,000.00 | 250.00 | 0.00 |
-| E credit / actual API reversal of A | −1,000.00 | 0.00 | −250.00 |
-| F two supplies at 25% and 6% | 2,000.00 | 0.00 | 310.00 |
-| G NONE purchase, zero rate | 1,000.00 | 0.00 | 0.00 |
+| Case                                | Explicit base | Input VAT | Output VAT |
+| ----------------------------------- | ------------: | --------: | ---------: |
+| A ordinary 25% sale                 |      1,000.00 |      0.00 |     250.00 |
+| B 12% sale                          |      1,000.00 |      0.00 |     120.00 |
+| C 6% sale                           |      1,000.00 |      0.00 |      60.00 |
+| D 25% purchase                      |      1,000.00 |    250.00 |       0.00 |
+| E credit / actual API reversal of A |     −1,000.00 |      0.00 |    −250.00 |
+| F two supplies at 25% and 6%        |      2,000.00 |      0.00 |     310.00 |
+| G NONE purchase, zero rate          |      1,000.00 |      0.00 |       0.00 |
 
 Combined: output base **4,000.00**, input base **1,000.00**, NONE base **1,000.00**,
 output VAT **490.00**, input VAT **250.00**, net VAT **240.00**.

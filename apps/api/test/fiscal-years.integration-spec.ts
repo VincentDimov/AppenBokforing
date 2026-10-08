@@ -122,7 +122,10 @@ describe("calendar locking across accounting POST endpoints", () => {
   it("blocks draft creation, posting, editing and moving a locked draft", async () => {
     await owner.post("/journal-entries").send(body).expect(409);
     await owner.post(`/journal-entries/${draftId}/post`).send({ expectedVersion: 1 }).expect(409);
-    await owner.patch(`/journal-entries/${draftId}`).send({ expectedVersion: 1, description: "Changed" }).expect(409);
+    await owner
+      .patch(`/journal-entries/${draftId}`)
+      .send({ expectedVersion: 1, description: "Changed" })
+      .expect(409);
     await owner
       .patch(`/journal-entries/${draftId}`)
       .send({ expectedVersion: 1, transactionDate: "2026-02-15" })
@@ -145,8 +148,14 @@ describe("calendar locking across accounting POST endpoints", () => {
     const content =
       '#SIETYP 4\n#RAR 0 20260101 20261231\n#KONTO 1930 "Bank"\n#KONTO 3000 "Revenue"\n#VER A 99 20260115 "Locked import"\n{\n#TRANS 1930 {} 100.00\n#TRANS 3000 {} -100.00\n}\n';
     const mapping = { organizationId, content, fiscalYearId: yearId };
-    const preview = await owner.post("/imports/sie").send({ ...mapping, confirm: false }).expect(201);
-    await owner.post("/imports/sie").send({ ...mapping, previewToken: preview.body.previewToken, confirm: true }).expect(409);
+    const preview = await owner
+      .post("/imports/sie")
+      .send({ ...mapping, confirm: false })
+      .expect(201);
+    await owner
+      .post("/imports/sie")
+      .send({ ...mapping, previewToken: preview.body.previewToken, confirm: true })
+      .expect(409);
     expect(await prisma.journalEntry.count({ where: { organizationId, voucherNumber: 99 } })).toBe(
       0
     );

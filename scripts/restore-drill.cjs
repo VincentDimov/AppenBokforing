@@ -19,8 +19,14 @@ const target =
   "postgresql://ledgerapp_test:local_disposable_test_only@127.0.0.1:15441/" + targetDatabase;
 if (process.env.RUN_DISPOSABLE_RESTORE_DRILL !== "yes")
   throw new Error("Explicit RUN_DISPOSABLE_RESTORE_DRILL=yes is required.");
-const sourceContainer = "ledgerapp-fas24-pg-20261007",
-  targetContainer = "ledgerapp-fas24-restore-20261007";
+const sourceContainer = process.env.RESTORE_DRILL_SOURCE_CONTAINER || "ledgerapp-fas24-pg-20261007",
+  targetContainer =
+    process.env.RESTORE_DRILL_TARGET_CONTAINER || "ledgerapp-fas24-restore-20261007";
+if (
+  !/^ledgerapp-fas(?:24|36)-(?:pg|tests)-\d{8}$/.test(sourceContainer) ||
+  !/^ledgerapp-fas(?:24|36)-restore-\d{8}$/.test(targetContainer)
+)
+  throw new Error("Dedicated disposable drill containers required.");
 const suffix = randomUUID().slice(0, 8),
   bucket = "ledgerapp-drill-source-" + suffix,
   restoredBucket = "ledgerapp-drill-restored-" + suffix;

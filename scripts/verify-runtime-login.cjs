@@ -11,6 +11,10 @@ if (!/^ledgerapp_restore(?:_[a-z0-9]+)?$/.test(targetDatabase))
 if (process.env.RUN_DISPOSABLE_RESTORE_DRILL !== "yes")
   throw new Error("Disposable opt-in required");
 const suffix = randomBytes(6).toString("hex");
+const targetContainer =
+  process.env.RESTORE_DRILL_TARGET_CONTAINER || "ledgerapp-fas24-restore-20261007";
+if (!/^ledgerapp-fas(?:24|36)-restore-\d{8}$/.test(targetContainer))
+  throw new Error("Dedicated disposable target container required.");
 const role = `drill_runtime_${suffix}`,
   password = randomBytes(32).toString("hex");
 execFileSync(
@@ -18,7 +22,7 @@ execFileSync(
   [
     "exec",
     "-i",
-    "ledgerapp-fas24-restore-20261007",
+    targetContainer,
     "psql",
     "-U",
     "ledgerapp_test",
@@ -65,6 +69,16 @@ async function main() {
       "DELETE FROM audit_events"
     ])
       await assert.rejects(db.$executeRawUnsafe(sql));
+    // Prove the real tables exist; missing-table errors must never count as permission evidence.
+    await db.$queryRawUnsafe("SELECT id FROM platform_admin_audit_events LIMIT 1");
+    await db.$queryRawUnsafe("SELECT id FROM platform_admin_bootstrap LIMIT 1");
+    for (const sql of [
+      "UPDATE platform_admin_audit_events SET action='tamper'",
+      "DELETE FROM platform_admin_audit_events",
+      "TRUNCATE platform_admin_audit_events",
+      "INSERT INTO platform_admin_bootstrap(id,user_id) SELECT 1,id FROM users LIMIT 1"
+    ])
+      await assert.rejects(db.$executeRawUnsafe(sql), (error) => error.meta?.code === "42501");
     const restoredEntry = await db.journalEntry.findFirstOrThrow({ where: { status: "POSTED" } });
     await assert.rejects(
       db.$executeRawUnsafe(
@@ -299,7 +313,7 @@ async function main() {
     console.log(
       JSON.stringify({
         actualLoginRole: "PASS",
-        ddlDenials: 8,
+        ddlAndEvidenceDenials: 12,
         restoredPostedImmutability: true,
         tenantConstraint: true,
         legitimateAuthCalendarAccountPostingReversalReporting: true,

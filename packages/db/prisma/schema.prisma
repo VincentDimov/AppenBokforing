@@ -15,6 +15,19 @@ enum OrganizationMemberRole {
   READ_ONLY
 }
 
+enum PlatformAdminRole {
+  SUPER_ADMIN
+  PLATFORM_ADMIN
+  SUPPORT_ADMIN
+  PLATFORM_VIEWER
+}
+
+enum UserAccountStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
 enum SessionRevocationReason {
   LOGOUT
   ROTATED
@@ -120,11 +133,21 @@ model User {
   displayName  String    @map("display_name") @db.VarChar(160)
   passwordHash String?   @map("password_hash") @db.VarChar(255)
   isActive     Boolean   @default(true) @map("is_active")
+  accountStatus UserAccountStatus @default(ACTIVE) @map("account_status")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  adminNotes String? @map("admin_notes") @db.VarChar(2000)
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   sessions                Session[]
+  platformAdministrator PlatformAdministrator? @relation("PlatformAdminUser")
+  grantedPlatformAdministrators PlatformAdministrator[] @relation("PlatformAdminGrantedBy")
+  revokedPlatformAdministrators PlatformAdministrator[] @relation("PlatformAdminRevokedBy")
+  platformMfaCredential PlatformAdminMfaCredential?
+  platformRecoveryCodes PlatformAdminRecoveryCode[]
+  platformAuditEvents PlatformAdminAuditEvent[] @relation("PlatformAuditActor")
+  platformBootstrap PlatformAdminBootstrap?
   organizationMemberships OrganizationMember[]
   sentInvitations          OrganizationInvitation[]
   createdCarryForwards      YearCarryForward[]
@@ -155,6 +178,7 @@ model Session {
   lastSeenAt        DateTime?                @map("last_seen_at") @db.Timestamptz(3)
   ipAddress         String?                  @map("ip_address") @db.VarChar(64)
   userAgent         String?                  @map("user_agent") @db.VarChar(512)
+  adminMfaVerifiedAt DateTime? @map("admin_mfa_verified_at") @db.Timestamptz(3)
   createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -168,7 +192,86 @@ model Session {
   @@map("sessions")
 }
 
+model PlatformAdministrator {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+  role PlatformAdminRole
+  isActive Boolean @default(true) @map("is_active")
+  mustChangePassword Boolean @default(true) @map("must_change_password")
+  mfaRequired Boolean @default(true) @map("mfa_required")
+  grantedAt DateTime @default(now()) @map("granted_at") @db.Timestamptz(3)
+  grantedById String? @map("granted_by_id") @db.Uuid
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedById String? @map("revoked_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user User @relation("PlatformAdminUser", fields:[userId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  grantedBy User? @relation("PlatformAdminGrantedBy", fields:[grantedById], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  revokedBy User? @relation("PlatformAdminRevokedBy", fields:[revokedById], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  @@index([role,isActive,revokedAt])
+  @@index([grantedById])
+  @@index([revokedById])
+  @@map("platform_administrators")
+}
+
+model PlatformAdminMfaCredential {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+  encryptedSecret String @map("encrypted_secret") @db.VarChar(500)
+  keyId String @map("key_id") @db.VarChar(80)
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(3)
+  pendingExpiresAt DateTime @map("pending_expires_at") @db.Timestamptz(3)
+  lastUsedCounter BigInt @default(-1) @map("last_used_counter")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user User @relation(fields:[userId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  @@map("platform_admin_mfa_credentials")
+}
+
+model PlatformAdminRecoveryCode {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  codeHash String @map("code_hash") @db.VarChar(255)
+  usedAt DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user User @relation(fields:[userId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  @@index([userId,usedAt])
+  @@map("platform_admin_recovery_codes")
+}
+
+model PlatformAdminBootstrap {
+  id Int @id @default(1)
+  userId String @unique @map("user_id") @db.Uuid
+  completedAt DateTime @default(now()) @map("completed_at") @db.Timestamptz(3)
+  user User @relation(fields:[userId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  @@map("platform_admin_bootstrap")
+}
+
+model PlatformAdminAuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  targetType String @map("target_type") @db.VarChar(80)
+  targetId String? @map("target_id") @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  action String @db.VarChar(100)
+  result String @default("SUCCESS") @db.VarChar(16)
+  beforeMetadata Json? @map("before_metadata") @db.JsonB
+  afterMetadata Json? @map("after_metadata") @db.JsonB
+  requestId String? @map("request_id") @db.VarChar(100)
+  ipMetadata String? @map("ip_metadata") @db.VarChar(64)
+  timestamp DateTime @default(now()) @db.Timestamptz(3)
+  actor User? @relation("PlatformAuditActor", fields:[actorUserId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  organization Organization? @relation(fields:[organizationId], references:[id], onDelete:Restrict, onUpdate:Restrict)
+  @@index([timestamp,id])
+  @@index([actorUserId,timestamp])
+  @@index([targetType,targetId,timestamp])
+  @@index([organizationId,timestamp])
+  @@index([action,result,timestamp])
+  @@map("platform_admin_audit_events")
+}
+
 model Organization {
+  platformAuditEvents PlatformAdminAuditEvent[]
   id                 String   @id @default(uuid()) @db.Uuid
   name               String   @db.VarChar(160)
   slug               String   @unique @db.VarChar(80)
