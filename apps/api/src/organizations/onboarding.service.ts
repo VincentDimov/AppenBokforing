@@ -4,6 +4,7 @@ import { AccountType, BalanceSide } from "@ledgerapp/db";
 import { DatabaseService } from "../database/database.service";
 import { monthlyPeriods } from "../fiscal-years/fiscal-years.service";
 import { OnboardingDto } from "./onboarding.dto";
+import { BasCatalogService } from "../accounts/bas/catalog.service";
 
 /** Original starter chart, deliberately not a full BAS dataset or tax setup. */
 export const STARTER_ACCOUNTS = [
@@ -47,7 +48,7 @@ export const STARTER_ACCOUNTS = [
 
 @Injectable()
 export class OnboardingService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(private readonly database: DatabaseService, private readonly bas: BasCatalogService) {}
   async create(actor: string, dto: OnboardingDto, requestId?: string) {
     const periods = monthlyPeriods(dto.startDate, dto.endDate);
     return this.database.prisma.$transaction(async (tx) => {
@@ -100,7 +101,8 @@ export class OnboardingService {
           name: "Manuella verifikationer"
         }
       });
-      await tx.account.createMany({
+      const provisioned = await this.bas.provision(organization.id, actor, requestId, undefined, tx);
+      if (!provisioned.configured) await tx.account.createMany({
         data: STARTER_ACCOUNTS.map((account) => ({ ...account, organizationId: organization.id }))
       });
       await tx.auditEvent.create({
@@ -114,8 +116,8 @@ export class OnboardingService {
           metadata: {
             operation: "ONBOARDING",
             fiscalYearId: fiscalYear.id,
-            starterAccounts: STARTER_ACCOUNTS.length,
-            starterChart: "ledgerapp-original-v1"
+            starterAccounts: provisioned.configured ? provisioned.inserted : STARTER_ACCOUNTS.length,
+            starterChart: provisioned.configured ? "reviewed-bas-catalog" : "ledgerapp-original-v1"
           }
         }
       });

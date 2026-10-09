@@ -1,6 +1,21 @@
 # LedgerApp — GAP-analys
 
-## Aktuellt efter FAS 36
+## Aktuellt efter FAS 37
+
+Den [aktuella BAS-gaten](fas37-release-gate.md) ersätter äldre aktuella test-/fasantal.
+Katalogarkitektur/importer/aktivering är implementerade och testade med originala
+syntetiska fixtures. FULL BAS 2026 RELEASE = BLOCKED. Saknade operatörsrättigheter,
+full namn-/klassificeringsgranskning, dubblettresolution (2087/2120/2130) och
+granskade parents för 3211/3212/3231 blockerar officiell produktionsimport.
+Klass 2/8, kontra-/avskrivningskonton och bookable-fält får inte massgissas.
+Separat vanlig lokal storage-gräns: MinIO-bucket saknas och CreateBucket får
+403 AccessDenied trots matchande credentials; /ready är 503 medan DB/auth/web fungerar.
+Detta kräver granskad storage-driftsåtgärd, inte bytt/raderad volym eller påstådd PASS.
+Automatiskt versionsbyte för befintliga företag är avsiktligt inte implementerat.
+Vanlig medlems-API får inte importera global källdata. Tidigare drift-/redovisnings-P0
+är inte stängda av lokal PASS; hosted grants/backup/TLS och cloud-release återstår.
+
+## Historik: efter FAS 36
 
 Global metadataadministration, roller, första lösenordsbyte/MFA, sessioner,
 användar-/företagsprofiler, explicit medlemskap och immutable audit är implementerade.

@@ -9,6 +9,7 @@ import { AuditAction, AuditEntityType, OrganizationMemberRole, Prisma } from "@l
 import { DatabaseService } from "../database/database.service";
 import { CreateOrganizationDto } from "./dto/create-organization.dto";
 import { UpdateOrganizationDto } from "./dto/update-organization.dto";
+import { BasCatalogService } from "../accounts/bas/catalog.service";
 
 interface OrganizationAuditMetadata {
   ipAddress?: string;
@@ -17,7 +18,7 @@ interface OrganizationAuditMetadata {
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(private readonly database: DatabaseService, private readonly bas: BasCatalogService) {}
 
   async listForUser(userId: string) {
     const memberships = await this.database.prisma.organizationMember.findMany({
@@ -56,6 +57,7 @@ export class OrganizationsService {
             userId
           }
         });
+        await this.bas.provision(created.id, userId, metadata.requestId, undefined, transaction);
 
         await transaction.auditEvent.create({
           data: {

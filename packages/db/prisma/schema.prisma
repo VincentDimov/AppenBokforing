@@ -270,7 +270,71 @@ model PlatformAdminAuditEvent {
   @@map("platform_admin_audit_events")
 }
 
+enum AccountingFramework {
+  NOT_CONFIGURED
+  K2
+  K3
+}
+
+enum BasAccountCategory {
+  GROUP_ACCOUNT
+  MAIN_ACCOUNT
+  SUBACCOUNT
+}
+
+model BasCatalogVersion {
+  id String @id @default(uuid()) @db.Uuid
+  version String @unique @db.VarChar(64)
+  sourceVersion String @map("source_version") @db.VarChar(64)
+  sourceReference String @map("source_reference") @db.Text
+  sourceSha256 String @map("source_sha256") @db.Char(64)
+  contentSha256 String @map("content_sha256") @db.Char(64)
+  licenseReference String @map("license_reference") @db.Text
+  classificationReviewReference String @map("classification_review_reference") @db.Text
+  verificationReport Json @map("verification_report")
+  rowCount Int @map("row_count")
+  isDefault Boolean @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  entries BasAccountCatalog[]
+  organizations Organization[]
+  @@map("bas_catalog_versions")
+}
+
+model BasAccountCatalog {
+  id String @id @default(uuid()) @db.Uuid
+  catalogVersionId String @map("catalog_version_id") @db.Uuid
+  accountNumber String @map("account_number") @db.Char(4)
+  officialName String @map("official_name") @db.Text
+  accountClass String @map("account_class") @db.Char(1)
+  accountGroup String @map("account_group") @db.Char(2)
+  className String @map("class_name") @db.Text
+  groupName String @map("group_name") @db.Text
+  category BasAccountCategory
+  parentAccountNumber String? @map("parent_account_number") @db.Char(4)
+  isK2Restricted Boolean @map("is_k2_restricted")
+  isDefaultActive Boolean @map("is_default_active")
+  isBookable Boolean @map("is_bookable")
+  type AccountType
+  normalBalance BalanceSide @map("normal_balance")
+  classificationReference String @map("classification_reference") @db.Text
+  sourcePosition String @map("source_position") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  catalogVersion BasCatalogVersion @relation(fields: [catalogVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  parent BasAccountCatalog? @relation("BasParent", fields: [catalogVersionId, parentAccountNumber], references: [catalogVersionId, accountNumber], onDelete: Restrict, onUpdate: Restrict)
+  children BasAccountCatalog[] @relation("BasParent")
+  accounts Account[]
+  @@unique([catalogVersionId, accountNumber])
+  @@index([catalogVersionId, accountClass, accountGroup, category])
+  @@index([catalogVersionId, isDefaultActive])
+  @@map("bas_account_catalog")
+}
+
 model Organization {
+  accountingFramework AccountingFramework @default(NOT_CONFIGURED) @map("accounting_framework")
+  basCatalogVersionId String? @map("bas_catalog_version_id") @db.Uuid
+  basCatalogVersion BasCatalogVersion? @relation(fields: [basCatalogVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   platformAuditEvents PlatformAdminAuditEvent[]
   id                 String   @id @default(uuid()) @db.Uuid
   name               String   @db.VarChar(160)
@@ -305,6 +369,7 @@ model Organization {
   sieImports           SieImport[]
   sieExports           SieExport[]
 
+  @@index([basCatalogVersionId])
   @@map("organizations")
 }
 
@@ -439,11 +504,13 @@ model VatCode {
 }
 
 model Account {
+  basCatalogAccountId String? @map("bas_catalog_account_id") @db.Uuid
+  basCatalogAccount BasAccountCatalog? @relation(fields: [basCatalogAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   carryForwards YearCarryForward[]
   id             String      @id @default(uuid()) @db.Uuid
   organizationId String      @map("organization_id") @db.Uuid
   accountNumber  String      @map("account_number") @db.VarChar(16)
-  name           String      @db.VarChar(160)
+  name           String      @db.Text
   description    String?     @db.VarChar(500)
   type           AccountType
   normalBalance  BalanceSide @map("normal_balance")
@@ -462,6 +529,7 @@ model Account {
   @@unique([id, organizationId])
   @@index([organizationId, type, isActive])
   @@index([organizationId, vatCodeId])
+  @@index([basCatalogAccountId])
   @@map("accounts")
 }
 

@@ -138,6 +138,7 @@ export function AccountEditor({
             className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
             inputMode="numeric"
             maxLength={16}
+            disabled={!!account?.basCatalogAccountId}
             onChange={(event) => setForm((current) => ({ ...current, number: event.target.value }))}
             required
             value={form.number}
@@ -148,7 +149,7 @@ export function AccountEditor({
           Kontonamn
           <input
             className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-ink outline-none transition focus:border-border focus:ring-4 focus:ring-focus"
-            maxLength={160}
+            maxLength={2000}
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
             required
             value={form.name}
@@ -158,6 +159,7 @@ export function AccountEditor({
         <label className="block text-sm font-medium text-secondary">
           Typ
           <Select
+            disabled={!!account?.basCatalogAccountId}
             onValueChange={(value) =>
               setForm((current) => ({ ...current, accountType: value as AccountType }))
             }
@@ -215,6 +217,13 @@ export function AccountEditor({
           />
           Kontot är aktivt
         </label>
+        {account?.active && !form.active ? (
+          <p className="text-sm text-muted" role="status">
+            Kontot försvinner från nya kontoval. Utkast och mallar med kontot kan inte bokföras
+            innan det återaktiveras. Historiska verifikationer, rapporter och ingående balans
+            bevaras.
+          </p>
+        ) : null}
 
         {error ? (
           <p

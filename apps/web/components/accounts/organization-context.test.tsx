@@ -15,21 +15,33 @@ const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>();
 const originalFetch = global.fetch;
 function fixture(Page: typeof AccountsPage, marker: string) {
   return Page === AccountsPage
-    ? [
-        {
-          id: "account",
-          name: marker,
-          number: "1930",
-          organizationId,
-          active: true,
-          accountType: "ASSET",
-          normalBalance: "DEBIT",
-          vatCode: null,
-          description: null,
-          createdAt: "",
-          updatedAt: ""
-        }
-      ]
+    ? {
+        framework: "NOT_CONFIGURED",
+        catalog: null,
+        blockedReason: null,
+        total: 1,
+        page: 1,
+        pageSize: 50,
+        counts: { active: 1, available: 0, main: 0, sub: 0 },
+        items: [
+          {
+            id: "account",
+            accountId: "account",
+            catalogAccountId: null,
+            category: null,
+            name: marker,
+            number: "1930",
+            organizationId,
+            active: true,
+            accountType: "ASSET",
+            normalBalance: "DEBIT",
+            vatCode: null,
+            description: null,
+            createdAt: "",
+            updatedAt: ""
+          }
+        ]
+      }
     : [{ ...demoEntry, organizationId, description: marker }];
 }
 beforeEach(() => {

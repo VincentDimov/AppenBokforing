@@ -21,6 +21,12 @@ interface Preview {
   accountsCreated?: number;
   accountsReused?: number;
   openingBalances: { account: string; amount: string }[];
+  accountPlan?: {
+    number: string;
+    kind: string;
+    activationRequired: boolean;
+    reason: string | null;
+  }[];
 }
 interface HistoryItem {
   id: string;
@@ -137,7 +143,13 @@ function Workspace({ org, role }: { org: string; role: string }) {
           fiscalYearId: calendar.selected,
           fileName: file.name,
           contentBase64: file.contentBase64,
-          ...(confirm ? { confirm: true, previewToken: preview!.previewToken } : {})
+          ...(confirm
+            ? {
+                confirm: true,
+                previewToken: preview!.previewToken,
+                acknowledgeAccountActivations: reviewed
+              }
+            : {})
         })
       });
       if (!controller.signal.aborted) {
@@ -270,6 +282,24 @@ function Workspace({ org, role }: { org: string; role: string }) {
               ))}
             </ul>
             <h4>Varningar</h4>
+            {preview.accountPlan?.length ? (
+              <section aria-label="Kontomappning">
+                <h4>Kontomappning och BAS-aktiveringar</h4>
+                <ul>
+                  {preview.accountPlan.map((row) => (
+                    <li key={row.number}>
+                      {row.number}: {row.kind}
+                      {row.activationRequired ? " · aktiveras vid uttrycklig bekräftelse" : ""}
+                      {row.reason ? ` · ${row.reason}` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <p>
+                  Oanvända BAS-underkonton aktiveras inte. Befintliga namn och momsinställningar
+                  bevaras.
+                </p>
+              </section>
+            ) : null}
             <ul>
               {preview.warnings.map((warning, index) => (
                 <li key={index}>{warning}</li>
@@ -290,6 +320,9 @@ function Workspace({ org, role }: { org: string; role: string }) {
                     onChange={(event) => setReviewed(event.target.checked)}
                   />{" "}
                   Jag har granskat förhandsvisningen och vill importera filen.
+                  {preview.accountPlan?.some((row) => row.activationRequired)
+                    ? " Jag godkänner också de BAS-aktiveringar som visas ovan."
+                    : ""}
                 </label>
                 <button
                   type="button"

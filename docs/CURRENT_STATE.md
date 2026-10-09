@@ -1,6 +1,20 @@
 # LedgerApp — faktiskt nuläge
 
-## FAS 36 – aktuell lokal arbetskopia
+## FAS 37 — aktuell lokal arbetskopia, 2026-10-09
+
+25 framåtmigrationer. Versionerad immutable BAS-katalog, realtidsaktivering/provisioning,
+K2/K3-guards och paginerad Kontoplan är kopplade till verkliga bokföringsflöden.
+Se [aktuell rapport/gate](fas37-release-gate.md) för auktoritativa testantal och status.
+Källjämförelsen fann 1285 förekomster / 1282 unika nummer, men licens,
+alla namn/ekonomiska klassificeringar och källavvikelser är inte slutgranskade.
+0 officiella BAS-produktionsposter importerade: full BAS-release är BLOCKED.
+Lokal 24→25-uppgradering har backup och identiska tidigare rader/kolumner i 27 tabeller.
+302 unit / 207 PostgreSQL / 45 browserfall och build/lint/typecheck/security PASS.
+Vanlig lokal app är startad på localhost:3000 (API 4000). Lokal MinIO nekar
+bucket-initiering 403; bilagelagring/readiness är separat blockerad, ingen volym bytt.
+Tidigare P0-/driftgränser kvarstår; ingen commit/push/cloud-release eller FAS 38.
+
+## Historik: FAS 36 – tidigare lokal arbetskopia
 
 Separat global administration är integrerad ovanpå FAS 35. Databasen har nu
 24 framåtmigrationer. Persistenta grants/MFA/recovery/audit skiljs från företagets

@@ -72,6 +72,17 @@ async function main() {
     // Prove the real tables exist; missing-table errors must never count as permission evidence.
     await db.$queryRawUnsafe("SELECT id FROM platform_admin_audit_events LIMIT 1");
     await db.$queryRawUnsafe("SELECT id FROM platform_admin_bootstrap LIMIT 1");
+    const reference = await db.basAccountCatalog.findFirstOrThrow({
+      where: { accountNumber: "8881" }
+    });
+    await db.basCatalogVersion.findUniqueOrThrow({ where: { id: reference.catalogVersionId } });
+    for (const sql of [
+      "UPDATE bas_account_catalog SET official_name='tamper'",
+      "DELETE FROM bas_account_catalog",
+      "TRUNCATE bas_account_catalog",
+      "INSERT INTO bas_catalog_versions SELECT * FROM bas_catalog_versions"
+    ])
+      await assert.rejects(db.$executeRawUnsafe(sql), (error) => error.meta?.code === "42501");
     for (const sql of [
       "UPDATE platform_admin_audit_events SET action='tamper'",
       "DELETE FROM platform_admin_audit_events",
@@ -115,6 +126,36 @@ async function main() {
         .expect(201)
     ).body;
     const workspace = `/organizations/${setup.organization.id}`;
+    const provisionInput = {
+      organizationId: setup.organization.id,
+      versionId: reference.catalogVersionId
+    };
+    const provision = (
+      await agent.post("/accounts/catalog/provision").send(provisionInput).expect(201)
+    ).body;
+    assert.equal(provision.inserted, 1);
+    assert.equal(
+      (await agent.post("/accounts/catalog/provision").send(provisionInput).expect(201)).body
+        .inserted,
+      0
+    );
+    const activation = { organizationId: setup.organization.id, catalogAccountIds: [reference.id] };
+    await agent.post("/accounts/catalog/activation-preview").send(activation).expect(201);
+    await agent.post("/accounts/catalog/activate").send(activation).expect(201);
+    await agent
+      .get("/accounts/catalog")
+      .query({ organizationId: setup.organization.id })
+      .expect(200);
+    assert.equal(
+      await db.account.count({
+        where: {
+          organizationId: setup.organization.id,
+          basCatalogAccountId: reference.id,
+          isActive: true
+        }
+      }),
+      1
+    );
     await agent
       .post(`${workspace}/invitations`)
       .send({ email: `runtime-pending-${suffix}@example.test`, role: "READ_ONLY" })
@@ -313,7 +354,8 @@ async function main() {
     console.log(
       JSON.stringify({
         actualLoginRole: "PASS",
-        ddlAndEvidenceDenials: 12,
+        ddlAndEvidenceDenials: 16,
+        immutableCatalogReadAndAuthorizedActivation: true,
         restoredPostedImmutability: true,
         tenantConstraint: true,
         legitimateAuthCalendarAccountPostingReversalReporting: true,

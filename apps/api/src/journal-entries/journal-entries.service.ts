@@ -17,6 +17,7 @@ import {
 } from "@ledgerapp/db";
 
 import { DatabaseService } from "../database/database.service";
+import { assertAccountsEligible } from "../accounts/bas/eligibility";
 import { dimensionLabel } from "../organizations/dimension-snapshot";
 import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
 import { CreateJournalEntryDto } from "./dto/create-journal-entry.dto";
@@ -901,6 +902,7 @@ export class JournalEntriesService {
       );
     }
 
+    await assertAccountsEligible(transaction, organizationId, ids);
     return new Map(accounts.map((account) => [account.id, account.id]));
   }
 
@@ -1084,6 +1086,7 @@ export class JournalEntriesService {
         "A referenced account, VAT code, project, or cost center is no longer active in this organization."
       );
     }
+    await assertAccountsEligible(transaction, organizationId, accountIds);
   }
 
   private async findDetailed(

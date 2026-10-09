@@ -49,19 +49,25 @@ export function AccountTypeahead({
 
     const controller = new AbortController();
 
-    void getAccounts(organizationId, query, controller.signal)
-      .then((accounts) => {
-        if (controller.signal.aborted) return;
-        setMatches(accounts.filter((candidate) => candidate.active));
-        setActiveIndex(0);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setMatches([]);
-        }
-      });
+    setMatches([]);
+    const timer = window.setTimeout(() => {
+      void getAccounts(organizationId, query, controller.signal, { activeOnly: true, limit: 30 })
+        .then((accounts) => {
+          if (controller.signal.aborted) return;
+          setMatches(accounts.filter((candidate) => candidate.active));
+          setActiveIndex(0);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setMatches([]);
+          }
+        });
+    }, 150);
 
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [isOpen, organizationId, query]);
 
   function selectAccount(nextAccount: AccountChoice) {

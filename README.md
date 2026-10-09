@@ -1,6 +1,22 @@
 # LedgerApp
 
-## FAS 36 – Master Admin & Platform Administration
+## FAS 37 — BAS-katalogarkitektur, release BLOCKED
+
+Versionerad global katalog, företagsspecifik provisioning, valfria konton,
+K2/K3-kontroll, bulk-preview/bekräftelse och faktisk bokföringsintegration är
+implementerade. Migration 25 utökar kontonamn säkert och bevarar historik.
+Den fullständiga officiella BAS-datan distribueras inte: rättigheter och full
+namn-/klassificeringsgranskning återstår. Det är inte en COMPLETE BAS-release.
+Se [integration/källor](docs/bas-2026-integration.md), [modell/import](docs/bas-account-catalog.md),
+[aktivering/API](docs/bas-account-activation.md), [källvalidering](docs/bas-account-validation.md)
+och [aktuell 37-punktsrapport/gate](docs/fas37-release-gate.md).
+
+Utan auktoriserad katalog används befintlig kontoplan. Starta lokalt enligt
+kommandona nedan; ersätt inte lokal `.env` med hostingcredentials. Fulla BAS-filer
+och importer-hemligheter får inte hamna i frontend, seed eller Git. Ingen FAS 38
+eller cloud-deployment ingår i detta arbete.
+
+## Historik: FAS 36 – Master Admin & Platform Administration
 
 Separat global administration med persistenta roller, obligatoriskt första
 lösenordsbyte/MFA, användar-/företagsprofiler, medlemskap, sessionsrevokering och

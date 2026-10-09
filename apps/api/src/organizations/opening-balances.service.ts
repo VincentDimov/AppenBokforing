@@ -7,6 +7,7 @@ import {
 import { createHash } from "node:crypto";
 import { Prisma } from "@ledgerapp/db";
 import { DatabaseService } from "../database/database.service";
+import { assertAccountsEligible } from "../accounts/bas/eligibility";
 import { requireOpenCalendar } from "../fiscal-years/accounting-calendar";
 import { readAccountingContext, readPostedMovements } from "../reports/accounting-report-data";
 import {
@@ -28,12 +29,19 @@ export class OpeningBalancesService {
       async (tx) => {
         const context = await readAccountingContext(tx, org, fiscalYearId);
         const balances = await this.rows(tx, org, fiscalYearId);
+        const bookable = new Set(
+          (
+            await tx.$queryRaw<
+              { id: string }[]
+            >`SELECT id FROM accounts WHERE organization_id=${org}::uuid AND is_active AND bas_account_eligible(organization_id,account_number,bas_catalog_account_id)`
+          ).map((account) => account.id)
+        );
         return {
           fiscalYear: context.fiscalYear,
           fingerprint: fingerprint(balances),
-          accounts: context.accounts.filter((account) =>
-            ["ASSET", "LIABILITY", "EQUITY"].includes(account.type)
-          ),
+          accounts: context.accounts
+            .filter((account) => ["ASSET", "LIABILITY", "EQUITY"].includes(account.type))
+            .map((account) => ({ ...account, bookable: bookable.has(account.id) })),
           rows: balances.map((row) => ({
             ...row,
             debitAmount: row.debitAmount.toFixed(2),
@@ -125,6 +133,16 @@ export class OpeningBalancesService {
       debit = debit.plus(d);
       credit = credit.plus(c);
     }
+    await assertAccountsEligible(
+      tx,
+      org,
+      rows
+        .filter(
+          (row) =>
+            !new Prisma.Decimal(row.debit).isZero() || !new Prisma.Decimal(row.credit).isZero()
+        )
+        .map((row) => row.accountId)
+    );
     if (!debit.equals(credit))
       throw new BadRequestException({
         code: "OPENING_BALANCE_UNBALANCED",
@@ -219,6 +237,7 @@ export class OpeningBalancesService {
     });
     if (!resultAccount)
       throw new BadRequestException("Välj ett aktivt eget-kapital-konto för årets resultat.");
+    await assertAccountsEligible(tx, org, [resultAccount.id]);
     const movements = await readPostedMovements(
       tx,
       org,

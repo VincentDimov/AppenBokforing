@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@ledgerapp/db";
 import { DatabaseService } from "../database/database.service";
+import { assertAccountsEligible, assertAccountNumberEligible } from "../accounts/bas/eligibility";
 import { SaveTemplateDto, TemplateLineDto, TemplateQueryDto } from "./posting-templates.dto";
 
 const include = {
@@ -69,6 +70,11 @@ export class PostingTemplatesService {
         code: "POSTING_TEMPLATE_ACCOUNT_INACTIVE",
         message: "Alla konton måste vara aktiva och tillhöra organisationen."
       });
+    if (requireActive) await assertAccountsEligible(tx, org, accounts);
+    else {
+      const referenced = await tx.account.findMany({where:{organizationId:org,id:{in:accounts}}});
+      for (const account of referenced) await assertAccountNumberEligible(tx,org,account.accountNumber,account.basCatalogAccountId);
+    }
     for (const kind of ["project", "costCenter"] as const) {
       const ids = [
         ...new Set(

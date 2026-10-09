@@ -65,8 +65,25 @@ function setAuthenticatedFetchResponses(role: "OWNER" | "READ_ONLY") {
       ]);
     }
 
-    if (url.startsWith("/api/accounts?")) {
-      return jsonResponse([account]);
+    if (url.startsWith("/api/accounts/catalog?")) {
+      return jsonResponse({
+        framework: "NOT_CONFIGURED",
+        catalog: null,
+        blockedReason: "Ingen granskad BAS-katalog importerad.",
+        items: [
+          {
+            ...account,
+            accountId: account.id,
+            vatCode: account.vatCode?.code ?? null,
+            catalogAccountId: null,
+            category: null
+          }
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+        counts: { active: 1, available: 0, main: 0, sub: 0 }
+      });
     }
 
     throw new Error(`Unexpected request: ${url}`);
@@ -111,7 +128,7 @@ describe("AccountsPage", () => {
     expect(screen.getByRole("button", { name: "Nytt konto" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Redigera konto 1930" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/accounts?organizationId=organization-a",
+      "/api/accounts/catalog?organizationId=organization-a&tab=active&page=1&pageSize=50&sort=number",
       expect.objectContaining({
         cache: "no-store",
         credentials: "include"
@@ -124,7 +141,7 @@ describe("AccountsPage", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenLastCalledWith(
-        "/api/accounts?organizationId=organization-a&q=F%C3%B6retag",
+        "/api/accounts/catalog?organizationId=organization-a&tab=active&page=1&pageSize=50&q=F%C3%B6retag&sort=number",
         expect.objectContaining({
           cache: "no-store",
           credentials: "include"

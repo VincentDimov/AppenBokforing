@@ -248,6 +248,280 @@ test.beforeEach(async ({ context }) => {
   await context.addCookies(cookies);
 });
 
+async function basWorkspace() {
+  const catalog = await db.$transaction(async (tx) => {
+    const version = await tx.basCatalogVersion.create({
+      data: {
+        version: "SYNTHETIC-E2E-" + randomUUID(),
+        sourceVersion: "Original fixture",
+        sourceReference: "synthetic://not-bas",
+        sourceSha256: "a".repeat(64),
+        contentSha256: "b".repeat(64),
+        licenseReference: "Original synthetic test data",
+        classificationReviewReference: "Manual fixture classification",
+        verificationReport: { synthetic: true },
+        rowCount: 3
+      }
+    });
+    await tx.basAccountCatalog.createMany({
+      data: [
+        {
+          id: randomUUID(),
+          catalogVersionId: version.id,
+          accountNumber: "1110",
+          officialName: "Synthetic main",
+          accountClass: "1",
+          accountGroup: "11",
+          className: "Synthetic class",
+          groupName: "Synthetic group",
+          category: "MAIN_ACCOUNT",
+          parentAccountNumber: null,
+          isK2Restricted: false,
+          isDefaultActive: true,
+          isBookable: true,
+          type: "ASSET",
+          normalBalance: "DEBIT",
+          classificationReference: "Synthetic",
+          sourcePosition: "Fixture"
+        },
+        {
+          id: randomUUID(),
+          catalogVersionId: version.id,
+          accountNumber: "1111",
+          officialName: "Synthetic optional",
+          accountClass: "1",
+          accountGroup: "11",
+          className: "Synthetic class",
+          groupName: "Synthetic group",
+          category: "SUBACCOUNT",
+          parentAccountNumber: "1110",
+          isK2Restricted: false,
+          isDefaultActive: false,
+          isBookable: true,
+          type: "ASSET",
+          normalBalance: "DEBIT",
+          classificationReference: "Synthetic",
+          sourcePosition: "Fixture"
+        },
+        {
+          id: randomUUID(),
+          catalogVersionId: version.id,
+          accountNumber: "2080",
+          officialName: "Synthetic restricted",
+          accountClass: "2",
+          accountGroup: "20",
+          className: "Synthetic class",
+          groupName: "Synthetic group",
+          category: "MAIN_ACCOUNT",
+          parentAccountNumber: null,
+          isK2Restricted: true,
+          isDefaultActive: false,
+          isBookable: true,
+          type: "EQUITY",
+          normalBalance: "CREDIT",
+          classificationReference: "Synthetic",
+          sourcePosition: "Fixture"
+        }
+      ]
+    });
+    return version;
+  });
+  let org: Organization;
+  await db.basCatalogVersion.update({ where: { id: catalog.id }, data: { isDefault: true } });
+  try {
+    org = await onboardWorkspace("Synthetic BAS E2E " + randomUUID().slice(0, 8));
+  } finally {
+    await db.basCatalogVersion.update({ where: { id: catalog.id }, data: { isDefault: false } });
+  }
+  expect(
+    await db.account.count({
+      where: { organizationId: org.id, accountNumber: "1110", isActive: true }
+    })
+  ).toBe(1);
+  expect(
+    await db.account.count({
+      where: { organizationId: org.id, accountNumber: { in: ["1111", "2080"] } }
+    })
+  ).toBe(0);
+  expect(
+    (
+      await api.post("/api/accounts/catalog/provision", {
+        data: { organizationId: org.id, versionId: catalog.id }
+      })
+    ).status()
+  ).toBe(201);
+  return { ...org, catalogVersionId: catalog.id };
+}
+
+test("BAS optional activation requires a real preview and becomes available in voucher typeahead", async ({
+  page
+}) => {
+  const org = await basWorkspace();
+  expect(
+    (
+      await api.post("/api/accounts/catalog/framework", {
+        data: {
+          organizationId: org.id,
+          framework: "K2",
+          confirmation: org.name
+        }
+      })
+    ).status()
+  ).toBe(201);
+  const restricted = await db.basAccountCatalog.findFirstOrThrow({
+    where: { catalogVersionId: org.catalogVersionId, accountNumber: "2080" }
+  });
+  expect(
+    (
+      await api.post("/api/accounts/catalog/activate", {
+        data: {
+          organizationId: org.id,
+          catalogAccountIds: [restricted.id]
+        }
+      })
+    ).status()
+  ).toBe(400);
+  await open(page, org, "registers/accounts");
+  await page.getByRole("button", { name: "Tillgängliga BAS-konton" }).click();
+  await expect(page.getByRole("checkbox", { name: "Markera konto 2080" })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Markera konto 1111" }).check();
+  await page.getByRole("button", { name: "Lägg till markerade (1)" }).click();
+  await expect(page.getByRole("dialog", { name: "Bekräfta BAS-aktivering" })).toBeVisible();
+  expect(await db.account.count({ where: { organizationId: org.id, accountNumber: "1111" } })).toBe(
+    0
+  );
+  await page.getByRole("button", { name: "Bekräfta aktivering" }).click();
+  await expect(page.getByText("1 konton aktiverade.")).toBeVisible();
+  await open(page, org, "bookkeeping/vouchers/new");
+  const account = page.getByRole("table").locator('input[id^="voucher-account-"]').first();
+  await account.fill("1111");
+  await expect(page.getByRole("option", { name: /^1111/ })).toBeVisible();
+  await account.press("ArrowDown");
+  await account.press("Enter");
+  await expect(account).toHaveValue(/1111/);
+  await account.fill("2080");
+  await expect(page.getByText("Inga aktiva konton matchar sökningen.")).toBeVisible();
+  expect(await db.account.count({ where: { organizationId: org.id, accountNumber: "2080" } })).toBe(
+    0
+  );
+});
+
+test("BAS K3 activation needs typed framework confirmation and never silently switches K2", async ({
+  page
+}) => {
+  const org = await basWorkspace();
+  await open(page, org, "registers/accounts");
+  await page.getByRole("button", { name: "Ändra K-regelverk" }).click();
+  const dialog = page.getByRole("dialog", { name: "Ändra K-regelverk" });
+  await dialog.getByLabel("Regelverk").selectOption("K3");
+  await expect(dialog.getByRole("button", { name: "Bekräfta K-regelverk" })).toBeDisabled();
+  await dialog.getByLabel("Skriv företagsnamnet " + org.name).fill(org.name);
+  await dialog.getByRole("button", { name: "Bekräfta K-regelverk" }).click();
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole("button", { name: "Tillgängliga BAS-konton" }).click();
+  await expect(page.getByRole("checkbox", { name: "Markera konto 2080" })).toBeEnabled();
+  await page.getByRole("checkbox", { name: "Markera konto 2080" }).check();
+  await page.getByRole("button", { name: "Lägg till markerade (1)" }).click();
+  await page.getByRole("button", { name: "Bekräfta aktivering" }).click();
+  await expect(page.getByText("1 konton aktiverade.")).toBeVisible();
+  expect(
+    await db.account.findFirst({ where: { organizationId: org.id, accountNumber: "2080" } })
+  ).toMatchObject({ isActive: true });
+  await page.getByRole("button", { name: "Ändra K-regelverk" }).click();
+  await dialog.getByLabel("Regelverk").selectOption("K2");
+  await dialog.getByLabel("Skriv företagsnamnet " + org.name).fill(org.name);
+  await dialog.getByRole("button", { name: "Bekräfta K-regelverk" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("avstämning");
+  expect(
+    (await db.organization.findUniqueOrThrow({ where: { id: org.id } })).accountingFramework
+  ).toBe("K3");
+});
+
+test("BAS optional activation stays in company A when switching the same catalog to B", async ({
+  page
+}) => {
+  const companyA = await basWorkspace();
+  const companyB = await onboardWorkspace("Synthetic BAS B " + randomUUID().slice(0, 8));
+  expect(
+    (
+      await api.post("/api/accounts/catalog/provision", {
+        data: {
+          organizationId: companyB.id,
+          versionId: companyA.catalogVersionId
+        }
+      })
+    ).status()
+  ).toBe(201);
+  await open(page, companyA, "registers/accounts");
+  await page.getByRole("button", { name: "Tillgängliga BAS-konton" }).click();
+  await page.getByRole("button", { name: "Lägg till konto 1111", exact: true }).click();
+  await page.getByRole("button", { name: "Bekräfta aktivering" }).click();
+  await expect(page.getByText("1 konton aktiverade.")).toBeVisible();
+  await page.getByRole("button", { name: "Aktiva konton", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "1111", exact: true })).toBeVisible();
+  await selectOrg(page, companyB);
+  await expect(page.getByRole("cell", { name: "1110", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "1111", exact: true })).toHaveCount(0);
+  expect(
+    await db.account.count({ where: { organizationId: companyB.id, accountNumber: "1111" } })
+  ).toBe(0);
+  await selectOrg(page, companyA);
+  await expect(page.getByRole("cell", { name: "1111", exact: true })).toBeVisible();
+});
+
+test("BAS reconciliation and browser deactivation preserve posted lines and snapshots exactly", async ({
+  page
+}) => {
+  const org = await basWorkspace();
+  expect(
+    (
+      await api.post("/api/accounts", {
+        data: {
+          organizationId: org.id,
+          number: "1930",
+          name: "Synthetic bank",
+          accountType: "ASSET"
+        }
+      })
+    ).status()
+  ).toBe(201);
+  await open(page, org, "bookkeeping/vouchers/new");
+  for (const [index, number] of ["1110", "1930"].entries()) {
+    const input = page.getByRole("table").locator('input[id^="voucher-account-"]').nth(index);
+    await input.fill(number);
+    await page.getByRole("option", { name: new RegExp("^" + number) }).click();
+  }
+  await page.getByLabel("Debet rad 1").fill("123.45");
+  await page.getByLabel("Kredit rad 2").fill("123.45");
+  await page.getByLabel("Beskrivning", { exact: true }).fill("Synthetic BAS historical evidence");
+  await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
+  await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
+  await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
+  const id = page.url().split("/").at(-1)!;
+  const original = await storedEntry(id);
+  expect(
+    original.lines.map((line) => [line.debitAmount.toFixed(2), line.creditAmount.toFixed(2)])
+  ).toEqual([
+    ["123.45", "0.00"],
+    ["0.00", "123.45"]
+  ]);
+  expect(
+    (
+      await api.post("/api/accounts/catalog/provision", { data: { organizationId: org.id } })
+    ).status()
+  ).toBe(201);
+  await open(page, org, "registers/accounts");
+  await page.getByRole("button", { name: "Redigera konto 1110" }).click();
+  await page.getByLabel("Kontot är aktivt").uncheck();
+  await expect(page.getByRole("status")).toContainText("Historiska verifikationer");
+  await page.getByRole("button", { name: "Spara ändringar" }).click();
+  await expect(page.getByRole("cell", { name: "1110", exact: true })).toHaveCount(0);
+  expect((await storedEntry(id)).lines).toEqual(original.lines);
+  await open(page, org, "bookkeeping/vouchers/" + id);
+  await expect(page.getByLabel("Debet rad 1")).toHaveValue("123.45");
+  await expect(page.getByLabel("Debet rad 1")).toBeDisabled();
+});
+
 test("posting template create → use → change amount → normal posting", async ({ page }) => {
   const org = await onboardWorkspace("E2E template flow");
   await open(page, org, "bookkeeping/posting-templates");
@@ -1070,10 +1344,10 @@ test("unbalanced / invalid UI rejects posting; keyboard uses visible values", as
 
 test("organization accounts and vouchers switch without old tenant data", async ({ page }) => {
   await open(page, a, "registers/accounts");
-  await expect(page.getByRole("cell", { name: "E2E A-1930", exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("E2E A-1930", { exact: true })).toBeVisible();
   await selectOrg(page, b);
-  await expect(page.getByRole("cell", { name: "E2E B-1930", exact: true })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "E2E A-1930", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("table").getByText("E2E B-1930", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("E2E A-1930", { exact: true })).toHaveCount(0);
   await page.goto("/app/bookkeeping/vouchers");
   await expect(page.getByRole("table")).toContainText("A1");
   await selectOrg(page, reports);
@@ -1182,6 +1456,20 @@ test("locked period rejects backend posting and displays browser failure", async
 test("real 400 / 403 / 404 boundaries plus explicit injected 500 and network UX", async ({
   page
 }) => {
+  test.setTimeout(120_000);
+  // The expanded synthetic BAS suite adds legitimate organization/year reads.
+  // Reserve a real limiter window before this error-boundary test; do not mock
+  // successful reads, relax API throttling or retry any accounting write.
+  const readWindow = await api.get(`/api/fiscal-years?organizationId=${a.id}`);
+  if (
+    readWindow.status() === 429 ||
+    Number(readWindow.headers()["x-ratelimit-remaining"] ?? 100) < 10
+  ) {
+    // Individual hit expirations can return only a few slots at the advertised
+    // reset. One complete TTL frees the window without weakening the API limiter.
+    await new Promise((resolve) => setTimeout(resolve, 60_000));
+    expect((await api.get(`/api/fiscal-years?organizationId=${a.id}`)).status()).toBe(200);
+  } else expect(readWindow.status()).toBe(200);
   expect(
     (await api.post("/api/accounts", { data: { organizationId: a.id, number: "bad" } })).status()
   ).toBe(400);

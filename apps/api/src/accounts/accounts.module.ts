@@ -7,6 +7,7 @@ import { AccountsController } from "./accounts.controller";
 import { AccountsOrganizationGuard } from "./accounts-organization.guard";
 import { AccountsService } from "./accounts.service";
 import { LicensedChartOfAccountsImportService } from "./imports/licensed-chart-of-accounts";
+import { BasCatalogService } from "./bas/catalog.service";
 
 @Module({
   imports: [DatabaseModule],
@@ -16,8 +17,9 @@ import { LicensedChartOfAccountsImportService } from "./imports/licensed-chart-o
     AccountsAccessService,
     AccountsOrganizationGuard,
     AccountsService,
+    BasCatalogService,
     LicensedChartOfAccountsImportService
   ],
-  exports: [AccountsService, LicensedChartOfAccountsImportService]
+  exports: [AccountsService, BasCatalogService, LicensedChartOfAccountsImportService]
 })
 export class AccountsModule {}

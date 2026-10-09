@@ -11,6 +11,7 @@ interface Account {
   accountNumber: string;
   name: string;
   type: string;
+  bookable?: boolean;
 }
 interface BalanceData {
   fingerprint: string;
@@ -180,6 +181,7 @@ function OpeningEditor({ org, year, canWrite }: { org: string; year: string; can
                       className="my-2 w-32 border p-2"
                       aria-label={`IB debet ${data?.accounts[index]?.accountNumber}`}
                       inputMode="decimal"
+                      disabled={data?.accounts[index]?.bookable === false}
                       value={row.debit}
                       onChange={(event) => edit(index, "debit", event.target.value)}
                     />
@@ -189,6 +191,7 @@ function OpeningEditor({ org, year, canWrite }: { org: string; year: string; can
                       className="my-2 w-32 border p-2"
                       aria-label={`IB kredit ${data?.accounts[index]?.accountNumber}`}
                       inputMode="decimal"
+                      disabled={data?.accounts[index]?.bookable === false}
                       value={row.credit}
                       onChange={(event) => edit(index, "credit", event.target.value)}
                     />
@@ -229,10 +232,11 @@ function CarryForward({ org, years }: { org: string; years: FiscalYearChoice[] }
   useEffect(() => {
     const controller = new AbortController();
     workspaceRequest<{ id: string; number: string; name: string; accountType: string }[]>(
-      `/accounts?organizationId=${org}`,
+      `/accounts?organizationId=${org}&activeOnly=true&accountType=EQUITY&limit=1000`,
       { signal: controller.signal }
     )
-      .then((accounts) =>
+      .then((accounts) => {
+        if (controller.signal.aborted) return;
         setAccounts(
           accounts
             .filter((account) => account.accountType === "EQUITY")
@@ -241,8 +245,8 @@ function CarryForward({ org, years }: { org: string; years: FiscalYearChoice[] }
               accountNumber: account.number,
               type: account.accountType
             }))
-        )
-      )
+        );
+      })
       .catch((error) => {
         if (!controller.signal.aborted) setMessage(error.message);
       });

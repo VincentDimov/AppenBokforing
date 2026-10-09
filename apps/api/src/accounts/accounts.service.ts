@@ -6,6 +6,7 @@ import { normalBalanceForAccountType } from "./account-normal-balance";
 import { CreateAccountDto } from "./dto/create-account.dto";
 import { ListAccountsQueryDto } from "./dto/list-accounts-query.dto";
 import { UpdateAccountDto } from "./dto/update-account.dto";
+import { assertAccountNumberEligible } from "./bas/eligibility";
 
 interface AccountAuditMetadata {
   ipAddress?: string;
@@ -29,6 +30,7 @@ export class AccountsService {
     const search = query.q?.trim();
     const where: Prisma.AccountWhereInput = {
       organizationId,
+      ...(query.accountType ? { type: query.accountType } : {}),
       ...(search
         ? {
             OR: [
@@ -39,10 +41,18 @@ export class AccountsService {
         : {})
     };
 
+    const limit = query.limit ?? 500;
+    if (query.activeOnly === "true") {
+      const ids = await this.database.prisma.$queryRaw<
+        { id: string }[]
+      >`SELECT id FROM accounts WHERE organization_id=${organizationId}::uuid AND is_active AND bas_account_eligible(organization_id,account_number,bas_catalog_account_id) AND (${query.accountType ?? null}::"AccountType" IS NULL OR type=${query.accountType ?? null}::"AccountType") AND (${search ?? ""}='' OR account_number LIKE ${(search ?? "") + "%"} OR name ILIKE ${"%" + (search ?? "") + "%"}) ORDER BY account_number LIMIT ${limit}`;
+      where.id = { in: ids.map((row) => row.id) };
+    }
     const accounts = await this.database.prisma.account.findMany({
       include: { vatCode: { select: vatCodeSelect } },
       orderBy: [{ accountNumber: "asc" }, { name: "asc" }],
-      where
+      where,
+      take: limit
     });
 
     return accounts.map((account) => this.toPublicAccount(account));
@@ -69,6 +79,9 @@ export class AccountsService {
   ) {
     try {
       const account = await this.database.prisma.$transaction(async (transaction) => {
+        await transaction.$queryRaw`SELECT id FROM organizations WHERE id=${organizationId}::uuid FOR SHARE`;
+        if (dto.active !== false)
+          await assertAccountNumberEligible(transaction, organizationId, dto.number);
         const vatCodeId = await this.resolveVatCodeId(transaction, organizationId, dto.vatCode);
         const created = await transaction.account.create({
           data: {
@@ -122,6 +135,8 @@ export class AccountsService {
   ) {
     try {
       const account = await this.database.prisma.$transaction(async (transaction) => {
+        await transaction.$queryRaw`SELECT id FROM organizations WHERE id=${organizationId}::uuid FOR SHARE`;
+        await transaction.$queryRaw`SELECT id FROM accounts WHERE id=${accountId}::uuid AND organization_id=${organizationId}::uuid FOR UPDATE`;
         const before = await transaction.account.findFirst({
           include: { vatCode: { select: vatCodeSelect } },
           where: { id: accountId, organizationId }
@@ -136,6 +151,25 @@ export class AccountsService {
             ? undefined
             : await this.resolveVatCodeId(transaction, organizationId, dto.vatCode);
         const accountType = dto.accountType ?? before.type;
+        if (
+          before.basCatalogAccountId &&
+          ((dto.number !== undefined && dto.number !== before.accountNumber) ||
+            (dto.accountType !== undefined && dto.accountType !== before.type))
+        )
+          throw new ConflictException({
+            code: "BAS_IDENTITY_IMMUTABLE",
+            message: "BAS-kontots nummer och granskade klassificering får inte ersättas."
+          });
+        if (
+          (dto.active ?? before.isActive) &&
+          (dto.active === true || (dto.number !== undefined && dto.number !== before.accountNumber))
+        )
+          await assertAccountNumberEligible(
+            transaction,
+            organizationId,
+            dto.number ?? before.accountNumber,
+            before.basCatalogAccountId
+          );
         if (
           dto.name !== undefined &&
           dto.name !== before.name &&
@@ -171,7 +205,9 @@ export class AccountsService {
             isActive: dto.active,
             name: dto.name,
             normalBalance:
-              dto.accountType === undefined ? undefined : normalBalanceForAccountType(accountType),
+              dto.accountType === undefined || dto.accountType === before.type
+                ? undefined
+                : normalBalanceForAccountType(accountType),
             type: dto.accountType,
             vatCodeId
           },
@@ -232,6 +268,7 @@ export class AccountsService {
 
   private toPublicAccount(account: {
     accountNumber: string;
+    basCatalogAccountId?: string | null;
     createdAt: Date;
     description: string | null;
     id: string;
@@ -252,6 +289,7 @@ export class AccountsService {
   }) {
     return {
       accountType: account.type,
+      basCatalogAccountId: account.basCatalogAccountId ?? null,
       active: account.isActive,
       createdAt: account.createdAt,
       description: account.description,

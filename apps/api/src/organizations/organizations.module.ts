@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../database/database.module";
+import { AccountsModule } from "../accounts/accounts.module";
 import { OrganizationMembershipGuard } from "./organization-membership.guard";
 import { OrganizationsController } from "./organizations.controller";
 import { OrganizationsService } from "./organizations.service";
@@ -19,7 +20,7 @@ import { PostingTemplatesController } from "./posting-templates.controller";
 import { PostingTemplatesService } from "./posting-templates.service";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AccountsModule],
   controllers: [
     OrganizationsController,
     OnboardingController,

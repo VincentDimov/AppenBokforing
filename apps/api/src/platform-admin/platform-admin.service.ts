@@ -8,6 +8,7 @@ import {
 import { Prisma, type OrganizationMemberRole } from "@ledgerapp/db";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../database/database.service";
+import { BasCatalogService } from "../accounts/bas/catalog.service";
 import { AuthSettingsService } from "../auth/auth-settings.service";
 import { PlatformAdminSecurityService, type AdminContext } from "./platform-admin-security.service";
 import type { PlatformPermission } from "./platform-admin.permissions";
@@ -147,7 +148,8 @@ export class PlatformAdminService {
   constructor(
     private readonly db: DatabaseService,
     private readonly security: PlatformAdminSecurityService,
-    private readonly settings: AuthSettingsService
+    private readonly settings: AuthSettingsService,
+    private readonly bas: BasCatalogService
   ) {}
   private confirm(actual: string, confirmation: string) {
     if (actual !== confirmation)
@@ -567,6 +569,7 @@ export class PlatformAdminService {
       await tx.organizationMember.create({
         data: { organizationId: org.id, userId: dto.ownerUserId, role: "OWNER" }
       });
+      await this.bas.provision(org.id, ctx.user.id, ctx.requestId, undefined, tx);
       await this.security.audit(tx, ctx, "ORGANIZATION_CREATED", "ORGANIZATION", org.id, {
         organizationId: org.id,
         after: { ownerUserId: dto.ownerUserId }

@@ -26,6 +26,7 @@ import { readAccountingContext } from "../reports/accounting-report-data";
 import { zeroBalance, rawBalance } from "../accounting/accounting-balances";
 
 import { assertSieInputSize } from "./sie-input-boundary";
+import { reviewSieAccounts, type SieAccountPlanRow } from "../accounts/bas/sie-account-plan";
 
 @Injectable()
 export class SieService {
@@ -46,6 +47,7 @@ export class SieService {
       fiscalYearId?: string;
       bytes?: Uint8Array;
       fileName?: string;
+      acknowledgeAccountActivations?: boolean;
     } = {}
   ) {
     if (!options.bytes) assertSieInputSize(content);
@@ -74,6 +76,7 @@ export class SieService {
         );
         preview.warnings.push(...review.warnings);
         preview.validationErrors.push(...review.conflicts);
+        preview.accountPlan = review.bas.rows;
       }
       return {
         mode: "PREVIEW",
@@ -111,6 +114,7 @@ export class SieService {
     await this.database.prisma.$transaction(
       async (tx) => {
         await requireOpenCalendar(tx, organizationId, fiscalYear.id);
+        await tx.$queryRaw`SELECT id FROM organizations WHERE id=${organizationId}::uuid FOR SHARE`;
         const review = await this.reviewMapping(tx, document, organizationId, fiscalYear.id);
         if (review.conflicts.length)
           throw new ConflictException({
@@ -119,6 +123,21 @@ export class SieService {
             validationErrors: review.conflicts
           });
         preview.warnings.push(...review.warnings);
+        if (
+          review.bas.rows.some((row) => row.activationRequired) &&
+          options.acknowledgeAccountActivations !== true
+        )
+          throw new ConflictException({
+            code: "SIE_ACCOUNT_ACTIVATION_CONFIRMATION_REQUIRED",
+            message: "Bekräfta uttryckligen BAS-aktiveringarna som visas i förhandsgranskningen."
+          });
+        for (const row of review.bas.rows.filter((row) => row.activationRequired)) {
+          const existing = await tx.account.findUnique({
+            where: { organizationId_accountNumber: { organizationId, accountNumber: row.number } }
+          });
+          if (existing)
+            await tx.account.update({ where: { id: existing.id }, data: { isActive: true } });
+        }
         const accounts = new Map(
           (
             await tx.account.findMany({
@@ -141,13 +160,21 @@ export class SieService {
         });
         for (const account of document.accounts)
           if (!accounts.has(account.number)) {
+            const catalogAccount = review.bas.catalog.get(account.number);
+            if (
+              catalogAccount &&
+              !review.bas.rows.find((row) => row.number === account.number)?.activationRequired
+            )
+              continue;
             const created = await tx.account.create({
               data: {
                 organizationId,
                 accountNumber: account.number,
-                name: account.name,
+                name: catalogAccount?.officialName ?? account.name,
+                basCatalogAccountId: catalogAccount?.id,
                 type:
-                  account.type === "T"
+                  catalogAccount?.type ??
+                  (account.type === "T"
                     ? AccountType.ASSET
                     : account.type === "S"
                       ? inferAccountType(account.number)
@@ -155,16 +182,18 @@ export class SieService {
                         ? AccountType.REVENUE
                         : account.type === "K"
                           ? AccountType.EXPENSE
-                          : inferAccountType(account.number),
-                normalBalance: normalBalance(
-                  account.type === "T"
-                    ? AccountType.ASSET
-                    : account.type === "I"
-                      ? AccountType.REVENUE
-                      : account.type === "K"
-                        ? AccountType.EXPENSE
-                        : inferAccountType(account.number)
-                )
+                          : inferAccountType(account.number)),
+                normalBalance:
+                  catalogAccount?.normalBalance ??
+                  normalBalance(
+                    account.type === "T"
+                      ? AccountType.ASSET
+                      : account.type === "I"
+                        ? AccountType.REVENUE
+                        : account.type === "K"
+                          ? AccountType.EXPENSE
+                          : inferAccountType(account.number)
+                  )
               }
             });
             accounts.set(account.number, created.id);
@@ -343,6 +372,9 @@ export class SieService {
             importedEntryCount: document.vouchers.length,
             summary: {
               accountsCreated,
+              basAccountActivations: review.bas.rows
+                .filter((row) => row.activationRequired)
+                .map((row) => row.number),
               accountsReused: document.accounts.length - accountsCreated,
               openingBalances: document.openingBalances.length,
               dimensions: document.objects.length,
@@ -556,6 +588,9 @@ export class SieService {
   ) {
     const warnings: string[] = [],
       conflicts: string[] = [];
+    const bas = await reviewSieAccounts(tx, organizationId, document);
+    for (const row of bas.rows)
+      if (row.reason) conflicts.push(`Account ${row.number}: ${row.reason}`);
     if (document.accounts.length || document.vouchers.length) {
       const existing = await tx.account.findMany({ where: { organizationId } });
       const mapped = new Map(existing.map((account) => [account.accountNumber, account]));
@@ -579,7 +614,10 @@ export class SieService {
           conflicts.push(`Account ${incoming.number}: existing type conflicts with #KTYP.`);
       }
       for (const number of used)
-        if (mapped.get(number)?.isActive === false)
+        if (
+          mapped.get(number)?.isActive === false &&
+          !bas.rows.some((row) => row.number === number && row.activationRequired && !row.reason)
+        )
           conflicts.push(`Account ${number} is inactive.`);
     }
     if (
@@ -613,7 +651,7 @@ export class SieService {
       if (existing && existing.name !== object.name)
         conflicts.push(`Object ${object.dimension}/${object.id} has conflicting metadata.`);
     }
-    return { warnings, conflicts };
+    return { warnings, conflicts, bas };
   }
   private signPreview(fingerprint: string) {
     const payload = `${Date.now() + 15 * 60 * 1000}.${fingerprint}`;
@@ -644,7 +682,8 @@ export class SieService {
           ? ["Imported VAT roles are unclassified and require manual review."]
           : [])
       ],
-      validationErrors: document.errors
+      validationErrors: document.errors,
+      accountPlan: [] as SieAccountPlanRow[]
     };
   }
 }

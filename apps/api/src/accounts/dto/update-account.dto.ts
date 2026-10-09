@@ -36,7 +36,7 @@ export class UpdateAccountDto {
   @IsOptional()
   @IsString()
   @Transform(({ value }) => normalizeOptionalString(value))
-  @Length(1, 160)
+  @Length(1, 2000)
   name?: string;
 
   @IsOptional()

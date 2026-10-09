@@ -10,13 +10,85 @@ import { AccountsService } from "./accounts.service";
 import { CreateAccountDto } from "./dto/create-account.dto";
 import { ListAccountsQueryDto } from "./dto/list-accounts-query.dto";
 import { UpdateAccountDto } from "./dto/update-account.dto";
+import { BasCatalogService } from "./bas/catalog.service";
+import {
+  ActivateCatalogDto,
+  CatalogQueryDto,
+  FrameworkDto,
+  ProvisionCatalogDto
+} from "./bas/catalog.dto";
 
 @ApiTags("Accounts")
 @ApiBearerAuth()
 @ApiCookieAuth("ledgerapp_access")
 @Controller("accounts")
 export class AccountsController {
-  constructor(private readonly accountsService: AccountsService) {}
+  constructor(
+    private readonly accountsService: AccountsService,
+    private readonly bas: BasCatalogService
+  ) {}
+
+  @Get("catalog")
+  @UseGuards(AccountsOrganizationGuard)
+  @RequireOrganizationPermission("READ_BOOKKEEPING")
+  catalog(@Query() query: CatalogQueryDto, @Req() request: AuthenticatedRequest) {
+    return this.bas.list(this.getOrganizationId(request), query);
+  }
+
+  @Post("catalog/activation-preview")
+  @UseGuards(AccountsOrganizationGuard)
+  @RequireOrganizationPermission("MANAGE_ACCOUNTS")
+  preview(@Body() dto: ActivateCatalogDto, @Req() request: AuthenticatedRequest) {
+    return this.bas.activationPreview(this.getOrganizationId(request), dto);
+  }
+
+  @Post("catalog/activate")
+  @UseGuards(AccountsOrganizationGuard)
+  @RequireOrganizationPermission("MANAGE_ACCOUNTS")
+  activate(
+    @Body() dto: ActivateCatalogDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.bas.activate(
+      this.getOrganizationId(request),
+      user.id,
+      dto,
+      this.getAuditMetadata(request).requestId
+    );
+  }
+
+  @Post("catalog/provision")
+  @UseGuards(AccountsOrganizationGuard)
+  @RequireOrganizationPermission("MANAGE_ACCOUNTS")
+  provision(
+    @Body() dto: ProvisionCatalogDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.bas.provision(
+      this.getOrganizationId(request),
+      user.id,
+      this.getAuditMetadata(request).requestId,
+      dto.versionId
+    );
+  }
+
+  @Post("catalog/framework")
+  @UseGuards(AccountsOrganizationGuard)
+  @RequireOrganizationPermission("UPDATE_ORGANIZATION")
+  framework(
+    @Body() dto: FrameworkDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.bas.setFramework(
+      this.getOrganizationId(request),
+      user.id,
+      dto,
+      this.getAuditMetadata(request).requestId
+    );
+  }
 
   @Get()
   @UseGuards(AccountsOrganizationGuard)

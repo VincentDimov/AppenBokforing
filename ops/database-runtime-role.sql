@@ -19,6 +19,8 @@ GRANT SELECT, INSERT ON platform_admin_recovery_codes, platform_admin_audit_even
 GRANT UPDATE (used_at) ON platform_admin_recovery_codes TO ledgerapp_runtime;
 -- Bootstrap state belongs to the explicitly authorized operator, not runtime.
 GRANT SELECT ON platform_admin_bootstrap TO ledgerapp_runtime;
+-- BAS reference catalogs are operator-imported and read-only at runtime.
+GRANT SELECT ON bas_catalog_versions, bas_account_catalog TO ledgerapp_runtime;
 -- No UPDATE/DELETE/TRUNCATE on platform audit/bootstrap; no runtime DDL.
 GRANT INSERT ON organization_invitations, year_carry_forwards TO ledgerapp_runtime;
 GRANT UPDATE (accepted_at, revoked_at, updated_at) ON organization_invitations TO ledgerapp_runtime;

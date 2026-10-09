@@ -25,6 +25,8 @@
     "dev:api": "corepack pnpm --filter @ledgerapp/db build && corepack pnpm --filter @ledgerapp/api dev",
     "dev:web": "corepack pnpm --filter @ledgerapp/web dev",
     "admin:bootstrap": "node scripts/admin-bootstrap.cjs",
+    "bas:import": "node scripts/bas-catalog-import.cjs",
+    "bas:diff": "node scripts/bas-catalog-diff.cjs",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

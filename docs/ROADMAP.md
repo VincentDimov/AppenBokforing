@@ -1,6 +1,16 @@
 # LedgerApp — roadmap från nuvarande implementation
 
-## Efter FAS 36 – inga nya faser startas automatiskt
+## Efter FAS 37 — stanna här
+
+Se [aktuell 37-punktsrapport/gate](fas37-release-gate.md). Ingen FAS 38 startas.
+Före full BAS-release måste operatören etablera integrations-/distributionsrättigheter,
+redovisningsgranska normaliserat manifest, lösa källavvikelser och godkänna dess hash.
+Därefter krävs explicit operator-import/standardval, kontrollerade företagsuppgraderingar,
+ny full releasegate och separat samordnad migration/GRANT/API/web-deployment.
+Importer-/runtimebehörigheter och källfiler får inte läcka till frontend eller Git.
+Lokala verifieringar ersätter inte remote CI eller tidigare öppna drift-/redovisnings-P0.
+
+## Historik: efter FAS 36 – dåvarande stopp
 
 Se [aktuell slutrapport/gate](fas36-release-gate.md). Begär kod-/säkerhetsgranskning,
 kör remote CI för denna arbetskopia och planera samordnad API/web-release.

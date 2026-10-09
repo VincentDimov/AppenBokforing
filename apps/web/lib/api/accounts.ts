@@ -10,6 +10,7 @@ export interface VatCodeSummary {
 }
 
 export interface Account {
+  basCatalogAccountId?: string | null;
   accountType: AccountType;
   active: boolean;
   createdAt: string;
@@ -53,9 +54,12 @@ export const accountTypeLabels: Record<AccountType, string> = {
 export async function getAccounts(
   organizationId: string,
   q: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: {activeOnly?:boolean;limit?:number}
 ): Promise<Account[]> {
   const parameters = new URLSearchParams({ organizationId });
+  if(options?.activeOnly) parameters.set("activeOnly","true");
+  if(options?.limit) parameters.set("limit",String(options.limit));
 
   if (q.trim()) {
     parameters.set("q", q.trim());

@@ -372,6 +372,77 @@ async function main() {
       orphans: [],
       mode: "REPORT_ONLY"
     });
+    // Synthetic reference data only: exercise the new immutable catalog and provenance on restore.
+    const catalog = await db.$transaction(async (tx) => {
+      const version = await tx.basCatalogVersion.create({
+        data: {
+          version: "RESTORE-SYNTHETIC-" + suffix,
+          sourceVersion: "synthetic-only",
+          sourceReference: "disposable restore fixture",
+          sourceSha256: "0".repeat(64),
+          contentSha256: "1".repeat(64),
+          licenseReference: "synthetic fixture; not BAS data",
+          classificationReviewReference: "synthetic fixture",
+          verificationReport: {},
+          rowCount: 2
+        }
+      });
+      const reference = await tx.basAccountCatalog.create({
+        data: {
+          catalogVersionId: version.id,
+          accountNumber: "8880",
+          officialName: "Synthetic restore account",
+          accountClass: "8",
+          accountGroup: "88",
+          className: "Synthetic",
+          groupName: "Synthetic",
+          category: "MAIN_ACCOUNT",
+          isK2Restricted: false,
+          isDefaultActive: true,
+          isBookable: true,
+          type: "EXPENSE",
+          normalBalance: "DEBIT",
+          sourcePosition: "fixture",
+          classificationReference: "synthetic fixture"
+        }
+      });
+      await tx.basAccountCatalog.create({
+        data: {
+          catalogVersionId: version.id,
+          accountNumber: "8881",
+          officialName: "Synthetic optional restore",
+          accountClass: "8",
+          accountGroup: "88",
+          className: "Synthetic",
+          groupName: "Synthetic",
+          category: "SUBACCOUNT",
+          parentAccountNumber: "8880",
+          isK2Restricted: false,
+          isDefaultActive: false,
+          isBookable: true,
+          type: "EXPENSE",
+          normalBalance: "DEBIT",
+          sourcePosition: "fixture",
+          classificationReference: "synthetic fixture"
+        }
+      });
+      await tx.organization.update({
+        where: { id: org.id },
+        data: { basCatalogVersionId: version.id }
+      });
+      await tx.account.create({
+        data: {
+          organizationId: org.id,
+          accountNumber: "8880",
+          name: reference.officialName,
+          type: "EXPENSE",
+          normalBalance: "DEBIT",
+          isActive: false,
+          basCatalogAccountId: reference.id
+        }
+      });
+      return reference;
+    });
     await app.close();
     app = undefined;
     const dump = execFileSync(
@@ -415,6 +486,8 @@ async function main() {
     assert.equal(createHash("sha256").update(blob).digest("hex"), record.sha256);
     for (const model of [
       "user",
+      "basCatalogVersion",
+      "basAccountCatalog",
       "session",
       "organization",
       "organizationMember",
@@ -497,6 +570,8 @@ async function main() {
     assert.ok(user.body);
     const audit = await restored.auditEvent.findFirstOrThrow({ where: { organizationId: org.id } });
     for (const sql of [
+      `UPDATE bas_account_catalog SET official_name='Changed' WHERE id='${catalog.id}'`,
+      `DELETE FROM bas_account_catalog WHERE id='${catalog.id}'`,
       `UPDATE journal_lines SET debit_amount=11 WHERE journal_entry_id='${entry.id}'`,
       `DELETE FROM journal_entries WHERE id='${entry.id}'`,
       `UPDATE audit_events SET metadata='{}' WHERE id='${audit.id}'`,
@@ -561,6 +636,9 @@ async function main() {
     );
     for (const sql of [
       "DROP TABLE audit_events",
+      `UPDATE bas_account_catalog SET official_name='Changed' WHERE id='${catalog.id}'`,
+      `DELETE FROM bas_account_catalog WHERE id='${catalog.id}'`,
+      "TRUNCATE bas_account_catalog",
       "ALTER TABLE accounts ADD COLUMN unauthorized text",
       "CREATE TABLE public.unauthorized(id int)",
       "CREATE SCHEMA unauthorized",
@@ -607,6 +685,7 @@ async function main() {
         immutableTriggers: true,
         tenantForeignKeys: true,
         runtimeRoleDdlDenied: true,
+        immutableCatalogAndProvenanceRestore: true,
         elapsedSeconds: (Date.now() - started) / 1000,
         artifactDir,
         buckets: [bucket, restoredBucket]

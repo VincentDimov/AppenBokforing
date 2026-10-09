@@ -7,6 +7,13 @@ triggers that Prisma cannot express.
 
 ## ER model
 
+### FAS 37: immutable global BAS reference and tenant provenance
+
+Migration 25 adds `BasCatalogVersion`, `BasAccountCatalog`, organization framework/
+selected version and optional Account provenance. All new relations use RESTRICT;
+no accounting identity, money, posted snapshot or audit history is rewritten.
+Account names become TEXT. See [the model, ER diagram and operator contract](bas-account-catalog.md).
+
 ### FAS 36: separate global administration
 
 Migration 24 adds the following relationships without changing accounting deletion

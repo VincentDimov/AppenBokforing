@@ -39,6 +39,13 @@ FAS 36 Master Admin & Platform Administration
 FAS 36 Master Admin & Platform Administration
 FAS 37 COMPLETE BAS 2026 CHART OF ACCOUNTS INTEGRATION
 
+Aktuell FAS 37-status: katalog-/bokföringsarkitektur implementerad; full officiell
+BAS-release BLOCKED av rättigheter och slutlig käll-/klassificeringsgranskning.
+Se [full 37-punktsrapport](docs/fas37-release-gate.md). Migration 25; historik bevarad.
+Ingen FAS 38, ingen automatisk full kontoplansimport eller cloud-release.
+
+Följande stycke är historik från FAS 36:
+
 Integrerad global metadataadministration med separata persistenta roller,
 första lösenordsbyte/MFA, användare/företag/medlemskap, sessioner, säkerhetscenter
 och oföränderlig audit. Se [full rapport och faktisk releasegate](docs/fas36-release-gate.md).

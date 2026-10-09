@@ -26,6 +26,7 @@ class ImportSieDto {
   @IsOptional() @IsString() @MaxLength(160) previewToken?: string;
   @IsOptional() @IsUUID() fiscalYearId?: string;
   @IsOptional() @IsBoolean() confirm?: boolean;
+  @IsOptional() @IsBoolean() acknowledgeAccountActivations?: boolean;
 }
 class ExportSieDto {
   @IsUUID() organizationId!: string;
@@ -60,7 +61,8 @@ export class SieController {
         previewToken: dto.previewToken,
         fiscalYearId: dto.fiscalYearId,
         bytes,
-        fileName: dto.fileName
+        fileName: dto.fileName,
+        acknowledgeAccountActivations: dto.acknowledgeAccountActivations
       }
     );
   }
