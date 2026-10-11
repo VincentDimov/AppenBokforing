@@ -11,6 +11,9 @@ import { goldenAccounting as golden } from "../../../tests/fixtures/accounting-g
 import { readFile } from "node:fs/promises";
 import { parseSie4 } from "@ledgerapp/sie";
 import { validateIndependent } from "../../../tests/sie-independent.cjs";
+// Original full-size fixture, no official source assets.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { syntheticCatalog, databaseRows } = require("../../../scripts/synthetic-bas-catalog.cjs");
 
 type Organization = {
   id: string;
@@ -244,11 +247,42 @@ test.afterAll(async () => {
   await api?.dispose();
   await db?.$disconnect();
 });
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, page }, testInfo) => {
   await context.addCookies(cookies);
+  // One isolated API still has a real per-IP, per-handler 100/60s limiter.
+  // Linux CI is faster than human use/Windows, and all contexts share an IP.
+  // Reserve enough real GET slots for the largest case BEFORE starting it.
+  // A full TTL is needed: the reset header expires individual hits, not all hits.
+  const probe = await api.get(`/api/fiscal-years?organizationId=${a.id}`);
+  if (probe.status() === 429 || Number(probe.headers()["x-ratelimit-remaining"]) < 35) {
+    testInfo.setTimeout(testInfo.timeout + 61_000); // only the deliberate budget wait
+    console.log(
+      JSON.stringify({
+        readBudget: "WAIT_REAL_TTL",
+        status: probe.status(),
+        remaining: probe.headers()["x-ratelimit-remaining"],
+        seconds: 61
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 61_000));
+    expect((await api.get(`/api/fiscal-years?organizationId=${a.id}`)).status()).toBe(200);
+  } else expect(probe.status()).toBe(200);
+  page.on("response", (response) => {
+    if (response.status() === 429)
+      console.log(
+        JSON.stringify({
+          browserHttp: 429,
+          path: new URL(response.url()).pathname
+        })
+      );
+  });
 });
 
 async function basWorkspace() {
+  const scale = syntheticCatalog();
+  scale.accounts = scale.accounts.filter(
+    (r: { number: string }) => !["1110", "1111", "2080"].includes(r.number)
+  );
   const catalog = await db.$transaction(async (tx) => {
     const version = await tx.basCatalogVersion.create({
       data: {
@@ -260,7 +294,7 @@ async function basWorkspace() {
         licenseReference: "Original synthetic test data",
         classificationReviewReference: "Manual fixture classification",
         verificationReport: { synthetic: true },
-        rowCount: 3
+        rowCount: scale.accounts.length + 3
       }
     });
     await tx.basAccountCatalog.createMany({
@@ -324,6 +358,7 @@ async function basWorkspace() {
         }
       ]
     });
+    await tx.basAccountCatalog.createMany({ data: databaseRows(scale, version.id) });
     return version;
   });
   let org: Organization;
@@ -383,7 +418,9 @@ test("BAS optional activation requires a real preview and becomes available in v
   ).toBe(400);
   await open(page, org, "registers/accounts");
   await page.getByRole("button", { name: "Tillgängliga BAS-konton" }).click();
+  await page.getByLabel("Sök kontonummer eller namn").fill("2080");
   await expect(page.getByRole("checkbox", { name: "Markera konto 2080" })).toBeDisabled();
+  await page.getByLabel("Sök kontonummer eller namn").fill("1111");
   await page.getByRole("checkbox", { name: "Markera konto 1111" }).check();
   await page.getByRole("button", { name: "Lägg till markerade (1)" }).click();
   await expect(page.getByRole("dialog", { name: "Bekräfta BAS-aktivering" })).toBeVisible();
@@ -419,6 +456,7 @@ test("BAS K3 activation needs typed framework confirmation and never silently sw
   await dialog.getByRole("button", { name: "Bekräfta K-regelverk" }).click();
   await expect(dialog).not.toBeVisible();
   await page.getByRole("button", { name: "Tillgängliga BAS-konton" }).click();
+  await page.getByLabel("Sök kontonummer eller namn").fill("2080");
   await expect(page.getByRole("checkbox", { name: "Markera konto 2080" })).toBeEnabled();
   await page.getByRole("checkbox", { name: "Markera konto 2080" }).check();
   await page.getByRole("button", { name: "Lägg till markerade (1)" }).click();
@@ -520,6 +558,33 @@ test("BAS reconciliation and browser deactivation preserve posted lines and snap
   await open(page, org, "bookkeeping/vouchers/" + id);
   await expect(page.getByLabel("Debet rad 1")).toHaveValue("123.45");
   await expect(page.getByLabel("Debet rad 1")).toBeDisabled();
+});
+
+test("full-size synthetic BAS catalog stays bounded and accessible at four widths", async ({
+  page
+}) => {
+  test.setTimeout(120_000);
+  const org = await basWorkspace();
+  const total = await db.basAccountCatalog.count({
+    where: { catalogVersionId: org.catalogVersionId }
+  });
+  expect(total).toBeGreaterThanOrEqual(1282);
+  for (const width of [1440, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await open(page, org, "registers/accounts");
+    await page.getByRole("button", { name: "Alla BAS-konton", exact: true }).click();
+    await expect(page.getByText(`Sida 1 · ${total} träffar`)).toBeVisible();
+    expect(await page.locator("tbody tr").count()).toBeLessThanOrEqual(50);
+    await page.getByRole("button", { name: "Nästa", exact: true }).click();
+    await expect(page.getByText(`Sida 2 · ${total} träffar`)).toBeVisible();
+    await page.getByLabel("Sök kontonummer eller namn").fill("1120");
+    await expect(page.getByText("Ej bokföringsbart", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Lägg till konto 1120", exact: true })
+    ).toBeDisabled();
+    await noPageOverflow(page, `full-size BAS ${width}`);
+    await accessible(page);
+  }
 });
 
 test("posting template create → use → change amount → normal posting", async ({ page }) => {
@@ -1364,6 +1429,11 @@ test("visible general ledger, income statement and balance sheet agree with post
   expect(lines).toHaveLength(4);
   for (const report of ["general-ledger", "income-statement", "balance-sheet"]) {
     await open(page, reports, "reports/" + report);
+    await expect(
+      page.getByLabel("Räkenskapsår", { exact: true }).locator("option", {
+        hasText: year
+      })
+    ).toHaveAttribute("value", reports.yearId);
     await page.getByLabel("Räkenskapsår", { exact: true }).selectOption(reports.yearId);
     if (report === "balance-sheet") await page.getByLabel("Rapportdatum").fill(date);
     else {
@@ -1388,6 +1458,39 @@ test("visible general ledger, income statement and balance sheet agree with post
     await expect(page.getByLabel("Räkenskapsår", { exact: true })).toHaveValue(b.yearId);
     await expect(page.locator("article")).toHaveCount(0);
   }
+});
+
+test("real fiscal-year 429 explains missing options and explicit retry recovers correct tenant", async ({
+  page
+}) => {
+  test.setTimeout(130_000); // intentionally exercises the unmodified 60s limiter
+  let limited = false;
+  for (let index = 0; index <= 100; index++) {
+    const response = await api.get(`/api/fiscal-years?organizationId=${reports.id}`);
+    if (response.status() === 429) {
+      limited = true;
+      break;
+    }
+    expect(response.status()).toBe(200);
+  }
+  expect(limited).toBe(true);
+  const failedRead = page.waitForResponse(
+    (r) => r.url().includes("/api/fiscal-years?") && r.status() === 429
+  );
+  await open(page, reports, "reports/general-ledger");
+  await failedRead;
+  const selector = page.getByLabel("Räkenskapsår", { exact: true });
+  await expect(selector).toBeDisabled();
+  await expect(selector.locator(`option[value="${reports.yearId}"]`)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Läs räkenskapsår igen" })).toBeVisible();
+  await new Promise((resolve) => setTimeout(resolve, 61_000));
+  await page.getByRole("button", { name: "Läs räkenskapsår igen" }).click();
+  await expect(selector).toBeEnabled();
+  await expect(selector).toHaveValue(reports.yearId);
+  await selectOrg(page, b);
+  await expect(selector).toHaveValue(b.yearId);
+  await expect(selector.locator(`option[value="${reports.yearId}"]`)).toHaveCount(0);
+  await expect(page.locator("article")).toHaveCount(0);
 });
 
 test("late report response cannot overwrite new organization's cleared state", async ({ page }) => {
@@ -1456,20 +1559,6 @@ test("locked period rejects backend posting and displays browser failure", async
 test("real 400 / 403 / 404 boundaries plus explicit injected 500 and network UX", async ({
   page
 }) => {
-  test.setTimeout(120_000);
-  // The expanded synthetic BAS suite adds legitimate organization/year reads.
-  // Reserve a real limiter window before this error-boundary test; do not mock
-  // successful reads, relax API throttling or retry any accounting write.
-  const readWindow = await api.get(`/api/fiscal-years?organizationId=${a.id}`);
-  if (
-    readWindow.status() === 429 ||
-    Number(readWindow.headers()["x-ratelimit-remaining"] ?? 100) < 10
-  ) {
-    // Individual hit expirations can return only a few slots at the advertised
-    // reset. One complete TTL frees the window without weakening the API limiter.
-    await new Promise((resolve) => setTimeout(resolve, 60_000));
-    expect((await api.get(`/api/fiscal-years?organizationId=${a.id}`)).status()).toBe(200);
-  } else expect(readWindow.status()).toBe(200);
   expect(
     (await api.post("/api/accounts", { data: { organizationId: a.id, number: "bad" } })).status()
   ).toBe(400);
@@ -1568,21 +1657,6 @@ for (const width of [1440, 1024, 768, 390]) {
     page
   }, testInfo) => {
     test.setTimeout(180_000);
-    // This route sweep is intentionally faster than normal human use. Reserve a
-    // real read window; never disable the API limiter or retry accounting writes.
-    const probe = await api.get(`/api/fiscal-years?organizationId=${goldenOrg.id}`);
-    const remaining = probe.headers()["x-ratelimit-remaining"];
-    if (probe.status() === 429 || (remaining !== undefined && Number(remaining) < 30)) {
-      const seconds = Number(
-        probe.headers()["retry-after"] ?? probe.headers()["x-ratelimit-reset"] ?? 60
-      );
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(60, Math.max(1, seconds)) * 1000)
-      );
-      expect((await api.get(`/api/fiscal-years?organizationId=${goldenOrg.id}`)).status()).toBe(
-        200
-      );
-    } else expect(probe.status()).toBe(200);
     await page.setViewportSize({ width, height: 1000 });
     await open(page, goldenOrg, "");
     await expect(

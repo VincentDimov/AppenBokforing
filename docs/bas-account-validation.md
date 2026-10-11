@@ -1,6 +1,6 @@
 # BAS 2026 v1.1 — faktisk källvalidering
 
-Kontrollerat 2026-10-09 med `scripts/verify-bas-sources.py`, PDF + officiell XLSX.
+Kontrollerat 2026-10-11 med `scripts/verify-bas-sources.py`, PDF + officiell XLSX.
 Fulla källfiler/kontonamn hålls utanför repositoryt. Se
 [källor, hash och rättighetsgräns](bas-2026-integration.md).
 
@@ -31,15 +31,19 @@ Förekomstmängderna och `#`-markeringarna är exakt lika mellan PDF och XLSX;
 inga saknade eller extra fyrsiffriga förekomster i jämförelsen. Bekräftade
 källreferenser: 1010 som begränsat huvudkonto, 1011 som begränsat underkonto,
 1020:s exakta kortnamn, 1028 under 1020 samt 6200/6210/6211 som grupp/huvud/under.
-Detta är **inte** en full kontroll av alla svenska namn, multiliner eller ekonomiska
-semantiker. Återstående namn-/klassificeringsarbete får inte beskrivas som PASS.
+Fulla förekomstnamn matchar nu **1285/1285**, även radbrutna etiketter; se
+[metod, begränsningar och resolution](bas-source-reconciliation.md). Detta är
+inte en professionell ekonomisk/bookable-granskning eller en entydig
+namnresolution för det internt motstridiga numret 2087.
 
 Identifierade dubbla nummer: **2087, 2120, 2130**. 2087 har motstridiga officiella
 namn i källan och kräver auktoritativ resolution, inte “sista raden vinner”.
-2120/2130 återkommer i källkolumner och kräver explicit dedupliceringsbeslut.
+2120/2130 har identiska namn/markörer och normaliseras till en identitet per nummer.
 För **3211, 3212, 3231** saknas motsvarande sifferhärlett huvudkonto 3210/3230.
 Välj en faktiskt befintlig, granskad parent inom samma grupp/version eller stoppa
 importen. Uppfinn aldrig det saknade huvudkontot.
+3200 finns och kan uttryckligen väljas efter granskning; modellen tillåter detta
+redan och syntetiska tester verifierar det utan påhittade 3210/3230.
 
 Importvalidatorn vägrar ofullständigt manifest, olösta namn/klassificeringar/dubbletter,
 fel markerade/icke-fyrsiffriga nummer, saknade/ogiltiga parents, fel typer eller

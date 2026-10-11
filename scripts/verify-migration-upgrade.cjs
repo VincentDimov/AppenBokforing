@@ -8,6 +8,9 @@ const fs = require("node:fs"),
 const { execFileSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const { PrismaClient } = require("../packages/db/dist");
+const { diagnostics, fingerprint } = require("./safe-diagnostics.cjs");
+let stage = "configuration";
+let invariant;
 if (process.env.RUN_DISPOSABLE_RESTORE_DRILL !== "yes")
   throw new Error("Disposable opt-in required");
 const upgradeDatabase = process.env.UPGRADE_TEST_DATABASE || "ledgerapp_upgrade_3034";
@@ -29,8 +32,8 @@ const migrations = fs
   .filter((name) => /^\d/.test(name))
   .sort();
 const baselineCount = Number(process.env.UPGRADE_BASE_MIGRATION_COUNT || "14");
-if (!Number.isInteger(baselineCount) || baselineCount < 14 || baselineCount >= migrations.length)
-  throw new Error("Prior migration baseline must leave at least one forward migration.");
+if (!Number.isInteger(baselineCount) || baselineCount < 14 || baselineCount > migrations.length)
+  throw new Error("Baseline must be an existing supported migration boundary.");
 for (const name of migrations.slice(0, baselineCount))
   fs.cpSync(path.join(schemaRoot, "migrations", name), path.join(temporary, "migrations", name), {
     recursive: true
@@ -45,11 +48,14 @@ const deploy = (schema) =>
 async function main() {
   const db = new PrismaClient({ datasourceUrl: url });
   try {
+    stage = "empty-target";
     const tables = await db.$queryRawUnsafe(
       "SELECT count(*)::int AS count FROM information_schema.tables WHERE table_schema='public'"
     );
     assert.equal(tables[0].count, 0, "Upgrade target must be fresh; no overwrite");
+    stage = "baseline-migrations";
     deploy(path.join(temporary, "schema.prisma"));
+    stage = "seed-prior-schema";
     // Do not use the newest generated client's default projections on an older
     // schema. Seed real prior-schema rows and compare every original column.
     const user = randomUUID(),
@@ -83,22 +89,23 @@ async function main() {
       await tx.$executeRaw`INSERT INTO journal_lines(id,organization_id,journal_entry_id,account_id,line_number,debit_amount,credit_amount,project_id,cost_center_id,updated_at) VALUES (${randomUUID()}::uuid,${org}::uuid,${entry}::uuid,${bank}::uuid,1,100,0,${project}::uuid,${center}::uuid,now()),(${randomUUID()}::uuid,${org}::uuid,${entry}::uuid,${revenue}::uuid,2,0,100,${project}::uuid,${center}::uuid,now())`;
       await tx.$executeRaw`UPDATE journal_entries SET status='POSTED',voucher_number=1,posted_at=now() WHERE id=${entry}::uuid`;
     });
+    // Populate evidence/auth/SIE/templates too: comparing empty tables alone is
+    // not proof that their original columns and identities survive an upgrade.
+    const attachment = randomUUID(),
+      template = randomUUID(),
+      session = randomUUID();
+    await db.$executeRaw`INSERT INTO sessions(id,user_id,token_hash,expires_at,absolute_expires_at,family_id,updated_at) VALUES (${session}::uuid,${user}::uuid,${randomUUID()},now()+interval '1 day',now()+interval '2 days',${session}::uuid,now())`;
+    await db.$executeRaw`INSERT INTO attachments(id,organization_id,journal_entry_id,storage_key,original_file_name,safe_file_name,mime_type,byte_size,sha256,uploaded_by_id,updated_at) VALUES (${attachment}::uuid,${org}::uuid,${entry}::uuid,${"synthetic-upgrade/" + attachment},'fixture.pdf','fixture.pdf','application/pdf',12,${"a".repeat(64)},${user}::uuid,now())`;
+    await db.$executeRaw`INSERT INTO sie_imports(id,organization_id,fiscal_year_id,source_attachment_id,imported_by_id,updated_at) VALUES (${randomUUID()}::uuid,${org}::uuid,${fiscal}::uuid,${attachment}::uuid,${user}::uuid,now())`;
+    await db.$executeRaw`INSERT INTO sie_exports(id,organization_id,fiscal_year_id,output_attachment_id,exported_by_id,updated_at) VALUES (${randomUUID()}::uuid,${org}::uuid,${fiscal}::uuid,${attachment}::uuid,${user}::uuid,now())`;
+    await db.$executeRaw`INSERT INTO posting_templates(id,organization_id,code,name,created_by_id,updated_at) VALUES (${template}::uuid,${org}::uuid,'T1','Prior template',${user}::uuid,now())`;
+    await db.$executeRaw`INSERT INTO posting_template_lines(id,organization_id,posting_template_id,account_id,line_number,side,amount,updated_at) VALUES (${randomUUID()}::uuid,${org}::uuid,${template}::uuid,${bank}::uuid,1,'DEBIT',100,now()),(${randomUUID()}::uuid,${org}::uuid,${template}::uuid,${revenue}::uuid,2,'CREDIT',100,now())`;
+    await db.$executeRaw`UPDATE accounting_periods SET status='LOCKED',locked_at=now(),locked_by_id=${user}::uuid WHERE id=${period}::uuid`;
     const before = {};
-    for (const table of [
-      "users",
-      "organizations",
-      "organization_members",
-      "fiscal_years",
-      "accounting_periods",
-      "voucher_series",
-      "accounts",
-      "projects",
-      "cost_centers",
-      "opening_balances",
-      "journal_entries",
-      "journal_lines",
-      "audit_events"
-    ]) {
+    const originalTables = await db.$queryRawUnsafe(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' AND table_name <> '_prisma_migrations' ORDER BY table_name"
+    );
+    for (const { table_name: table } of originalTables) {
       const columns = (
         await db.$queryRawUnsafe(
           `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='${table}' ORDER BY ordinal_position`
@@ -111,12 +118,30 @@ async function main() {
         rows: await db.$queryRawUnsafe(`SELECT ${columns} FROM ${table} ORDER BY id`)
       };
     }
+    stage = "forward-migrations";
     deploy(path.join(schemaRoot, "schema.prisma"));
-    for (const [table, snapshot] of Object.entries(before))
-      assert.deepEqual(
-        await db.$queryRawUnsafe(`SELECT ${snapshot.columns} FROM ${table} ORDER BY id`),
-        snapshot.rows
+    // External DDL changes result types (e.g. account.name varchar -> text).
+    // PostgreSQL cannot reuse the earlier pooled prepared SELECT plan. This is
+    // a verifier connection lifecycle issue, not a data migration failure.
+    await db.$disconnect();
+    await db.$connect();
+    for (const [table, snapshot] of Object.entries(before)) {
+      stage = "original-data-comparison";
+      invariant = { table };
+      const after = await db.$queryRawUnsafe(
+        `SELECT ${snapshot.columns} FROM ${table} ORDER BY id`
       );
+      invariant = {
+        table,
+        expectedRows: snapshot.rows.length,
+        actualRows: after.length,
+        expectedHash: fingerprint(snapshot.rows),
+        actualHash: fingerprint(after)
+      };
+      assert.deepEqual(after, snapshot.rows, "Original rows and columns changed");
+    }
+    invariant = undefined;
+    stage = "historical-snapshot-guards";
     if (baselineCount < 19)
       assert.equal(
         (await db.journalLine.findFirstOrThrow()).projectSnapshot,
@@ -171,6 +196,9 @@ async function main() {
         earlierMigrations: baselineCount,
         sequentialRecentMigrations: migrations.length - baselineCount,
         preservedModels: Object.keys(before).length,
+        populatedModels: Object.values(before).filter((s) => s.rows.length > 0).length,
+        originalRows: Object.values(before).reduce((sum, s) => sum + s.rows.length, 0),
+        baselineMigration: migrations[baselineCount - 1],
         historicalMigrationsEdited: false,
         dbPush: false
       })
@@ -179,7 +207,11 @@ async function main() {
     await db.$disconnect();
   }
 }
-main().catch(() => {
-  console.error("Disposable upgrade verification failed (connection details redacted).");
+main().catch((error) => {
+  console.error(
+    JSON.stringify(
+      diagnostics(error, { gate: "migration-upgrade", stage, baselineCount, invariant })
+    )
+  );
   process.exitCode = 1;
 });

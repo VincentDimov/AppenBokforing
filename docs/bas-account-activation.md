@@ -48,6 +48,12 @@ tidigare strikt inverteringskontrakt; detta ger inte fria nya bokföringsvärden
 
 ## UI
 
+FAS 37.1 visar tydligt **Aktivt**, **Tillgängligt**, **Ej bokföringsbart** och
+**Begränsat enligt K2 · K3 krävs**. Tillgängligt betyder katalogpost som ännu
+inte är aktiv, inte ett löfte om aktiveringsbehörighet. Serverns eligibility
+och previewbeslut avgör; icke-bokföringsbara rader har inaktiverade kontroller.
+Fullskaliga syntetiska browserfixtures använder över 1282 poster med serverpaging.
+
 Konton/Kontoplan behåller FAS 35-designsystemet: fyra flikar, verkliga counts,
 sökning, klass/grupp/kategori/status/K2-filter, A–Ö/Ö–A/nummersortering, sidstorlek 50,
 listvy och expanderbar gruppvy med parents. Gruppvy gäller den laddade sidan, inte

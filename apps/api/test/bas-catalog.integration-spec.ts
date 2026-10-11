@@ -5,6 +5,8 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { configureHttpApp } from "../src/http/app-setup";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { syntheticCatalog, databaseRows } = require("../../../scripts/synthetic-bas-catalog.cjs");
 
 /** Entirely original synthetic data. Never imports the copyrighted BAS chart. */
 describe("BAS versioned catalog / tenant activation", () => {
@@ -628,5 +630,120 @@ describe("BAS versioned catalog / tenant activation", () => {
     expect(
       (await prisma.organization.findUniqueOrThrow({ where: { id: target } })).basCatalogVersionId
     ).toBeNull();
+  });
+  it("full-size catalog paginates exactly, provisions concurrently and preserves optional/nonbookable/K2 boundaries", async () => {
+    const started = Date.now();
+    const scale = syntheticCatalog();
+    expect(scale.accounts.length).toBeGreaterThanOrEqual(1282);
+    const large = await prisma.$transaction(async (tx) => {
+      const v = await tx.basCatalogVersion.create({
+        data: {
+          version: scale.version,
+          sourceVersion: scale.sourceVersion,
+          sourceReference: scale.sourceReference,
+          sourceSha256: scale.sourceSha256,
+          contentSha256: "c".repeat(64),
+          licenseReference: scale.licenseReference,
+          classificationReviewReference: scale.classificationReviewReference,
+          verificationReport: scale.verification,
+          rowCount: scale.accounts.length
+        }
+      });
+      await tx.basAccountCatalog.createMany({ data: databaseRows(scale, v.id) });
+      return v;
+    });
+    const target = (
+      await owner
+        .post("/organizations")
+        .send({ name: "Full-size original fixture", slug: `scale-${run}` })
+        .expect(201)
+    ).body.id;
+    const provision = await Promise.all(
+      [1, 2].map(() =>
+        owner
+          .post("/accounts/catalog/provision")
+          .send({ organizationId: target, versionId: large.id })
+          .expect(201)
+      )
+    );
+    const expectedDefaults = scale.accounts.filter(
+      (r: { number: string; isBookable: boolean; isK2Restricted: boolean }) =>
+        r.isBookable && !r.isK2Restricted && r.number.endsWith("0")
+    ).length;
+    expect(provision.reduce((sum, r) => sum + r.body.inserted, 0)).toBe(expectedDefaults);
+    expect(await prisma.account.count({ where: { organizationId: target } })).toBe(
+      expectedDefaults
+    );
+    const numbers: string[] = [];
+    for (let page = 1; page <= Math.ceil(scale.accounts.length / 100); page++) {
+      const result = await owner
+        .get(`/accounts/catalog?organizationId=${target}&tab=all&pageSize=100&page=${page}`)
+        .expect(200);
+      expect(result.body.total).toBe(scale.accounts.length);
+      expect(result.body.items.length).toBeLessThanOrEqual(100);
+      numbers.push(...result.body.items.map((r: { number: string }) => r.number));
+    }
+    expect(numbers).toEqual(scale.accounts.map((r: { number: string }) => r.number).sort());
+    const rows = await prisma.basAccountCatalog.findMany({
+      where: { catalogVersionId: large.id },
+      orderBy: { accountNumber: "asc" }
+    });
+    const valid = rows
+      .filter((r) => r.isBookable && !r.isK2Restricted && !r.isDefaultActive)
+      .slice(0, 100);
+    const blocked = rows.find((r) => !r.isBookable)!;
+    await owner
+      .post("/accounts/catalog/activate")
+      .send({ organizationId: target, catalogAccountIds: [valid[0]!.id, blocked.id] })
+      .expect(400);
+    expect(await prisma.account.count({ where: { organizationId: target } })).toBe(
+      expectedDefaults
+    );
+    const preview = await owner
+      .post("/accounts/catalog/activation-preview")
+      .send({ organizationId: target, catalogAccountIds: valid.map((r) => r.id) })
+      .expect(201);
+    expect(preview.body).toMatchObject({ selected: 100, canAdd: 100, notAllowed: 0 });
+    const activated = await Promise.all(
+      [1, 2].map(() =>
+        owner
+          .post("/accounts/catalog/activate")
+          .send({ organizationId: target, catalogAccountIds: valid.map((r) => r.id) })
+          .expect(201)
+      )
+    );
+    expect(activated.reduce((sum, r) => sum + r.body.activated, 0)).toBe(100);
+    const contra = rows.find((r) => r.accountNumber === "1110")!;
+    await owner
+      .post("/accounts/catalog/activate")
+      .send({ organizationId: target, catalogAccountIds: [contra.id] })
+      .expect(400);
+    await owner
+      .post("/accounts/catalog/framework")
+      .send({ organizationId: target, framework: "K3", confirmation: "Full-size original fixture" })
+      .expect(201);
+    await owner
+      .post("/accounts/catalog/activate")
+      .send({ organizationId: target, catalogAccountIds: [contra.id] })
+      .expect(201);
+    expect(
+      await prisma.account.findFirst({ where: { organizationId: target, accountNumber: "1110" } })
+    ).toMatchObject({
+      type: "ASSET",
+      normalBalance: "CREDIT",
+      name: contra.officialName,
+      basCatalogAccountId: contra.id
+    });
+    await reader.get(`/accounts/catalog?organizationId=${target}`).expect(404);
+    console.log(
+      JSON.stringify({
+        fullSizeHttpCatalog: "PASS",
+        syntheticRows: rows.length,
+        paginatedPages: Math.ceil(rows.length / 100),
+        bulkSize: 100,
+        elapsedMs: Date.now() - started,
+        officialRows: 0
+      })
+    );
   });
 });

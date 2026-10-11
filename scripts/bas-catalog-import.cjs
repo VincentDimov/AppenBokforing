@@ -1,4 +1,5 @@
 "use strict";
+/* eslint-disable @typescript-eslint/no-require-imports, no-undef */
 // Explicit operator-only import; never invoked by migration, startup or seed.
 const fs = require("node:fs");
 const path = require("node:path");
@@ -7,24 +8,52 @@ const { createRequire } = require("node:module");
 const dbRequire = createRequire(path.resolve(__dirname, "../packages/db/package.json"));
 const { PrismaClient } = dbRequire("@prisma/client");
 async function main() {
-  if (!process.argv.includes("--authorize") || process.env.BAS_CATALOG_IMPORT_ENABLED !== "true")
+  const dryRun = process.argv.includes("--dry-run");
+  if (
+    !dryRun &&
+    (!process.argv.includes("--authorize") || process.env.BAS_CATALOG_IMPORT_ENABLED !== "true")
+  )
     throw new Error("Explicit operator authorization required.");
   const filename = process.env.BAS_CATALOG_INPUT_FILE;
   const approved = process.env.BAS_CATALOG_APPROVED_SHA256;
-  if (!filename || !/^[a-f0-9]{64}$/.test(approved ?? "") || !process.env.DATABASE_URL)
+  if (
+    !filename ||
+    (!dryRun && (!/^[a-f0-9]{64}$/.test(approved ?? "") || !process.env.DATABASE_URL))
+  )
     throw new Error("Missing protected operator configuration.");
   const stat = fs.statSync(filename);
   if (!stat.isFile() || stat.size > 12 * 1024 * 1024)
     throw new Error("Invalid bounded catalog file.");
   const bytes = fs.readFileSync(filename);
   const hash = createHash("sha256").update(bytes).digest("hex");
-  if (hash !== approved)
+  if (!dryRun && hash !== approved)
     throw new Error("Input does not match independently reviewed approved SHA-256.");
   const {
     validateAuthorizedCatalog,
+    catalogBlockers,
     defaultActive
   } = require("../apps/api/dist/accounts/bas/catalog-validation.js");
-  const c = validateAuthorizedCatalog(JSON.parse(bytes.toString("utf8")));
+  const input = JSON.parse(bytes.toString("utf8"));
+  if (dryRun) {
+    const blockers = catalogBlockers(input);
+    if (hash !== approved) blockers.push({ code: "APPROVED_INPUT_HASH_REQUIRED" });
+    if (!process.argv.includes("--authorize") || process.env.BAS_CATALOG_IMPORT_ENABLED !== "true")
+      blockers.push({ code: "OPERATOR_AUTHORIZATION_REQUIRED" });
+    console.log(
+      JSON.stringify({
+        status: blockers.length ? "BLOCKED" : "VALIDATED_NOT_IMPORTED",
+        mode: "PREVIEW_ONLY",
+        inputSha256: hash,
+        accounts: Array.isArray(input?.accounts) ? input.accounts.length : 0,
+        blockers,
+        databaseConnected: false,
+        mutations: 0
+      })
+    );
+    if (blockers.length) process.exitCode = 1;
+    return;
+  }
+  const c = validateAuthorizedCatalog(input);
   const db = new PrismaClient();
   try {
     const result = await db.$transaction(

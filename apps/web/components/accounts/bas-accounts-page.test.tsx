@@ -123,6 +123,16 @@ beforeEach(() => {
     throw new Error(`Unexpected synthetic request ${url}`);
   });
 });
+it("distinguishes available, K2-restricted and nonbookable catalog accounts", async () => {
+  items[1]!.isBookable = false;
+  render(<AccountsPage />);
+  await screen.findByText("Synthetic default");
+  fireEvent.click(screen.getByRole("button", { name: "Tillgängliga BAS-konton" }));
+  await screen.findByText("Ej bokföringsbart");
+  expect(screen.getByText("Begränsat enligt K2 · K3 krävs")).toBeInTheDocument();
+  expect(screen.getByText("Tillgängligt")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Lägg till konto 1911" })).toBeDisabled();
+});
 afterAll(() => {
   global.fetch = original;
 });

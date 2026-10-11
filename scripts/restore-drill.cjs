@@ -443,6 +443,29 @@ async function main() {
       });
       return reference;
     });
+    // Separate full-size original reference version; no change to the LOGIN
+    // control catalog or any posted fixture/provenance. Exact rows are restored.
+    const { syntheticCatalog, databaseRows } = require("./synthetic-bas-catalog.cjs");
+    const scale = syntheticCatalog();
+    await db.$transaction(async (tx) => {
+      const v = await tx.basCatalogVersion.create({
+        data: {
+          version: scale.version,
+          sourceVersion: scale.sourceVersion,
+          sourceReference: scale.sourceReference,
+          sourceSha256: scale.sourceSha256,
+          contentSha256: createHash("sha256").update(JSON.stringify(scale)).digest("hex"),
+          licenseReference: scale.licenseReference,
+          classificationReviewReference: scale.classificationReviewReference,
+          verificationReport: scale.verification,
+          rowCount: scale.accounts.length
+        }
+      });
+      await tx.basAccountCatalog.createMany({ data: databaseRows(scale, v.id) });
+    });
+    console.log(
+      JSON.stringify({ fullSizeSyntheticRestoreRows: scale.accounts.length, officialRows: 0 })
+    );
     await app.close();
     app = undefined;
     const dump = execFileSync(

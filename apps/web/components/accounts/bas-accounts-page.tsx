@@ -219,9 +219,15 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
               <td className="p-3">{accountTypeLabels[row.accountType]}</td>
               <td className="p-3">{row.vatCode ?? "—"}</td>
               <td className="p-3">
-                {row.active ? "Aktivt" : "Inaktivt"}
+                {row.isBookable === false
+                  ? "Ej bokföringsbart"
+                  : row.active
+                    ? "Aktivt"
+                    : row.catalogAccountId
+                      ? "Tillgängligt"
+                      : "Inaktivt"}
                 {row.isK2Restricted ? (
-                  <span className="block text-amber-800">K3 krävs · inte K2</span>
+                  <span className="block text-amber-800">Begränsat enligt K2 · K3 krävs</span>
                 ) : null}
               </td>
               {canManage ? (

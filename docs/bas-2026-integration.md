@@ -4,6 +4,11 @@ Status 2026-10-09: katalogarkitektur och verkliga bokföringsflöden är impleme
 Release av den fullständiga officiella kontoplanen är **BLOCKED**, inte COMPLETE.
 Ingen fullständig BAS-dataset har importerats eller lagts i Git/seed/produktionsassets.
 
+Uppdatering FAS 37.1, 2026-10-11: se [full källavstämning](bas-source-reconciliation.md),
+[ekonomisk klassificering](bas-account-classification.md) och
+[aktuell releasegate](fas37-1-release-gate.md). Fulla förekomstnamn är nu
+maskinellt korsmatchade; detta upphäver inte 2087-konflikten eller gransknings-/rättighetsgaten.
+
 ## Auktoritativa källor
 
 Den begärda [officiella PDF:n](https://www.bas.se/wp-content/uploads/2026/04/BAS_kontoplan_2026_v2.pdf)

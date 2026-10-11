@@ -1,5 +1,6 @@
 import {
   accountCategory,
+  catalogBlockers,
   defaultActive,
   validateAuthorizedCatalog,
   type AuthorizedCatalog
@@ -70,6 +71,42 @@ const fixture = (): AuthorizedCatalog => ({
   })) as AuthorizedCatalog["accounts"]
 });
 describe("authorized BAS catalog boundary (synthetic data only)", () => {
+  it("reports simultaneous source, rights, name, class and duplicate blockers", () => {
+    const c = fixture();
+    const blocked = {
+      ...c,
+      rightsConfirmed: false,
+      sourceSha256: "invalid",
+      verification: {
+        allSourceEntriesReviewed: false,
+        unresolvedClassifications: 4,
+        unresolvedNames: 2,
+        unresolvedDuplicates: 1
+      }
+    };
+    expect(catalogBlockers(blocked).map((b) => b.code)).toEqual(
+      expect.arrayContaining([
+        "RIGHTS_NOT_ESTABLISHED",
+        "SOURCE_PROVENANCE_REQUIRED",
+        "CLASSIFICATION_REVIEW_REQUIRED",
+        "UNRESOLVED_NAMES",
+        "UNRESOLVED_DUPLICATES"
+      ])
+    );
+    expect(() => validateAuthorizedCatalog(blocked)).toThrow();
+  });
+  it("accepts reviewed existing group parents, never invented number-derived mains", () => {
+    const c = fixture();
+    c.accounts[2]!.parentAccountNumber = "1100";
+    expect(validateAuthorizedCatalog(c).accounts[2]!.parentAccountNumber).toBe("1100");
+  });
+  it.each([null, [], 42, { accounts: [null, 1, {}] }])(
+    "reports malformed input safely",
+    (value) => {
+      expect(catalogBlockers(value).length).toBeGreaterThan(0);
+      expect(() => validateAuthorizedCatalog(value)).toThrow();
+    }
+  );
   it("retains explicit economic class and contra normal side without digit guesses", () => {
     const c = validateAuthorizedCatalog(fixture());
     expect(c.accounts[1]!.normalBalance).toBe("CREDIT");

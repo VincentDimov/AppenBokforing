@@ -1,6 +1,17 @@
 # LedgerApp
 
-## FAS 37 — BAS-katalogarkitektur, release BLOCKED
+## FAS 37.1 — CI-fixar och fullskalig katalogvalidering
+
+[Aktuell 56-punktsrapport och releasegate](docs/fas37-1-release-gate.md) skiljer
+teknisk verifiering från officiell BAS-release. CI-rotorsakerna är reparerade,
+sex historiska uppgraderingsvägar kontrolleras och 1310 originalsyntetiska
+poster testar importer/HTTP/UI/restore. 1285 PDF/XLS-namnförekomster matchar;
+2087-konflikt, rättigheter och professionella ekonomiska beslut kvarstår.
+**0 officiella poster importerade; FULL OFFICIAL BAS RELEASE BLOCKED_EXTERNAL.**
+Ingen FAS 38 eller automatisk produktionsdeployment. Äldre daterade fasrapporter
+nedan är historiska ögonblicksbilder, inte aktuell commit-/push-/CI-status.
+
+## Historik: FAS 37 — BAS-katalogarkitektur, release BLOCKED
 
 Versionerad global katalog, företagsspecifik provisioning, valfria konton,
 K2/K3-kontroll, bulk-preview/bekräftelse och faktisk bokföringsintegration är

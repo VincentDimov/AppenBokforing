@@ -44,6 +44,16 @@ Klass 2/8 och kontra-/avskrivningskonton får inte typas enbart från första si
 
 ## Auktoriserad import
 
+FAS 37.1 lägger till **skrivfri preview**, utan databasanslutning:
+`node scripts/bas-catalog-import.cjs --dry-run`. Ange privat `BAS_CATALOG_INPUT_FILE`;
+godkänd hash/operatörsflagga kan utelämnas för att få just dessa blockerare
+redovisade, inte för att importera. Alla käll-/rättighets-/klass-/namn-/hierarki-/
+antal-/dubblettblockerare samlas med koder/radpositioner, aldrig fulla källnamn.
+Resultatet är BLOCKED (exit 1) eller VALIDATED_NOT_IMPORTED (exit 0), alltid
+PREVIEW_ONLY, databaseConnected=false och mutations=0. Vanlig import kräver
+fortfarande alla tidigare flaggor, attesteringar, granskad hash och DB-behörighet.
+Syntax-/filfel ger ett sanitiserat fel, aldrig råa privata filer i loggar.
+
 Bygg DB och API först. Kör aldrig importen från startup, seed eller migrationshook.
 Använd migrator-/operatörscredentials, inte vanlig runtime-login. Det normaliserade
 manifestets kontrakt definieras i `apps/api/src/accounts/bas/catalog-validation.ts`:

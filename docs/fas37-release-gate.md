@@ -1,5 +1,9 @@
 # FAS 37 — svensk 37-punktsrapport och releasegate
 
+Historisk ögonblicksbild från 2026-10-09. [FAS 37.1](fas37-1-release-gate.md)
+ersätter denna rapports aktuella CI-, Git-, källavstämnings- och teststatus.
+Formuleringarna om ej committad/pushad kod nedan beskriver dåtid, inte nuvarande HEAD.
+
 Datum: 2026-10-09. Endast lokal arbetskopia; ingen commit/push/deployment.
 **Exakt status: IMPLEMENTERAD KATALOGARKITEKTUR; FULL BAS 2026 RELEASE BLOCKED.**
 Detta ersätter äldre fasrapporter som källa för dagens status. Det är inte COMPLETE.

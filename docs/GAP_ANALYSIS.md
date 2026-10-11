@@ -1,6 +1,17 @@
 # LedgerApp — GAP-analys
 
-## Aktuellt efter FAS 37
+## Aktuellt efter FAS 37.1
+
+[Releasegaten](fas37-1-release-gate.md) är aktuell. De två CI-rotorsakerna är
+lokalt reparerade/reproducerade; remote-resultat måste verifieras för exakt SHA.
+Fullnamnskorsjämförelse och identiska dubbletter 2120/2130 är tekniskt lösta.
+2087, operatörens rättigheter, per-konto-ekonomiska/bookable-beslut och officiella
+parentbeslut är **BLOCKED_EXTERNAL**, inte en uppgift som AI får attestera bort.
+Ingen officiell katalogimport. Separat normal storage är blockerad av AIStor-
+licensfelet; backup/kompatibel driftplan behövs före byte, ingen volym raderas.
+Tidigare cloud-/redovisnings-/SIE-/säkerhets-P0 stängs inte av lokala tester.
+
+## Historik: efter FAS 37
 
 Den [aktuella BAS-gaten](fas37-release-gate.md) ersätter äldre aktuella test-/fasantal.
 Katalogarkitektur/importer/aktivering är implementerade och testade med originala

@@ -1,6 +1,15 @@
 # LedgerApp — roadmap från nuvarande implementation
 
-## Efter FAS 37 — stanna här
+## Efter FAS 37.1 — STOPP
+
+Se [aktuell 56-punktsrapport](fas37-1-release-gate.md). Ingen FAS 38.
+Nästa externa BAS-beslut: rättighetsbevis för avsedd integration/distribution,
+auktoritativ 2087-resolution och oberoende ekonomisk/bookable-/parentgranskning.
+Därefter privat manifestavstämning, godkänd hash, skrivfri preview och separat
+auktoriserad import/release. Ingen automatisk import eller mastermerge/proddeploy.
+Normal AIStor kräver licens-/driftsbeslut utan osäker volymkonvertering.
+
+## Historik: efter FAS 37 — dåvarande stopp
 
 Se [aktuell 37-punktsrapport/gate](fas37-release-gate.md). Ingen FAS 38 startas.
 Före full BAS-release måste operatören etablera integrations-/distributionsrättigheter,

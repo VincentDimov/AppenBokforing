@@ -10,6 +10,8 @@ playwright-report/
 test-results/
 dist/
 *.tsbuildinfo
+__pycache__/
+*.pyc
 
 # Environment files
 .env

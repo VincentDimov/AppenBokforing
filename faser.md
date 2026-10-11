@@ -38,6 +38,11 @@ FAS 35 Full PREMIUM UI/UX-polish
 FAS 36 Master Admin & Platform Administration
 FAS 36 Master Admin & Platform Administration
 FAS 37 COMPLETE BAS 2026 CHART OF ACCOUNTS INTEGRATION
+FAS 37.1 – Fix CI, Complete BAS Catalog & Release Validation
+
+FAS 37.1: [aktuell 56-punktsrapport och evidens](docs/fas37-1-release-gate.md).
+Tekniska kontroller skiljs från BLOCKED_EXTERNAL för officiell BAS-data.
+Ingen FAS 38 eller automatisk produktionsrelease.
 
 Aktuell FAS 37-status: katalog-/bokföringsarkitektur implementerad; full officiell
 BAS-release BLOCKED av rättigheter och slutlig käll-/klassificeringsgranskning.
