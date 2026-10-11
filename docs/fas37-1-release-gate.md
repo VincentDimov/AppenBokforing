@@ -6,19 +6,23 @@ Statusuppgifter nedan skiljer teknisk verifiering från officiell BAS-release.
 
 ## A. Git och version
 
-1. **Commit:** kodändringarna finns på `codex/fas37-1-ci-catalog-validation`.
-   Slutlig SHA och remote-resultat redovisas efter verklig push/CI-verifiering;
-   bascommit ovan är inte den nya leveransens SHA.
-2. **Filer:** CI-workflow; katalogvalidator/importer; uppgraderingsverktyg och
+1. **Kodcommit:** `5ab9631d379db9de2b0b58045ffc740a8d1fea4a`, branch
+   `codex/fas37-1-ci-catalog-validation`. Denna rapports evidensuppdatering ändrar
+   bara dokumentation; dess leverans-SHA redovisas i slutmeddelandet/PR-head.
+   Bascommit ovan är inte den nya leveransens SHA.
+2. **Filer:** 34 ändrade/tillagda filer i [kodcommitten](https://github.com/VincentDimov/AppenBokforing/commit/5ab9631d379db9de2b0b58045ffc740a8d1fea4a): CI-workflow; katalogvalidator/importer; uppgraderingsverktyg och
    sanitiserad diagnostik; source-layout/namn/manifestavstämning; fullskalig
    originalsyntetisk fixture/importer/HTTP/restore; kontostatus/årsväljare och
    browser/unit-tests; README/CURRENT_STATE/GAP_ANALYSIS/ROADMAP/faser och BAS-dokument.
    `.gitignore` utesluter Python-cache. Privata källfiler/.env ingår inte.
 3. **Migrationer:** inga nya eller omskrivna migrationer; samma 25 checksummor.
    Ingen `db push`, reset, drop av bokföringsdatabas eller historikändring.
-4. **Push:** separat featurebranch/PR används för CI; master lämnas orörd så
+4. **Push:** kodcommitten pushad, [draft PR #1](https://github.com/VincentDimov/AppenBokforing/pull/1) öppen, inte mergad. Master lämnas orörd så
    dess Render/Vercel-auto-proddeploy inte startas av detta arbete.
-5. **Remote CI:** ny run ännu inte verifierad vid denna rapports första commit.
+5. **Remote CI:** [run 38157718778](https://github.com/VincentDimov/AppenBokforing/actions/runs/38157718778),
+   completed/success för kod-SHA ovan. verify **114524028962**, browser-e2e
+   **114524028825**, recovery-runtime-gate **114524029015**: alla completed/success,
+   verifierat via GitHub run/jobs API och loggar, inte antaget från lokala tester.
    [Gamla run 37957362260](https://github.com/VincentDimov/AppenBokforing/actions/runs/37957362260)
    är fortfarande FAILURE och får inte räknas som nytt grönt resultat.
 
@@ -109,9 +113,10 @@ Statusuppgifter nedan skiljer teknisk verifiering från officiell BAS-release.
     1 storage-reconciliation-test PASS. Lint 6 tasks/typecheck 9 tasks PASS.
 40. **PostgreSQL:** 208 PASS/23 suites. Ny fullskalig HTTP-regression
     verifierar 1310 poster, 14 paginerade sidor, samtidig provisioning/bulk och contra.
-41. **Browser:** första fulla fresh körningen PASS 46/46, 3,9 minuter,
-    inklusive verklig 429 och fullskaliga BAS-aktiveringsfixtures. En ny separat
-    fullskalig fyrbredds-/axe-kontroll ingår i nästa körning; ännu ej verifierad här.
+41. **Browser:** slutlig full fresh körning **47/47 PASS**, 4,9 minuter,
+    inklusive verklig 429, fullskaliga BAS-aktiveringsfixtures och fyrbredds-/axe-kontroll.
+    Remote samma kod: **47/47 PASS**, 5,1 minuter. Föregående fresh 46/46
+    kördes före den sista nya skalkontrollen och ersätts av 47-resultatet.
 42. **Säkerhetsaudit:** föreskriven runtime-audit PASS med 0 info/low/moderate/
     high/critical advisories; inga runtime-GRANTs utökade eller guards avstängda.
 43. **Fresh migration:** verkligt tomma nya recovery- och browserdatabaser
@@ -127,15 +132,18 @@ Statusuppgifter nedan skiljer teknisk verifiering från officiell BAS-release.
 47. **Skala:** importer 6 baseline + 13 fullskaliga fall PASS; två samtidiga
     CLI-anrop ger IMPORTED/ALREADY_IMPORTED, mismatch-version nekas,
     faktiskt deferred COMMIT-fel rullar tillbaka hela versionen/raderna.
-    Full HTTP-fixture 1310 poster/14 sidor/100 bulk tog lokalt 2260 ms;
+    Full HTTP-fixture 1310 poster/14 sidor/100 bulk tog lokalt 2260 ms, remote 1882 ms;
     detta är observerad fixturetid, inte ett produktions-SLA/loadtest.
 48. **Tillgänglighet:** befintliga workspace/admin/rapport/public-flöden
-    keyboard/axe PASS vid 1440/1024/768/390 px. Ny fullskalig katalogkontroll
-    har ännu inte exekverats i denna rapportversion. Manuell hjälpmedelsgranskning ej påstådd.
-49. **Produktionsbuild:** Next-build för fresh E2E PASS, 67 statiska sidor,
-    inga databas/JWT/storagehemligheter skickade till frontend. Rootbuild slutkontrolleras separat.
-50. **Remote GitHub Actions:** PENDING; ska avläsas från verkliga run/jobs för
-    exakt kod-SHA. Lokal PASS gör inte remote verify/browser/recovery grön.
+    keyboard/axe PASS vid 1440/1024/768/390 px. Fullskalig katalogkontroll PASS
+    lokalt och remote, högst 50 renderade rader, korrekt andra sida, sökning och
+    spärrad icke-bokföringsbar post. Manuell hjälpmedelsgranskning ej påstådd.
+49. **Produktionsbuild:** rootbuild **4/4 tasks PASS**, 67 statiska sidor,
+    samt Next-build för fresh E2E och remote build PASS. Inga databas/JWT/storage-
+    hemligheter skickade till frontend. Detta är inte ett hosted deploymentbevis.
+50. **Remote GitHub Actions:** **VERIFIED, alla tre SUCCESS** i run 38157718778
+    för exakt kod-SHA 5ab9631. Loggar visar 175 API-unit, 112 web-unit, 208 PG,
+    47 browser, 1310 importer-/restoreposter, 16 LOGIN-denials och sex upgrade-PASS.
 51. **Vercel/Render:** NOT_TESTED för ny kod; ingen manuell eller master-triggerad
     produktionsdeployment. Normal AIStor HeadBucket 404, CreateBucket 403 med
     saknad/utgången licens i felmetadata; separat lokal storage BLOCKED_EXTERNAL.
@@ -145,17 +153,29 @@ Statusuppgifter nedan skiljer teknisk verifiering från officiell BAS-release.
 52. **Löst/verifierat:** två CI-rotorsaker lokalt, diagnostik, fullnamnskorsjämförelse,
     identiska dubbletter, explicit grupp-parentförmåga, skrivfri all-blockers-preview,
     fullskalig importer/HTTP/restore och kontostatus. Gamla failing runs är inte redigerade.
-53. **Tekniskt återstår i denna rapportversion:** slutlig full browser47-/rootbuild-
-    körning, remote tre jobb och uppdatering med faktisk CI-evidens. Ingen hävdad COMPLETE ännu.
+53. **Tekniska blockerare inom FAS 37.1:** inga kvarvarande bekräftade fel i
+    den levererade kodens obligatoriska gate; lokal och remote slutverifiering PASS.
+    Detta stänger inte tidigare dokumenterade produktions-P0 eller extern BAS-gate.
 54. **Externa blockerare:** BAS-rättigheter, 2087-resolution, oberoende ekonomisk/
     bookable-/parentgranskning; separat AIStor-licens/driftsbeslut. Inga fulla källposter
     godkänns/importeras eller lagringsvolymer byts för att få en grön ruta.
 55. **Ej verifierade antaganden:** hosted miljö/grants/TLS/backup/MFA-key custody,
     professionell redovisnings-/SIE-matris, manuell hjälpmedelsgranskning och
     verkligt full-officiellt-katalogflöde. Tidigare dokumenterade P0 stängs inte av dessa tester.
-56. **Exakt slutstatus i denna rapportversion:** teknisk slutgate PENDING_REMOTE_AND_FINAL_CHECKS;
+56. **Exakt status:** **FAS 37.1 TECHNICALLY COMPLETE / VERIFIED** inom denna
+    fas scope och ovanstående kod-SHA:s mandatory CI-gate;
     **FULL OFFICIAL BAS 2026 RELEASE = BLOCKED_EXTERNAL / NOT COMPLETE**.
     Deployment NOT_TESTED. FAS 38 NOT_STARTED.
+
+## Separat vanlig lokal miljö
+
+API är åter startad på 127.0.0.1:4000 och frontend på localhost:3000 med
+oförändrad lokal `.env`/databas. Verklig browser: startsida/login/register HTTP 200,
+anonym `/api/auth/me` 401 och `/app` redirect till login, inga pageerrors.
+Inga normala användarkonton/testbokföringar skapades. Faktisk register/login/
+postning har kontrollerats i disposable sviterna, inte med antaget lösenord för
+användarens befintliga konto. `/health` 200, `/ready` 503 på grund av separat
+AIStor-licensspärr. Ingen volym raderad/bytt och inga nya driftsecrets införda.
 
 ## Evidensetiketter
 

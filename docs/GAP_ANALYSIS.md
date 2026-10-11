@@ -3,7 +3,8 @@
 ## Aktuellt efter FAS 37.1
 
 [Releasegaten](fas37-1-release-gate.md) är aktuell. De två CI-rotorsakerna är
-lokalt reparerade/reproducerade; remote-resultat måste verifieras för exakt SHA.
+reparerade/reproducerade; tre mandatory remotejobb är SUCCESS för kod-SHA 5ab9631,
+run 38157718778. FAS 37.1:s tekniska gate är VERIFIED, inte hela produktionsreleasen.
 Fullnamnskorsjämförelse och identiska dubbletter 2120/2130 är tekniskt lösta.
 2087, operatörens rättigheter, per-konto-ekonomiska/bookable-beslut och officiella
 parentbeslut är **BLOCKED_EXTERNAL**, inte en uppgift som AI får attestera bort.

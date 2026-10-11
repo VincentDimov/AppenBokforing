@@ -7,11 +7,16 @@ Se [56-punktsrapporten](fas37-1-release-gate.md), [CI-rotorsaker](ci-fas37-1-roo
 Oförändrad kedja med 25 migrationer. Prepared-plan-livscykel och verkligt GET 429
 hanteras utan ändrad migrationshistorik, limiter, tenantguard eller bokföringsretry.
 1310 originalsyntetiska katalogposter testas med verklig importer/PG/HTTP/restore.
+311 unit / 208 PG / 47 browser, rootbuild/lint/typecheck/security och sex upgrades PASS.
+[GitHub-run 38157718778](https://github.com/VincentDimov/AppenBokforing/actions/runs/38157718778)
+har tre verifierade SUCCESS-jobb för kod-SHA `5ab9631d379db9de2b0b58045ffc740a8d1fea4a`.
+Featurebranch är pushad och draft PR #1 är öppen; master/prod är inte ändrade.
 1285 kompletta förekomstnamn matchar PDF/XLS; 2087 är fortfarande motstridigt.
 0 officiella importer och 0 professionellt godkända ekonomiska klassificeringar.
 Full officiell BAS-release BLOCKED_EXTERNAL. Normal AIStor-storage har saknad/
 utgången licens enligt ett verkligt CreateBucket-fel; volym/.env är inte bytta.
 Normal auth/databas är en annan gräns än bilagelagring. Inga proddeploys eller FAS 38.
+Vanlig lokal frontend/API är åter startade; anonym browser/proxy är verifierad.
 Alla äldre formuleringar om lokal/opushad kod är daterade historiska uppgifter.
 
 ## Historik: FAS 37 — lokal arbetskopia, 2026-10-09
