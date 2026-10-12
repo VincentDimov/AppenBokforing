@@ -112,6 +112,10 @@ async function main() {
       };
     }
     deploy(path.join(schemaRoot, "schema.prisma"));
+    // External DDL changes result types (account.name varchar -> text). Discard
+    // cached prepared plans before comparing rows; keep every preservation assertion.
+    await db.$disconnect();
+    await db.$connect();
     for (const [table, snapshot] of Object.entries(before))
       assert.deepEqual(
         await db.$queryRawUnsafe(`SELECT ${snapshot.columns} FROM ${table} ORDER BY id`),
