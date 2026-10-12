@@ -26,7 +26,8 @@ Bootstrapmekanism och testkonton ska inte förväxlas med operatörens aktiverin
 ## Lokal databas och testmiljö
 
 Den vanliga databasen localhost:5433/ledgerapp uppgraderades efter en arkivverifierad
-backup utanför Git: LedgerApp-Backups/ledgerapp-local-before-fas36-20261008-29d1e28b-30f0-4214-ae37-3ed7407e2409.dump
+backup utanför Git: `.local-artifacts/backups/ledgerapp-local-before-fas36-20261008-29d1e28b-30f0-4214-ae37-3ed7407e2409.dump`
+(flyttad till huvudprojektets Git-ignorerade arkiv 2026-10-12)
 (157256 byte). Alla 22 ursprungliga tabellers kontrollsummor för befintliga kolumner
 är identiska före/efter migrationen. Tre tidigare användare och historik bevarades;
 plattformgrants/bootstrap är fortfarande tomma. Inga gamla volymer eller data raderades.

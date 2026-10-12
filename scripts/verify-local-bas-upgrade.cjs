@@ -55,7 +55,7 @@ async function main() {
     input: dump,
     stdio: ["pipe", "ignore", "pipe"]
   });
-  const directory = path.resolve(__dirname, "../../LedgerApp-Backups");
+  const directory = path.resolve(__dirname, "../.local-artifacts/backups");
   fs.mkdirSync(directory, { recursive: true });
   const artifact = path.join(directory, "ledgerapp-before-fas37-" + randomUUID() + ".dump");
   fs.writeFileSync(artifact, dump, { flag: "wx" });

@@ -89,7 +89,8 @@ Detta ersätter äldre fasrapporter som källa för dagens status. Det är inte 
     DB+blob restore till tom disposable target PASS; hela katalogposter/proveniens jämförda.
     Verklig least-privilege LOGIN: **16 DDL/evidence-denials**, katalog-SELECT/provisioning/
     aktivering och normal bokföring PASS. Restaurerade periodlås/obalans/immutabilitet PASS.
-    Backup: `../LedgerApp-Backups/ledgerapp-before-fas37-9713cdb3-1620-44a7-b948-6fa0bbf4dad8.dump`,
+    Backup: `.local-artifacts/backups/ledgerapp-before-fas37-9713cdb3-1620-44a7-b948-6fa0bbf4dad8.dump`
+    (flyttad till huvudprojektet 2026-10-12),
     SHA-256 `af6435bce331b399e8d2520105612c5ca82cc08449f821f988fe37bdedf3c5c8`.
 34. **Säkerhetsaudit:** föreskriven `node scripts/security-audit.cjs` PASS med 0
     info/low/moderate/high/critical runtimeadvisories. Inga utökade privileges för runtime.

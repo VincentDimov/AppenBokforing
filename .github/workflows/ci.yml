@@ -68,6 +68,8 @@ jobs:
           python3 -m unittest discover -s tests -p verify_bas_sources_test.py
       - name: Neon production migration safety contract
         run: node --test tests/neon-production-migrate.test.cjs
+      - name: Private local artifact preservation contract
+        run: node --test tests/workspace-consolidation.test.cjs
       - name: Restore tooling syntax and report-only reconciliation contract
         run: |
           node --check scripts/restore-drill.cjs

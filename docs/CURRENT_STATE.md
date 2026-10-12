@@ -1,6 +1,17 @@
 # LedgerApp — faktiskt nuläge
 
-## Aktuellt: FAS 37.1, 2026-10-11
+## Aktuellt: sammanfogning och driftkoppling, 2026-10-12
+
+FAS 37.1 och mastergrenen med Neon-migrationsautomatiken sammanförs. Backuper
+och privata BAS-underlag är flyttade till `.local-artifacts/` i huvudmappen,
+Git-ignorerade och SHA-256-verifierade. Ingen backup eller källfil publiceras.
+Se [sammanfogning](workspace-consolidation.md),
+[driftkoppling/verifiering](vercel-deployment.md) och
+[automatisk Neon-migrering](neon-production-migrations.md).
+Produktionens migrationsjobb körs bara efter godkänd master-CI; äldre green runs
+nedan är inte bevis för den nya sammanfogningens CI/deployment.
+
+## Historik: FAS 37.1, 2026-10-11
 
 Se [56-punktsrapporten](fas37-1-release-gate.md), [CI-rotorsaker](ci-fas37-1-root-cause.md),
 [full källavstämning](bas-source-reconciliation.md) och [klassificeringsgate](bas-account-classification.md).

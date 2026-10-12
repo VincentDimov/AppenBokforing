@@ -1,6 +1,14 @@
 # LedgerApp
 
-## FAS 37.1 — CI-fixar och fullskalig katalogvalidering
+## Samlad huvudgren — 2026-10-12
+
+Huvudmappen är `AppenBokforing` och huvudgrenen `master`. FAS 37.1-fixarna
+sammanförs med [Neon-migrationsautomatiken](docs/neon-production-migrations.md).
+Backuper och privata källunderlag bevaras i Git-ignorerade `.local-artifacts/`;
+se [mappstruktur och sammanfogning](docs/workspace-consolidation.md).
+Testresultat nedan är daterad evidens, inte resultat från en senare masterkörning.
+
+## Historik: FAS 37.1 — CI-fixar och fullskalig katalogvalidering
 
 [Aktuell 56-punktsrapport och releasegate](docs/fas37-1-release-gate.md) skiljer
 teknisk verifiering från officiell BAS-release. CI-rotorsakerna är reparerade,

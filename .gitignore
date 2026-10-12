@@ -23,6 +23,9 @@ __pycache__/
 .docker/postgres/
 .docker/minio/
 
+# Private database backups and source-review material; never distribute in Git.
+.local-artifacts/
+
 # Logs and editor files
 *.log
 .DS_Store
