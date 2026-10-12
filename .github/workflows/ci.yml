@@ -66,6 +66,8 @@ jobs:
         run: |
           node --test tests/safe-diagnostics.test.cjs
           python3 -m unittest discover -s tests -p verify_bas_sources_test.py
+      - name: Neon production migration safety contract
+        run: node --test tests/neon-production-migrate.test.cjs
       - name: Restore tooling syntax and report-only reconciliation contract
         run: |
           node --check scripts/restore-drill.cjs
@@ -202,3 +204,29 @@ jobs:
         env:
           RUN_DISPOSABLE_RESTORE_DRILL: "yes"
         run: node scripts/verify-upgrade-matrix.cjs
+
+  migrate-neon-production:
+    name: Migrate Neon production
+    needs: [verify, browser-e2e, recovery-runtime-gate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'VincentDimov/AppenBokforing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: ledgerapp-neon-production-migrations
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - name: Install locked migration tooling without production secrets
+        run: pnpm install --frozen-lockfile --prod=false
+      - name: Apply committed migrations to the pinned Neon production branch
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/neon-production-migrate.cjs
