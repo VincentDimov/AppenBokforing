@@ -30,7 +30,6 @@ pnpm(["--filter", "@ledgerapp/web", "build"], {
   JWT_REFRESH_SECRET: "",
   S3_ACCESS_KEY_ID: "",
   S3_SECRET_ACCESS_KEY: "",
-  PLATFORM_ADMIN_MFA_ENCRYPTION_KEY: "",
   MASTER_ADMIN_BOOTSTRAP_ENABLED: "false",
   MASTER_ADMIN_BOOTSTRAP_PASSWORD: ""
 });

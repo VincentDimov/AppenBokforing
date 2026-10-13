@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -30,9 +29,7 @@ import {
   AdminOwnerTransferDto,
   AdminGrantDto,
   AdminCreateUserDto,
-  AdminCreateOrganizationDto,
-  AdminMfaDto,
-  AdminRecoveryDto
+  AdminCreateOrganizationDto
 } from "./platform-admin.dto";
 
 @Controller("platform-admin")
@@ -255,7 +252,7 @@ export class PlatformAdminController {
 }
 
 // Own-account security setup is authenticated but deliberately does not require
-// MFA already to be enrolled. No global lists or other-user writes exist here.
+// a completed password change. No global lists or other-user writes exist here.
 @Controller("platform-admin/security-setup")
 @Throttle({ default: { limit: 5, ttl: 60000 } })
 export class PlatformAdminSecurityController {
@@ -264,21 +261,6 @@ export class PlatformAdminSecurityController {
     @Req() req: AuthenticatedRequest
   ) {
     const ctx = adminContext(req);
-    return this.security.state(ctx.user.id, ctx.user.sessionId);
-  }
-  @Post("enroll") @HttpCode(200) enroll(@Req() req: AuthenticatedRequest) {
-    return this.security.enroll(adminContext(req));
-  }
-  @Post("verify") @HttpCode(200) verify(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: AdminMfaDto
-  ) {
-    return this.security.verifyMfa(adminContext(req), dto.code, dto.currentPassword);
-  }
-  @Post("recover") @HttpCode(200) recover(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: AdminRecoveryDto
-  ) {
-    return this.security.recover(adminContext(req), dto.recoveryCode, dto.currentPassword);
+    return this.security.state(ctx.user.id);
   }
 }

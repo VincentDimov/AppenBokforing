@@ -40,8 +40,6 @@ export default defineConfig({
         JWT_REFRESH_SECRET: process.env.E2E_REFRESH_SECRET || randomBytes(48).toString("hex"),
         ARGON2_MEMORY_COST: "8192",
         ARGON2_TIME_COST: "2",
-        PLATFORM_ADMIN_MFA_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
-        PLATFORM_ADMIN_MFA_KEY_ID: "e2e-v1",
         CORS_ORIGIN: baseURL
       }
     },
@@ -64,7 +62,6 @@ export default defineConfig({
         JWT_REFRESH_SECRET: "",
         E2E_ACCESS_SECRET: "",
         E2E_REFRESH_SECRET: "",
-        PLATFORM_ADMIN_MFA_ENCRYPTION_KEY: "",
         MASTER_ADMIN_BOOTSTRAP_ENABLED: "false",
         MASTER_ADMIN_BOOTSTRAP_PASSWORD: "",
         S3_ACCESS_KEY_ID: "",

@@ -4,7 +4,6 @@ import type { INestApplication } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import request from "supertest";
 import { prisma, type PlatformAdminRole } from "@ledgerapp/db";
-import { Secret, TOTP } from "otpauth";
 import { AppModule } from "../src/app.module";
 import { configureHttpApp } from "../src/http/app-setup";
 import { bootstrapPlatformAdmin } from "../src/platform-admin/bootstrap";
@@ -34,19 +33,13 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
     org: string,
     targetEmail: string,
     orgName: string;
-  let security: PlatformAdminSecurityService,
-    ctx: AdminContext,
-    secret: string,
-    recovery: string[],
-    bootstrapStatus: string;
+  let security: PlatformAdminSecurityService, ctx: AdminContext, bootstrapStatus: string;
   const policy = new AuthSettingsService(new ConfigService(process.env));
   const suffix = randomUUID();
   const key = randomBytes(32);
   const bootstrapEmail = "admin@admin.com";
   const email = `master-fas36-${suffix}@example.test`;
   beforeAll(async () => {
-    process.env.PLATFORM_ADMIN_MFA_ENCRYPTION_KEY = key.toString("base64");
-    process.env.PLATFORM_ADMIN_MFA_KEY_ID = "test-v1";
     const marker = await prisma.platformAdminBootstrap.findUnique({ where: { id: 1 } });
     if (marker) {
       const existing = await prisma.user.findUniqueOrThrow({ where: { id: marker.userId } });
@@ -136,52 +129,34 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
   afterAll(async () => {
     await app?.close();
   });
-  async function secureFixture(role: PlatformAdminRole): Promise<Agent> {
-    const email = `${role}-${suffix}@example.test`;
-    const user = await prisma.user.create({
-      data: { email, displayName: role, passwordHash: await hashPassword(ordinaryPassword, policy) }
-    });
-    await prisma.platformAdministrator.create({
-      data: { userId: user.id, role, mustChangePassword: false }
-    });
-    const secret = new Secret({ size: 32 });
-    await prisma.platformAdminMfaCredential.create({
-      data: {
-        userId: user.id,
-        keyId: "test-v1",
-        encryptedSecret: encryptMfaSecret(secret.base32, key, user.id, "test-v1"),
-        verifiedAt: new Date(),
-        pendingExpiresAt: new Date()
-      }
-    });
-    const result = await app.get(PlatformAdminSecurityService);
-    expect(result.encryptionConfigured()).toBe(true);
-    // Existing auth service issues real cookies; avoid fabricating a JWT or bypassing session auth.
+  async function loginFixture(email: string, password: string): Promise<Agent> {
+    // Fixture setup uses the real login service/session/cookies; HTTP login rate
+    // limiting remains unchanged and is tested by the authentication suite.
     const auth = app.get((await import("../src/auth/auth.service")).AuthService);
-    const login = await auth.login({ email, password: ordinaryPassword }, {});
-    const session = await prisma.session.findFirstOrThrow({
-      where: { userId: user.id, revokedAt: null },
-      orderBy: { createdAt: "desc" }
-    });
-    const fixtureCtx = { user: { id: user.id, email, displayName: role, sessionId: session.id } };
-    await result.verifyMfa(
-      fixtureCtx,
-      new TOTP({ secret, algorithm: "SHA1", digits: 6, period: 30 }).generate(),
-      ordinaryPassword
-    );
-    const cookieValues: string[] = [];
+    const login = await auth.login({ email, password }, {});
+    const cookies: string[] = [];
     auth.setAuthCookies(
       {
         cookie: (name: string, value: string) => {
-          cookieValues.push(`${name}=${value}`);
+          cookies.push(`${name}=${value}`);
         },
         clearCookie: () => {}
       } as unknown as Parameters<typeof auth.setAuthCookies>[0],
       login.tokens
     );
     const agent = request.agent(app.getHttpServer());
-    agent.set("Cookie", cookieValues.join("; "));
+    agent.set("Cookie", cookies.join("; "));
     return agent;
+  }
+  async function secureFixture(role: PlatformAdminRole): Promise<Agent> {
+    const email = `${role.toLowerCase()}-${suffix}@example.test`;
+    const user = await prisma.user.create({
+      data: { email, displayName: role, passwordHash: await hashPassword(ordinaryPassword, policy) }
+    });
+    await prisma.platformAdministrator.create({
+      data: { userId: user.id, role, mustChangePassword: false }
+    });
+    return loginFixture(email, ordinaryPassword);
   }
   it("bootstrap is explicit, never creates memberships and never resets on rerun", async () => {
     expect(["CREATED", "ALREADY_COMPLETED"]).toContain(bootstrapStatus);
@@ -223,31 +198,7 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
     await admin.get("/auth/me").expect(401);
     await admin.post("/auth/login").send({ email, password: updated }).expect(200);
   });
-  it("requires MFA enrollment and current password; consumes TOTP codes once", async () => {
-    await admin.get("/platform-admin/users").expect(403);
-    const enrollment = (await admin.post("/platform-admin/security-setup/enroll").expect(200)).body;
-    secret = enrollment.secret;
-    const encrypted = await prisma.platformAdminMfaCredential.findUniqueOrThrow({
-      where: { userId: id }
-    });
-    expect(encrypted.encryptedSecret).not.toContain(secret);
-    const code = new TOTP({
-      secret: Secret.fromBase32(secret),
-      algorithm: "SHA1",
-      digits: 6,
-      period: 30
-    }).generate();
-    recovery = (
-      await admin
-        .post("/platform-admin/security-setup/verify")
-        .send({ code, currentPassword: updated })
-        .expect(200)
-    ).body.recoveryCodes;
-    expect(recovery).toHaveLength(10);
-    await admin
-      .post("/platform-admin/security-setup/verify")
-      .send({ code, currentPassword: updated })
-      .expect(403);
+  it("admits password-ready administrators without MFA and retires all MFA routes", async () => {
     const session = await prisma.session.findFirstOrThrow({
       where: { userId: id, revokedAt: null },
       orderBy: { createdAt: "desc" }
@@ -256,14 +207,35 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
       user: { id, email, displayName: "Master Admin", sessionId: session.id },
       requestId: randomUUID()
     };
+    expect(session.adminMfaVerifiedAt).toBeNull();
+    expect(await prisma.platformAdminMfaCredential.count({ where: { userId: id } })).toBe(0);
     expect(
-      await prisma.platformAdminRecoveryCode.count({ where: { userId: id, usedAt: null } })
-    ).toBe(10);
-    const codes = await prisma.platformAdminRecoveryCode.findMany({
-      where: { userId: id, usedAt: null }
+      (await prisma.platformAdministrator.findUniqueOrThrow({ where: { userId: id } })).mfaRequired
+    ).toBe(false);
+    const me = (await admin.get("/auth/me").expect(200)).body.user;
+    expect(me.requiresAdminSecuritySetup).toBe(false);
+    expect((await admin.get("/platform-admin/security-setup/status").expect(200)).body).toEqual({
+      role: "SUPER_ADMIN",
+      mustChangePassword: false,
+      notificationDeliveryConfigured: false
     });
-    expect(codes.every((value) => value.codeHash.startsWith("$argon2id$"))).toBe(true);
     await admin.get("/platform-admin/users").expect(200);
+    for (const path of ["enroll", "verify", "recover"]) {
+      await admin.post(`/platform-admin/security-setup/${path}`).send({}).expect(404);
+    }
+    // Existing encrypted data is retained, but never consulted for authorization.
+    const legacy = await prisma.platformAdminMfaCredential.create({
+      data: {
+        userId: id,
+        keyId: "legacy-test",
+        encryptedSecret: encryptMfaSecret("LEGACY", key, id, "legacy-test"),
+        pendingExpiresAt: new Date(0)
+      }
+    });
+    await admin.get("/platform-admin/users").expect(200);
+    expect(await prisma.platformAdminMfaCredential.findUnique({ where: { userId: id } })).toEqual(
+      legacy
+    );
   });
   it("authorized dashboard and monitoring use real bounded PostgreSQL results", async () => {
     const dashboard = (await admin.get("/platform-admin/dashboard").expect(200)).body;
@@ -331,19 +303,23 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
       await prisma.organizationMember.count({ where: { organizationId: org, userId: id } })
     ).toBe(0);
   });
-  it("refresh rotation preserves the original MFA approval time rather than extending it", async () => {
+  it("refresh rotates sessions without copying legacy MFA approval", async () => {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { email: `PLATFORM_ADMIN-${suffix}@example.test` }
+      where: { email: `platform_admin-${suffix}@example.test` }
     });
     const before = await prisma.session.findFirstOrThrow({
       where: { userId: user.id, revokedAt: null }
+    });
+    await prisma.session.update({
+      where: { id: before.id },
+      data: { adminMfaVerifiedAt: new Date() }
     });
     await platform.post("/auth/refresh").expect(200);
     const after = await prisma.session.findFirstOrThrow({
       where: { userId: user.id, revokedAt: null }
     });
     expect(after.id).not.toBe(before.id);
-    expect(after.adminMfaVerifiedAt).toEqual(before.adminMfaVerifiedAt);
+    expect(after.adminMfaVerifiedAt).toBeNull();
     await platform.get("/platform-admin/users").expect(200);
   });
   it("server-side Swedish A–Ö/Ö–A order is stable and safely paginated", async () => {
@@ -429,28 +405,20 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
       targetEmail
     );
   });
-  it("requires typed target confirmation and recent MFA on mutations", async () => {
+  it("retains typed confirmation while allowing writes without MFA step-up", async () => {
     await admin
       .post(`/platform-admin/users/${targetId}/suspend`)
       .send({ confirmation: "wrong" })
       .expect(400);
     await prisma.session.update({
       where: { id: ctx.user.sessionId },
-      data: { adminMfaVerifiedAt: new Date(Date.now() - 6 * 60000) }
+      data: { adminMfaVerifiedAt: new Date(0) }
     });
     await admin.get("/platform-admin/users").expect(200);
     await admin
       .patch(`/platform-admin/users/${targetId}`)
-      .send({ displayName: "No step-up" })
-      .expect(403);
-    await expect(
-      security.changePassword(ctx, updated, "Another-fixture-password-2026!")
-    ).rejects.toThrow();
-    // Restore only our isolated synthetic session's verification timestamp.
-    await prisma.session.update({
-      where: { id: ctx.user.sessionId },
-      data: { adminMfaVerifiedAt: new Date() }
-    });
+      .send({ displayName: "No MFA needed" })
+      .expect(200);
   });
   it("does not fake reset email and gives temporary credentials mandatory change + revoked sessions", async () => {
     await admin
@@ -603,7 +571,7 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
   });
   it("fresh grants are checked on each request and role changes invalidate all sessions", async () => {
     const viewerRow = await prisma.user.findUniqueOrThrow({
-      where: { email: `PLATFORM_VIEWER-${suffix}@example.test` }
+      where: { email: `platform_viewer-${suffix}@example.test` }
     });
     await admin
       .post("/platform-admin/administrators")
@@ -617,37 +585,54 @@ describe("FAS 36 real PostgreSQL platform administration", () => {
     await viewer.get("/platform-admin/users").expect(401);
     await viewer.post("/auth/refresh").expect(401);
   });
-  it("five failed MFA attempts persist atomically across concurrent callers", async () => {
+  it("rejects missing, expired and foreign sessions even without MFA", async () => {
+    await expect(
+      security.assertAccess({ ...ctx, user: { ...ctx.user, sessionId: randomUUID() } }, "READ")
+    ).rejects.toThrow("Sessionen");
     const user = await prisma.user.findUniqueOrThrow({
-      where: { email: `SUPPORT_ADMIN-${suffix}@example.test` }
+      where: { email: `support_admin-${suffix}@example.test` }
     });
-    const session = await prisma.session.findFirstOrThrow({
+    const foreign = await prisma.session.findFirstOrThrow({
       where: { userId: user.id, revokedAt: null }
     });
-    const context = {
-      user: { id: user.id, email: user.email, displayName: user.displayName, sessionId: session.id }
-    };
-    const result = await Promise.allSettled(
-      Array.from({ length: 8 }, () =>
-        security.verifyMfa(context, "000000", "incorrect-fixture-password")
-      )
+    await expect(
+      security.assertAccess({ ...ctx, user: { ...ctx.user, sessionId: foreign.id } }, "READ")
+    ).rejects.toThrow("Sessionen");
+    await prisma.session.update({
+      where: { id: ctx.user.sessionId },
+      data: { expiresAt: new Date(0), absoluteExpiresAt: new Date(0) }
+    });
+    await expect(security.assertAccess(ctx, "WRITE")).rejects.toThrow("Sessionen");
+    await admin.get("/platform-admin/users").expect(401);
+    admin = await loginFixture(email, updated);
+    const session = await prisma.session.findFirstOrThrow({
+      where: { userId: id, revokedAt: null, absoluteExpiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" }
+    });
+    ctx.user.sessionId = session.id;
+  });
+  it("password change still verifies the current password, revokes all sessions and records immutable evidence", async () => {
+    const next = "Another-fixture-password-2026!";
+    const before = await prisma.platformAdminMfaCredential.findUnique({ where: { userId: id } });
+    await expect(security.changePassword(ctx, "wrong", next)).rejects.toThrow();
+    await admin.get("/platform-admin/users").expect(200);
+    expect(await security.changePassword(ctx, updated, next)).toEqual({ reloginRequired: true });
+    await admin.get("/auth/me").expect(401);
+    await admin.post("/auth/refresh").expect(401);
+    expect(await prisma.session.count({ where: { userId: id, revokedAt: null } })).toBe(0);
+    expect(await prisma.platformAdminMfaCredential.findUnique({ where: { userId: id } })).toEqual(
+      before
     );
-    expect(result.every((value) => value.status === "rejected")).toBe(true);
     expect(
       await prisma.platformAdminAuditEvent.count({
-        where: { actorUserId: user.id, action: "ADMIN_MFA_FAILED" }
+        where: { actorUserId: id, action: "PASSWORD_CHANGED" }
       })
-    ).toBe(5);
-  });
-  it("recovery codes are single use and recovery revokes all sessions with fresh setup required", async () => {
-    const result = await security.recover(ctx, recovery[0], updated);
-    expect(result.reloginRequired).toBe(true);
-    await admin.get("/auth/me").expect(401);
-    expect(
-      await prisma.platformAdminRecoveryCode.count({ where: { userId: id, usedAt: null } })
-    ).toBe(0);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id } })).mustChangePassword).toBe(true);
-    await expect(security.recover(ctx, recovery[0], updated)).rejects.toThrow();
+    ).toBe(2);
+    admin = await loginFixture(email, next);
+    expect((await admin.get("/auth/me").expect(200)).body.user.requiresAdminSecuritySetup).toBe(
+      false
+    );
+    await admin.get("/platform-admin/users").expect(200);
   });
   it("concurrent SQL revocations cannot remove both remaining SUPER_ADMIN grants", async () => {
     const second = await prisma.user.create({

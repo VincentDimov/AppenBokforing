@@ -198,7 +198,8 @@ model PlatformAdministrator {
   role PlatformAdminRole
   isActive Boolean @default(true) @map("is_active")
   mustChangePassword Boolean @default(true) @map("must_change_password")
-  mfaRequired Boolean @default(true) @map("mfa_required")
+  /// Legacy compatibility field only; MFA is not an authentication requirement.
+  mfaRequired Boolean @default(false) @map("mfa_required")
   grantedAt DateTime @default(now()) @map("granted_at") @db.Timestamptz(3)
   grantedById String? @map("granted_by_id") @db.Uuid
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)

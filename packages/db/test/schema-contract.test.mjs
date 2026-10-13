@@ -3,6 +3,32 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+test("MFA retirement changes only legacy requirements and retains credentials and audit", async () => {
+  const migration = await readFile(
+    new URL(
+      "../prisma/migrations/20261012170000_remove_mfa_requirement/migration.sql",
+      import.meta.url
+    ),
+    "utf8"
+  );
+  assert.match(schema, /mfaRequired\s+Boolean\s+@default\(false\)/);
+  for (const model of [
+    "PlatformAdminMfaCredential",
+    "PlatformAdminRecoveryCode",
+    "PlatformAdminAuditEvent"
+  ])
+    assert.match(schema, new RegExp(`model ${model} \\{`));
+  assert.match(migration, /DROP CONSTRAINT platform_admin_mfa_mandatory/);
+  assert.match(migration, /ALTER COLUMN mfa_required SET DEFAULT false/);
+  assert.match(
+    migration,
+    /UPDATE platform_administrators SET mfa_required = false WHERE mfa_required = true/
+  );
+  assert.doesNotMatch(
+    migration,
+    /\bDELETE\b|DROP TABLE|TRUNCATE|UPDATE (users|sessions|journal_entries|journal_lines|platform_admin_audit_events)/i
+  );
+});
 const calendarLockMigration = await readFile(
   new URL("../prisma/migrations/20261005140000_calendar_locking/migration.sql", import.meta.url),
   "utf8"

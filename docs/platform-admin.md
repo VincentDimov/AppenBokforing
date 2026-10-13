@@ -17,8 +17,9 @@ the normal overview, not onboarding or mock accounting. Logout returns home.
 | SUPPORT_ADMIN           | Yes           | No                            | No                 |
 | PLATFORM_VIEWER         | Yes           | No                            | No                 |
 
-All require first password change and verified MFA. READ expires after 12 hours;
-WRITE/GRANTS require password-and-MFA step-up within five minutes. Roles are
+All require first password change and an active authenticated session. MFA was
+removed on 2026-10-12 (migration 26); old credential/history records are retained
+without affecting access. Roles are
 rechecked with the current database session on every request and inside write
 transactions. Neither role gives implicit organization membership or access to
 financial amounts, report contents, SIE files, attachment keys or downloads.
@@ -79,18 +80,17 @@ tenant workspace and its ordinary membership/period permissions.
 
 All following paths have prefix `/platform-admin`; NONE are public:
 
-| Method            | Paths                                                                                                                                                                                        | Permission                                          |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| GET               | dashboard, users, users/:id, users/:id/memberships, organizations, organizations/:id, organizations/:id/members, administrators, invitations, sessions, audit, security, usage, system, jobs | READ                                                |
-| POST              | users, organizations                                                                                                                                                                         | WRITE                                               |
-| PATCH             | users/:id, organizations/:id                                                                                                                                                                 | WRITE                                               |
-| POST              | users/:id/status, suspend, reactivate, revoke-sessions, sessions/:sessionId/revoke, temporary-password, require-password-change, password-reset                                              | WRITE; suffixes are under users/:id                 |
-| POST/PATCH/DELETE | users/:id/memberships; PATCH/DELETE add /:membershipId                                                                                                                                       | WRITE; removal is soft                              |
-| POST              | organizations/:id/deactivate, reactivate, transfer-owner                                                                                                                                     | WRITE; suffixes are under organizations/:id         |
-| POST              | administrators                                                                                                                                                                               | GRANTS                                              |
-| POST              | invitations/:id/revoke                                                                                                                                                                       | WRITE                                               |
-| GET               | security-setup/status                                                                                                                                                                        | Authenticated own active global grant               |
-| POST              | security-setup/enroll, verify, recover                                                                                                                                                       | Authenticated own grant/session and own credentials |
+| Method            | Paths                                                                                                                                                                                        | Permission                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| GET               | dashboard, users, users/:id, users/:id/memberships, organizations, organizations/:id, organizations/:id/members, administrators, invitations, sessions, audit, security, usage, system, jobs | READ                                        |
+| POST              | users, organizations                                                                                                                                                                         | WRITE                                       |
+| PATCH             | users/:id, organizations/:id                                                                                                                                                                 | WRITE                                       |
+| POST              | users/:id/status, suspend, reactivate, revoke-sessions, sessions/:sessionId/revoke, temporary-password, require-password-change, password-reset                                              | WRITE; suffixes are under users/:id         |
+| POST/PATCH/DELETE | users/:id/memberships; PATCH/DELETE add /:membershipId                                                                                                                                       | WRITE; removal is soft                      |
+| POST              | organizations/:id/deactivate, reactivate, transfer-owner                                                                                                                                     | WRITE; suffixes are under organizations/:id |
+| POST              | administrators                                                                                                                                                                               | GRANTS                                      |
+| POST              | invitations/:id/revoke                                                                                                                                                                       | WRITE                                       |
+| GET               | security-setup/status                                                                                                                                                                        | Authenticated own active global grant       |
 
 `POST /auth/password` changes only the caller's password and clears cookies.
 Strict DTOs forbid extra properties; identifiers, list limits and sort whitelist
@@ -101,7 +101,7 @@ Global audit has no update/delete endpoint. No admin accounting-edit API exists.
 
 Email reset/resend and email ownership changes fail closed until a reviewed delivery,
 verification and recovery adapter exists. Admin temporary-password override is
-blocked; MFA recovery needs the caller's current password and unused recovery code.
+blocked; password recovery requires a reviewed operator identity-verification procedure.
 No fake billing, support tickets, uptime provider or external metrics are added.
 See [security](platform-admin-security.md), [bootstrap](platform-admin-bootstrap.md)
 and [verification/release report](fas36-release-gate.md).

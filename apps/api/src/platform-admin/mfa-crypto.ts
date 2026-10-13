@@ -1,3 +1,4 @@
+// Legacy ciphertext compatibility only. Not used by authentication or runtime authorization.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 export function mfaEncryptionKey(value: string | undefined): Buffer | null {

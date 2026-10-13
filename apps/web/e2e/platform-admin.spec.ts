@@ -9,10 +9,6 @@ const argon = apiRequire("argon2") as {
   hash: (value: string, options: Record<string, unknown>) => Promise<string>;
   argon2id: number;
 };
-const { TOTP, Secret } = apiRequire("otpauth") as {
-  Secret: { fromBase32: (value: string) => unknown };
-  TOTP: new (options: Record<string, unknown>) => { generate: () => string };
-};
 test.describe.configure({ mode: "serial" });
 // Synthetic credentials only, no privileged secrets in screenshots/traces.
 test.use({ trace: "off" });
@@ -101,7 +97,7 @@ test.afterAll(async () => {
   await ownerApi?.dispose();
   await db?.$disconnect();
 });
-test("full first login changes password, enrolls MFA and returns to normal platform overview", async ({
+test("full first login changes password and reaches platform overview without MFA", async ({
   page,
   context
 }) => {
@@ -117,29 +113,15 @@ test("full first login changes password, enrolls MFA and returns to normal platf
   await page.getByLabel("E-postadress").fill(email);
   await page.getByLabel("Lösenord", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Logga in", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/security-setup$/);
-  const enrollment = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/security-setup/enroll") && response.request().method() === "POST"
-  );
-  await page.getByRole("button", { name: "Skapa MFA-registrering" }).click();
-  const secret = (await (await enrollment).json()).secret as string;
-  await expect(page.getByLabel("MFA-hemlighet")).toHaveAttribute("type", "password");
-  await page.getByLabel("Nuvarande lösenord").fill(password);
-  await page.getByLabel("MFA-kod").fill(
-    new TOTP({
-      secret: Secret.fromBase32(secret),
-      algorithm: "SHA1",
-      digits: 6,
-      period: 30
-    }).generate()
-  );
-  await page.getByRole("button", { name: "Verifiera lösenord och MFA" }).click();
-  await expect(page.getByRole("heading", { name: "Spara dina engångskoder säkert" })).toBeVisible();
-  await page.getByRole("button", { name: "Jag har sparat koderna – till översikt" }).click();
   await expect(page).toHaveURL(/\/app$/);
   await expect(page.getByRole("heading", { name: "Plattformsöversikt" })).toBeVisible();
   expect(await db.organizationMember.count({ where: { userId: adminId } })).toBe(0);
+  await page.goto("/admin/security-setup");
+  await expect(page.getByRole("heading", { name: "Administratörens lösenord" })).toBeVisible();
+  await expect(page.getByLabel("Nytt lösenord")).toBeVisible();
+  await expect(page.getByLabel(/MFA|Återställningskod/)).toHaveCount(0);
+  await page.getByRole("link", { name: "Till översikt", exact: true }).click();
+  await expect(page).toHaveURL(/\/app$/);
   cookies = await context.cookies();
 });
 test.beforeEach(async ({ context }) => {

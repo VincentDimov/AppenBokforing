@@ -35,6 +35,14 @@ kommandona nedan; ersätt inte lokal `.env` med hostingcredentials. Fulla BAS-fi
 och importer-hemligheter får inte hamna i frontend, seed eller Git. Ingen FAS 38
 eller cloud-deployment ingår i detta arbete.
 
+## Aktuell autentisering — MFA borttaget 2026-10-12
+
+MFA-registrering, verifiering, engångskoder och step-up är borttagna i API och UI.
+Migration 26 slår av det gamla obligatoriska MFA-fältet utan att radera historik.
+Aktiva sessioner, persistenta roller, initialt lösenordsbyte och audit behålls.
+Lösenordsbaserad administration innebär lägre skydd vid stulna lösenord.
+Se [aktuell säkerhetspolicy](docs/platform-admin-security.md).
+
 ## Historik: FAS 36 – Master Admin & Platform Administration
 
 Separat global administration med persistenta roller, obligatoriskt första
@@ -46,7 +54,7 @@ Se [funktioner/API](docs/platform-admin.md), [säkerhet](docs/platform-admin-sec
 [42-punktsrapport med aktuella verifieringsresultat](docs/fas36-release-gate.md).
 
 Inget faktiskt Master Admin-konto har skapats i avsedd lokal/cloud-databas.
-Adminåtkomst är fail-closed utan API:ts skyddade MFA-krypteringsnyckel.
+Det tidigare MFA-kravet är ersatt av policyn ovan.
 Bootstrap körs aldrig automatiskt; credentials får inte hamna i kod/loggar/Git.
 E-poståterställning, e-postbyte och resend är uttryckligen otillgängliga utan
 verifierad leverans-/identitetsinfrastruktur. Ingen commit/push/deployment ingår.
@@ -54,8 +62,7 @@ verifierad leverans-/identitetsinfrastruktur. Ingen commit/push/deployment ingå
 För lokal vanlig användning: `corepack pnpm@9.15.4 infra:up`, kontrollera den
 lokala DATABASE_URL-adressen, `corepack pnpm@9.15.4 db:deploy`, därefter
 `corepack pnpm@9.15.4 dev`. Kopiera bara `.env.example` om lokal `.env` saknas;
-skriv aldrig över den med produktionskonfiguration. MFA-konfiguration krävs
-för globala adminfunktioner, inte för vanliga lokala login/register-flöden.
+skriv aldrig över den med produktionskonfiguration. MFA-konfiguration behövs inte.
 
 ## FAS 35 — gemensam UI/UX, 2026-10-08
 

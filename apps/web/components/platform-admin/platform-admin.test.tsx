@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { AdminDirectory } from "./admin-directory";
 import { AdminAction } from "./admin-actions";
+import { AdminSecuritySetup } from "./admin-security-setup";
 import { AdminLayout } from "./admin-layout";
 import { jsonResponse } from "@/test/accounting-fixtures";
 
@@ -136,3 +137,23 @@ it("requires typed confirmation and sends one mutation with no password in URL",
     })
   );
 });
+it.each([true, false])(
+  "password settings expose no MFA enrollment or code fields (required=%s)",
+  async (mustChangePassword) => {
+    fetchMock.mockResolvedValue(jsonResponse({ mustChangePassword }));
+    render(<AdminSecuritySetup />);
+    await screen.findByLabelText("Nytt lösenord");
+    expect(screen.queryByLabelText(/MFA|Återställningskod/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /MFA|Verifiera/ })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/platform-admin/security-setup/status",
+      expect.any(Object)
+    );
+    if (mustChangePassword)
+      expect(
+        screen.getByText("Byt ditt initiala lösenord före administration.")
+      ).toBeInTheDocument();
+    else
+      expect(screen.getByRole("link", { name: "Till översikt" })).toHaveAttribute("href", "/app");
+  }
+);

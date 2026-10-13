@@ -9,7 +9,6 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Length,
   Matches,
   Max,
   MaxLength,
@@ -73,14 +72,6 @@ export class AdminTemporaryPasswordDto extends AdminConfirmationDto {
 export class ChangePasswordDto {
   @IsString() @MinLength(1) @MaxLength(128) currentPassword!: string;
   @IsString() @MinLength(14) @MaxLength(128) newPassword!: string;
-}
-export class AdminMfaDto {
-  @IsString() @Matches(/^\d{6}$/) code!: string;
-  @IsString() @MinLength(1) @MaxLength(128) currentPassword!: string;
-}
-export class AdminRecoveryDto {
-  @IsString() @Length(32, 32) @Matches(/^[a-f0-9]+$/) recoveryCode!: string;
-  @IsString() @MinLength(1) @MaxLength(128) currentPassword!: string;
 }
 export class AdminMembershipDto extends AdminConfirmationDto {
   @IsUUID() organizationId!: string;

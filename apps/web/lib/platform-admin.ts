@@ -109,7 +109,6 @@ export interface AdminGrant {
     email: string;
     isActive: boolean;
     lastLoginAt: string | null;
-    platformMfaCredential: { verifiedAt: string | null } | null;
   };
 }
 export interface AdminInvitation {
@@ -142,7 +141,6 @@ export interface AdminSystem {
   migrationCompatible: boolean;
   applicationVersion: string;
   migrationState: { applied: number; failed: number } | null;
-  mfaEncryptionConfigured: boolean;
   notificationDeliveryConfigured: boolean;
   externalMetricsAvailable: boolean;
   storageReadiness: string;

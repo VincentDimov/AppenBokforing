@@ -220,7 +220,7 @@ export class AuthService {
         // The old session's replacedById has a real foreign key. Insert the child
         // first, then atomically claim and revoke the presented session below.
         await transaction.session.create({
-          data: { ...sessionBundle.session, adminMfaVerifiedAt: current.adminMfaVerifiedAt }
+          data: sessionBundle.session
         });
 
         const replaced = await transaction.session.updateMany({
@@ -335,20 +335,10 @@ export class AuthService {
   }
 
   async profile(user: AuthenticatedUser) {
-    const [grant, mfa, session] = await Promise.all([
-      this.database.prisma.platformAdministrator.findUnique({
-        where: { userId: user.id },
-        select: { role: true, isActive: true, revokedAt: true, mustChangePassword: true }
-      }),
-      this.database.prisma.platformAdminMfaCredential.findUnique({
-        where: { userId: user.id },
-        select: { verifiedAt: true }
-      }),
-      this.database.prisma.session.findUnique({
-        where: { id: user.sessionId },
-        select: { adminMfaVerifiedAt: true }
-      })
-    ]);
+    const grant = await this.database.prisma.platformAdministrator.findUnique({
+      where: { userId: user.id },
+      select: { role: true, isActive: true, revokedAt: true, mustChangePassword: true }
+    });
     const canAccessPlatformAdmin = Boolean(grant?.isActive && !grant.revokedAt);
     return {
       user: {
@@ -359,14 +349,7 @@ export class AuthService {
         canAccessPlatformAdmin,
         platformRole: canAccessPlatformAdmin ? grant?.role : undefined,
         requiresAdminSecuritySetup:
-          canAccessPlatformAdmin &&
-          Boolean(
-            grant?.mustChangePassword ||
-            user.mustChangePassword ||
-            !mfa?.verifiedAt ||
-            !session?.adminMfaVerifiedAt ||
-            Date.now() - session.adminMfaVerifiedAt.getTime() > 12 * 3600000
-          )
+          canAccessPlatformAdmin && Boolean(grant?.mustChangePassword || user.mustChangePassword)
       }
     };
   }

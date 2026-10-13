@@ -56,7 +56,7 @@ const userSelect = {
   updatedAt: true,
   lastLoginAt: true,
   platformAdministrator: {
-    select: { id: true, role: true, isActive: true, revokedAt: true, mfaRequired: true }
+    select: { id: true, role: true, isActive: true, revokedAt: true }
   },
   organizationMemberships: {
     where: { removedAt: null },
@@ -849,7 +849,6 @@ export class PlatformAdminService {
           role: true,
           isActive: true,
           mustChangePassword: true,
-          mfaRequired: true,
           grantedAt: true,
           revokedAt: true,
           user: {
@@ -857,8 +856,7 @@ export class PlatformAdminService {
               displayName: true,
               email: true,
               isActive: true,
-              lastLoginAt: true,
-              platformMfaCredential: { select: { verifiedAt: true } }
+              lastLoginAt: true
             }
           },
           grantedBy: { select: { displayName: true } }
@@ -1196,7 +1194,6 @@ export class PlatformAdminService {
       applicationVersion: "0.1.0",
       migrationState: migrations[0] ?? null,
       migrationCompatible: compatible,
-      mfaEncryptionConfigured: this.security.encryptionConfigured(),
       notificationDeliveryConfigured: false,
       externalMetricsAvailable: false,
       storageReadiness: "Not probed by this endpoint; use authorized deployment readiness checks"
@@ -1206,7 +1203,6 @@ export class PlatformAdminService {
     const [
       suspendedUsers,
       inactiveGrants,
-      pendingMfa,
       revokedSessions,
       deniedLast24h,
       recent,
@@ -1219,16 +1215,7 @@ export class PlatformAdminService {
           OR: [{ isActive: false }, { revokedAt: { not: null } }, { user: { isActive: false } }]
         }
       }),
-      this.db.prisma.platformAdministrator.count({
-        where: {
-          isActive: true,
-          revokedAt: null,
-          OR: [
-            { user: { platformMfaCredential: null } },
-            { user: { platformMfaCredential: { verifiedAt: null } } }
-          ]
-        }
-      }),
+
       this.db.prisma.session.count({ where: { revokedAt: { not: null } } }),
       this.db.prisma.platformAdminAuditEvent.count({
         where: { result: "DENIED", timestamp: { gte: new Date(Date.now() - 86400000) } }
@@ -1267,13 +1254,11 @@ export class PlatformAdminService {
     return {
       suspendedUsers,
       inactiveGrants,
-      pendingMfa,
       revokedSessions,
       deniedLast24h,
       recent,
       activeAdministrators,
       recentChanges,
-      mfaEncryptionConfigured: this.security.encryptionConfigured(),
       notificationDeliveryConfigured: false
     };
   }

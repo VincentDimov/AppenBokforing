@@ -94,9 +94,9 @@ export function AdminAction({
             )}
             {error && <Feedback kind="error">{error}</Feedback>}
             <p className="text-sm text-muted">
-              Känsliga ändringar kräver MFA verifierad de senaste fem minuterna.{" "}
+              Åtgärden kräver en aktiv session och rätt plattformsbehörighet.{" "}
               <Link href="/admin/security-setup" className="underline">
-                Verifiera igen
+                Mitt lösenord
               </Link>
             </p>
             <div className="flex justify-end gap-2">

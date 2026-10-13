@@ -72,7 +72,7 @@ export function AdminAuditPage({
         <PageHeader
           title="Auditlogg"
           context="Master Admin"
-          description="Append-only global historik. Lösenord, tokens och MFA-hemligheter ingår aldrig i loggen."
+          description="Append-only global historik. Lösenord och tokens ingår aldrig i loggen."
         />
       )}
       <form
@@ -214,7 +214,7 @@ export function AdminAdministrators() {
       <PageHeader
         title="Plattformsadministratörer"
         context="Master Admin"
-        description="Separata globala roller. Alla kräver eget lösenordsbyte, MFA och aktuella sessioner."
+        description="Separata globala roller. Alla kräver eget lösenordsbyte och aktuella sessioner."
       />
       <Feedback kind="info">
         Endast SUPER_ADMIN kan ändra globala behörigheter. Sista aktiva SUPER_ADMIN kan inte
@@ -249,7 +249,6 @@ export function AdminAdministrators() {
             "E-post",
             "Plattformsroll",
             "Status",
-            "MFA",
             "Senast inloggad",
             "Tilldelad / av",
             "Åtgärd"
@@ -266,11 +265,6 @@ export function AdminAdministrators() {
               <td className="p-3">{grant.role}</td>
               <td className="p-3">
                 {grant.isActive && !grant.revokedAt && grant.user.isActive ? "Aktiv" : "Inaktiv"}
-              </td>
-              <td className="p-3">
-                {grant.user.platformMfaCredential?.verifiedAt
-                  ? "Registrerad"
-                  : "Säkerhetsinställning krävs"}
               </td>
               <td className="p-3">{adminDate(grant.user.lastLoginAt)}</td>
               <td className="p-3">
@@ -521,11 +515,9 @@ export function AdminSessions() {
 interface AdminSecurity {
   activeAdministrators: number;
   recentChanges: AdminAudit[];
-  mfaEncryptionConfigured: boolean;
   notificationDeliveryConfigured: boolean;
   suspendedUsers: number;
   inactiveGrants: number;
-  pendingMfa: number;
   revokedSessions: number;
   deniedLast24h: number;
   recent: AdminAudit[];
@@ -585,10 +577,6 @@ function StatusContent({
             Migrationer: {state.migrationState?.applied ?? "Okänt"} tillämpade ·{" "}
             {state.migrationState?.failed ?? "Okänt"} misslyckade
           </p>
-          <p>
-            MFA-kryptering:{" "}
-            {state.mfaEncryptionConfigured ? "Konfigurerad" : "Saknas – adminåtkomst spärras"}
-          </p>
         </Panel>
         <Feedback kind="info">
           Objektlagring, externa driftmått, CPU, minne och upptid har inte verifierats av denna
@@ -637,7 +625,6 @@ function StatusContent({
             ["activeAdministrators", "Aktiva plattformsadministratörer"],
             ["suspendedUsers", "Avstängda användare"],
             ["inactiveGrants", "Inaktiva plattformsroller"],
-            ["pendingMfa", "Administratörer utan verifierad MFA"],
             ["revokedSessions", "Återkallade sessioner"],
             ["deniedLast24h", "Nekade säkerhetshändelser senaste dygnet"]
           ] as const
@@ -667,13 +654,12 @@ function StatusContent({
           </p>
         ))}
         <p className="text-sm">
-          MFA-kryptering: {state.mfaEncryptionConfigured ? "Konfigurerad" : "Saknas"}.
           E-postleverans:{" "}
           {state.notificationDeliveryConfigured ? "Konfigurerad" : "Inte konfigurerad"}.
         </p>
       </Panel>
       <Link className="underline" href="/admin/security-setup">
-        Min MFA, step-up och säker återställning
+        Mitt lösenord
       </Link>
       <Link className="ml-4 underline" href="/admin/audit">
         Full auditlogg

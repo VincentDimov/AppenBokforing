@@ -6,52 +6,42 @@ OWNER/ADMIN is not a platform administrator. Unknown roles fail closed. Normal
 accounting controllers retain tenant checks, period locks, immutable posted values,
 voucher-number transactions, Decimal arithmetic and evidence retention.
 
-## Credentials, MFA and sessions
+## Current authentication policy — 2026-10-12
 
-Passwords and recovery codes use Argon2id and existing environment-validated policy.
-Privileged/temporary passwords require 14–128 characters, upper/lowercase and a
-digit; passwords never appear in audit, URLs or list/profile DTOs. The bootstrap
-password is input only from operator environment and is never seeded or committed.
+MFA is removed application-wide at the operator's explicit request. There is no
+enrollment, verification, recovery-code or MFA step-up route or UI. Administration
+requires an authenticated, non-revoked, unexpired persisted session, an active
+user/grant and the appropriate current platform role. The initial password-change
+requirement remains. Both guards and mutation transactions recheck authorization.
 
-First login: password change → revoke all sessions → new login → own TOTP enrollment
-→ verify current password and TOTP → save ten recovery codes once → overview.
-TOTP uses the OTPAuth library (SHA1, six digits, 30-second interval, ±one window),
-monotonic counters reject replay. Enrollment requires a fresh active session and
-expires after ten minutes. Previously verified MFA is not silently overwritten.
+First privileged login: change initial password → all sessions revoked → new login
+→ overview. Subsequent password changes still require the caller's current password
+and active session, revoke all sessions and append PASSWORD_CHANGED evidence.
+Passwords use Argon2id; privileged/temporary passwords require 14–128 characters,
+upper/lowercase and a digit. Passwords never appear in audit or profile DTOs.
+Authentication, cookie/origin checks, refresh rotation and rate limits remain.
+Password/grant/status changes retain database- and service-level session revocation.
 
-MFA secrets are encrypted using AES-256-GCM with random 12-byte IV, authenticated
-tag and user/key-ID associated data. `PLATFORM_ADMIN_MFA_ENCRYPTION_KEY` must be
-canonical base64 for exactly 32 random bytes; `PLATFORM_ADMIN_MFA_KEY_ID` identifies
-the active key (default v1). Missing/mismatching keys fail closed. Never put this
-key in NEXT_PUBLIC variables, browser builds or repository files. Keep encrypted
-database backups and the key in separate access-controlled recovery systems.
-Key rotation needs a reviewed re-encryption/re-enrollment runbook; replacing the
-key or key-ID without migrating ciphertext will lock out administrators.
+Removing MFA reduces protection against stolen passwords. Do not describe this
+password-only policy as equivalent to MFA or regulatory compliance.
 
-MFA approval belongs to a persisted session; refresh rotation copies the original
-approval time instead of resetting its age. Read access expires after 12 hours,
-sensitive mutations after five minutes. Password/grant/status changes revoke
-sessions at both service and database levels. Mutation transactions lock the
-current session and revalidate permissions. No long-lived unchecked admin JWT
-or email superuser shortcut exists.
-
-Recovery requires the caller's active session, current password and one unused
-128-bit recovery code. Only hashes are retained. Recovery consumes the entire code
-set, invalidates MFA, requires password change and revokes every session. Lost
-password PLUS lost recovery proof cannot be safely solved by this UI: identity
-proof/operator recovery remains an explicit release blocker, not a password override.
+Migration 26 (`20261012170000_remove_mfa_requirement`) changes the legacy
+`mfa_required` default and existing grant flags to false and drops the mandatory
+true constraint. It does not change roles, password hashes/change flags, sessions,
+membership, bookkeeping or audit. Credential/recovery tables and session approval
+timestamps are retained for historical data compatibility, never consulted or
+exposed by current APIs. Refresh does not copy old approval timestamps.
+The legacy crypto helper remains only to validate retained ciphertext in tests;
+it is not part of authentication. Existing key material may be retained separately
+for old backups; it is no longer required by the application.
 
 ## Rate limits and concurrency
 
-Existing authentication/origin/cookie/refresh protections remain active. Global
-controllers add bounded request rates; enrollment/verification/recovery use five
-requests per minute. Persisted failed MFA/recovery attempts impose five failures
-per actor per rolling 15 minutes. Failure evidence is committed before the error
-is returned. A PostgreSQL transaction advisory lock serializes privileged security
-mutations and the last-active-superadministrator invariant. Concurrent eight-attempt
-and concurrent last-super-revocation tests exercise actual PostgreSQL, not mocks.
-The coarse global lock is intentionally conservative: high-volume scaling and a
-separate distributed authentication limiter need reviewed performance work.
+Authentication and password-change endpoints remain rate-limited. Global metadata
+controllers retain bounded request rates. PostgreSQL advisory/session locks still
+serialize privileged password/grant changes and the last-active-superadministrator
+invariant. Revoked, expired and foreign sessions cannot perform admin mutations.
+The retired MFA-specific attempt limiter is removed along with those endpoints.
 
 ## Evidence, least privilege and retention
 
