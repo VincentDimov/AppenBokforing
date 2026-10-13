@@ -65,16 +65,25 @@ async function getJson(fetchFn, url, token, provider) {
   return response.json();
 }
 
+function resolvePrismaCli(dbDirectory = path.resolve(__dirname, "../packages/db")) {
+  const dbRequire = createRequire(path.join(dbDirectory, "package.json"));
+  try {
+    // The package root export is a types module, not the CLI executable.
+    return dbRequire.resolve("prisma/build/index.js");
+  } catch {
+    throw new Error("Pinned Prisma CLI could not be resolved.");
+  }
+}
+
 function applyMigrations(uri, env) {
   const dbDirectory = path.resolve(__dirname, "../packages/db");
-  const dbRequire = createRequire(path.join(dbDirectory, "package.json"));
   const childEnv = { ...env, DATABASE_URL: uri };
   delete childEnv.NEON_API_KEY;
   delete childEnv.GH_TOKEN;
   delete childEnv.GITHUB_TOKEN;
   const result = spawnSync(
     process.execPath,
-    [dbRequire.resolve("prisma"), "migrate", "deploy", "--schema", "prisma/schema.prisma"],
+    [resolvePrismaCli(dbDirectory), "migrate", "deploy", "--schema", "prisma/schema.prisma"],
     { cwd: dbDirectory, env: childEnv, encoding: "utf8", timeout: 8 * 60 * 1000 }
   );
   // Prisma diagnostics can contain connection details. Expose only error codes, not raw output.
@@ -132,6 +141,7 @@ if (require.main === module) {
         /^Neon connection does not /,
         /^(GitHub|Neon) request failed \(HTTP \d{3}\)\.$/,
         /^Cannot verify the current master commit\.$/,
+        /^Pinned Prisma CLI could not be resolved\.$/,
         /^Prisma migration failed(?: \(P\d{4}(?:, P\d{4})*\))?\.$/
       ];
       console.error(
@@ -144,4 +154,10 @@ if (require.main === module) {
   );
 }
 
-module.exports = { TARGET, validateContext, validateConnection, migrateProduction };
+module.exports = {
+  TARGET,
+  validateContext,
+  validateConnection,
+  resolvePrismaCli,
+  migrateProduction
+};

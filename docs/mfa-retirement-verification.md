@@ -12,7 +12,7 @@ protection against stolen passwords; it does not imply regulatory compliance.
   change, subsequent login directly to the overview, password-only settings,
   role/tenant boundaries and logout to the public homepage.
 - API and Next.js production builds: PASS.
-- Neon migration automation and isolated E2E safety contracts: 14 tests PASS.
+- Neon migration automation and isolated E2E safety contracts: 15 tests PASS.
 
 Integration/browser tests used isolated loopback test databases and disposable
 object storage, never the normal local database or production accounting data.
@@ -44,6 +44,11 @@ Publish through the existing `master` Git integration for Render/Vercel. The Neo
 CI migration remains gated on all existing verification jobs and is idempotent
 after this authorized operator execution. Confirm the deployed commit and public
 API behavior separately; local tests alone are not deployment evidence.
+
+The first cloud verification found an existing automation defect: the Prisma
+package-root export resolves to its types module rather than the CLI. The migration
+script now resolves the explicit pinned CLI export and a regression test executes
+the actual installed executable. No CI gates or target validation were relaxed.
 
 Do not delete legacy credentials/audit, overwrite passwords, clear initial
 password-change flags or recreate bootstrap to recover access. Reintroducing MFA

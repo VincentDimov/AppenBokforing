@@ -3,10 +3,13 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
+const { execFileSync } = require("node:child_process");
 const {
   TARGET,
   validateContext,
   validateConnection,
+  resolvePrismaCli,
   migrateProduction
 } = require("../scripts/neon-production-migrate.cjs");
 
@@ -21,6 +24,21 @@ const env = {
   GH_TOKEN: "synthetic-github-token"
 };
 const uri = `postgresql://${TARGET.role}:synthetic-password@${TARGET.host}/neondb?sslmode=require`;
+
+test("resolves and executes the real pinned Prisma CLI rather than its package-root types export", () => {
+  const cli = resolvePrismaCli();
+  assert.ok(fs.existsSync(cli));
+  assert.match(cli, /[\\/]prisma[\\/]build[\\/]index\.js$/);
+  const version = execFileSync(process.execPath, [cli, "--version"], {
+    cwd: os.tmpdir(),
+    env: { ...process.env, DATABASE_URL: "", NEON_API_KEY: "", GH_TOKEN: "" },
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 30000,
+    encoding: "utf8"
+  });
+  assert.match(version, /prisma\s*:\s*6\.17\.1/);
+  assert.throws(() => resolvePrismaCli(os.tmpdir()), /Pinned Prisma CLI could not be resolved/);
+});
 
 test("local runs, PRs, other repositories and branches cannot access production", () => {
   for (const overrides of [
