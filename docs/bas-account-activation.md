@@ -48,6 +48,22 @@ tidigare strikt inverteringskontrakt; detta ger inte fria nya bokföringsvärden
 
 ## UI
 
+Uppdatering 2026-10-13: kontoplanen öppnas i hela den installerade BAS-katalogen,
+inte bara redan aktiva konton. Finns ingen installerad katalog visas i stället
+**Alla företagskonton**, inklusive inaktiva egna konton, med en tydlig varning
+om att detta inte är den fullständiga BAS-kontoplanen. En saknad katalog kan inte
+aktiveras genom UI och syntetiska fixtures får aldrig installeras som officiell data.
+
+Varje aktivt konto har **Avaktivera** direkt i tabellen. En bekräftelsedialog
+beskriver konsekvenserna för nya val, utkast och mallar. Endast `active=false`
+skickas till den befintliga tenant-/rollskyddade PATCH-rutten, som skriver audit.
+Kontoidentitet, namn, momsinställningar, IB och bokförda rader raderas inte.
+Inaktiva egna konton har motsvarande **Aktivera** och explicit bekräftelse;
+BAS-konton använder fortsatt serverns preview och atomiska aktiveringsoperation.
+Fliken **Aktiva konton** begränsar vyn till faktiskt bokföringsbara aktiva konton.
+Statusfilter och **Egna konton** gör tidigare avaktiverade konton nåbara.
+READ_ONLY/MEMBER får inga mutationsknappar och nekas även av API:t.
+
 FAS 37.1 visar tydligt **Aktivt**, **Tillgängligt**, **Ej bokföringsbart** och
 **Begränsat enligt K2 · K3 krävs**. Tillgängligt betyder katalogpost som ännu
 inte är aktiv, inte ett löfte om aktiveringsbehörighet. Serverns eligibility

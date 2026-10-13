@@ -422,7 +422,7 @@ test("BAS optional activation requires a real preview and becomes available in v
   await expect(page.getByRole("checkbox", { name: "Markera konto 2080" })).toBeDisabled();
   await page.getByLabel("Sök kontonummer eller namn").fill("1111");
   await page.getByRole("checkbox", { name: "Markera konto 1111" }).check();
-  await page.getByRole("button", { name: "Lägg till markerade (1)" }).click();
+  await page.getByRole("button", { name: "Aktivera markerade (1)" }).click();
   await expect(page.getByRole("dialog", { name: "Bekräfta BAS-aktivering" })).toBeVisible();
   expect(await db.account.count({ where: { organizationId: org.id, accountNumber: "1111" } })).toBe(
     0
@@ -459,7 +459,7 @@ test("BAS K3 activation needs typed framework confirmation and never silently sw
   await page.getByLabel("Sök kontonummer eller namn").fill("2080");
   await expect(page.getByRole("checkbox", { name: "Markera konto 2080" })).toBeEnabled();
   await page.getByRole("checkbox", { name: "Markera konto 2080" }).check();
-  await page.getByRole("button", { name: "Lägg till markerade (1)" }).click();
+  await page.getByRole("button", { name: "Aktivera markerade (1)" }).click();
   await page.getByRole("button", { name: "Bekräfta aktivering" }).click();
   await expect(page.getByText("1 konton aktiverade.")).toBeVisible();
   expect(
@@ -492,18 +492,20 @@ test("BAS optional activation stays in company A when switching the same catalog
   ).toBe(201);
   await open(page, companyA, "registers/accounts");
   await page.getByRole("button", { name: "Tillgängliga BAS-konton" }).click();
-  await page.getByRole("button", { name: "Lägg till konto 1111", exact: true }).click();
+  await page.getByRole("button", { name: "Aktivera konto 1111", exact: true }).click();
   await page.getByRole("button", { name: "Bekräfta aktivering" }).click();
   await expect(page.getByText("1 konton aktiverade.")).toBeVisible();
   await page.getByRole("button", { name: "Aktiva konton", exact: true }).click();
   await expect(page.getByRole("cell", { name: "1111", exact: true })).toBeVisible();
   await selectOrg(page, companyB);
+  await page.getByRole("button", { name: "Aktiva konton", exact: true }).click();
   await expect(page.getByRole("cell", { name: "1110", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "1111", exact: true })).toHaveCount(0);
   expect(
     await db.account.count({ where: { organizationId: companyB.id, accountNumber: "1111" } })
   ).toBe(0);
   await selectOrg(page, companyA);
+  await page.getByRole("button", { name: "Aktiva konton", exact: true }).click();
   await expect(page.getByRole("cell", { name: "1111", exact: true })).toBeVisible();
 });
 
@@ -549,11 +551,30 @@ test("BAS reconciliation and browser deactivation preserve posted lines and snap
     ).status()
   ).toBe(201);
   await open(page, org, "registers/accounts");
-  await page.getByRole("button", { name: "Redigera konto 1110" }).click();
-  await page.getByLabel("Kontot är aktivt").uncheck();
-  await expect(page.getByRole("status")).toContainText("Historiska verifikationer");
-  await page.getByRole("button", { name: "Spara ändringar" }).click();
-  await expect(page.getByRole("cell", { name: "1110", exact: true })).toHaveCount(0);
+  const accountBefore = await db.account.findFirstOrThrow({
+    where: { organizationId: org.id, accountNumber: "1110" }
+  });
+  await page.getByRole("button", { name: "Avaktivera konto 1110" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Avaktivera konto" });
+  await expect(confirmation).toContainText("Kontot raderas inte");
+  expect((await db.account.findUniqueOrThrow({ where: { id: accountBefore.id } })).isActive).toBe(
+    true
+  );
+  await confirmation.getByRole("button", { name: "Bekräfta avaktivering" }).click();
+  await expect(page.getByText("Konto 1110 avaktiverat.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "1110", exact: true })).toBeVisible();
+  expect((await db.account.findUniqueOrThrow({ where: { id: accountBefore.id } })).isActive).toBe(
+    false
+  );
+  expect((await storedEntry(id)).lines).toEqual(original.lines);
+  await page.getByRole("button", { name: "Aktivera konto 1110", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Bekräfta BAS-aktivering" })
+    .getByRole("button", { name: "Bekräfta aktivering" })
+    .click();
+  await expect(page.getByText("1 konton aktiverade.")).toBeVisible();
+  const accountAfter = await db.account.findUniqueOrThrow({ where: { id: accountBefore.id } });
+  expect({ ...accountAfter, updatedAt: accountBefore.updatedAt }).toEqual(accountBefore);
   expect((await storedEntry(id)).lines).toEqual(original.lines);
   await open(page, org, "bookkeeping/vouchers/" + id);
   await expect(page.getByLabel("Debet rad 1")).toHaveValue("123.45");
@@ -580,7 +601,7 @@ test("full-size synthetic BAS catalog stays bounded and accessible at four width
     await page.getByLabel("Sök kontonummer eller namn").fill("1120");
     await expect(page.getByText("Ej bokföringsbart", { exact: true })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Lägg till konto 1120", exact: true })
+      page.getByRole("button", { name: "Aktivera konto 1120", exact: true })
     ).toBeDisabled();
     await noPageOverflow(page, `full-size BAS ${width}`);
     await accessible(page);

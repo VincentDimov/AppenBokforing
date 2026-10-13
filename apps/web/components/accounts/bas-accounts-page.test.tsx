@@ -120,6 +120,12 @@ beforeEach(() => {
       framework = JSON.parse(String(init?.body)).framework;
       return response({ framework });
     }
+    const account = items.find((row) => url === `/api/accounts/${row.accountId}`);
+    if (account && init?.method === "PATCH") {
+      const active = JSON.parse(String(init.body)).active;
+      items = items.map((row) => (row.accountId === account.accountId ? { ...row, active } : row));
+      return response({ ...account, active });
+    }
     throw new Error(`Unexpected synthetic request ${url}`);
   });
 });
@@ -131,7 +137,7 @@ it("distinguishes available, K2-restricted and nonbookable catalog accounts", as
   await screen.findByText("Ej bokföringsbart");
   expect(screen.getByText("Begränsat enligt K2 · K3 krävs")).toBeInTheDocument();
   expect(screen.getByText("Tillgängligt")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Lägg till konto 1911" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Aktivera konto 1911" })).toBeDisabled();
 });
 afterAll(() => {
   global.fetch = original;
@@ -157,7 +163,7 @@ it("requires server preview and explicit confirmation before a bulk write", asyn
   fireEvent.click(screen.getByRole("button", { name: "Tillgängliga BAS-konton" }));
   await screen.findByText("Synthetic optional");
   fireEvent.click(screen.getByRole("checkbox", { name: "Markera konto 1911" }));
-  fireEvent.click(screen.getByRole("button", { name: "Lägg till markerade (1)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Aktivera markerade (1)" }));
   await screen.findByRole("dialog", { name: "Bekräfta BAS-aktivering" });
   expect(fetchMock.mock.calls.some(([url]) => url === "/api/accounts/catalog/activate")).toBe(
     false
@@ -178,7 +184,52 @@ it("hides writes and framework administration from read-only users", async () =>
   await screen.findByText("Synthetic default");
   expect(screen.queryByRole("button", { name: "Nytt konto" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Ändra K-regelverk" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Lägg till markerade/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Aktivera markerade/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Avaktivera konto/ })).not.toBeInTheDocument();
+});
+
+it("opens the entire installed catalog, including optional accounts, by default", async () => {
+  render(<AccountsPage />);
+  await screen.findByText("Synthetic optional");
+  expect(screen.getByRole("button", { name: "Alla BAS-konton" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("tab=all"), expect.anything());
+});
+
+it("requires confirmation, preserves identity, and can reactivate a catalog account", async () => {
+  render(<AccountsPage />);
+  await screen.findByText("Synthetic default");
+  fireEvent.click(screen.getByRole("button", { name: "Avaktivera konto 1900" }));
+  await screen.findByRole("dialog", { name: "Avaktivera konto" });
+  expect(screen.getByText(/Kontot raderas inte/)).toBeInTheDocument();
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Avbryt" }));
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Avaktivera konto 1900" }));
+  fireEvent.click(screen.getByRole("button", { name: "Bekräfta avaktivering" }));
+  await screen.findByText("Konto 1900 avaktiverat.");
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/accounts/local-1900",
+    expect.objectContaining({ method: "PATCH", body: JSON.stringify({ active: false }) })
+  );
+  expect(await screen.findByRole("button", { name: "Aktivera konto 1900" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Redigera konto 1900" })).toBeInTheDocument();
+});
+
+it("explicitly reactivates a custom account without changing its metadata", async () => {
+  items = [{ ...items[0]!, catalogAccountId: null, provenanceId: null, active: false }];
+  render(<AccountsPage />);
+  await screen.findByText("Synthetic default");
+  fireEvent.click(screen.getByRole("button", { name: "Aktivera konto 1900" }));
+  await screen.findByRole("dialog", { name: "Aktivera konto" });
+  fireEvent.click(screen.getByRole("button", { name: "Bekräfta aktivering" }));
+  await screen.findByText("Konto 1900 aktiverat.");
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/accounts/local-1900",
+    expect.objectContaining({ method: "PATCH", body: JSON.stringify({ active: true }) })
+  );
 });
 it("requires a typed organization name for explicit K3 configuration", async () => {
   render(<AccountsPage />);

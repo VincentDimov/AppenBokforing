@@ -27,7 +27,10 @@ export class BasCatalogService {
     return this.db.prisma.$transaction(
       async (tx) => {
         const { organization, catalog } = await this.context(org, tx);
-        const local = query.tab === "active" || query.tab === "custom";
+        // Without an installed catalog, keep all local accounts reachable,
+        // including inactive ones. Never present them as official BAS data.
+        const local =
+          query.tab === "active" || query.tab === "custom" || (!catalog && query.tab === "all");
         const filter = [Prisma.sql`TRUE`];
         const name = local ? Prisma.sql`a.name` : Prisma.sql`b.official_name`;
         const number = local ? Prisma.sql`a.account_number` : Prisma.sql`b.account_number`;

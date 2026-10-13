@@ -128,7 +128,7 @@ describe("AccountsPage", () => {
     expect(screen.getByRole("button", { name: "Nytt konto" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Redigera konto 1930" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/accounts/catalog?organizationId=organization-a&tab=active&page=1&pageSize=50&sort=number",
+      "/api/accounts/catalog?organizationId=organization-a&tab=all&page=1&pageSize=50&sort=number",
       expect.objectContaining({
         cache: "no-store",
         credentials: "include"
@@ -141,7 +141,7 @@ describe("AccountsPage", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenLastCalledWith(
-        "/api/accounts/catalog?organizationId=organization-a&tab=active&page=1&pageSize=50&q=F%C3%B6retag&sort=number",
+        "/api/accounts/catalog?organizationId=organization-a&tab=all&page=1&pageSize=50&q=F%C3%B6retag&sort=number",
         expect.objectContaining({
           cache: "no-store",
           credentials: "include"
@@ -158,6 +158,19 @@ describe("AccountsPage", () => {
     expect(await screen.findByRole("cell", { name: "1930" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Nytt konto" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Redigera konto 1930" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Avaktivera konto 1930" })).not.toBeInTheDocument();
     expect(screen.getByText(/Du har läsbehörighet till kontoplanen/i)).toBeInTheDocument();
+  });
+
+  it("explains that local accounts are not a complete BAS catalog", async () => {
+    setAuthenticatedFetchResponses("OWNER");
+    renderAccountsPage();
+    expect(await screen.findByText("BAS-katalogen är inte installerad.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alla företagskonton" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Tillgängliga BAS-konton" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Avaktivera konto 1930" })).toBeEnabled();
   });
 });

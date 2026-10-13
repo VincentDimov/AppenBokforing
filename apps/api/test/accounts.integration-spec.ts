@@ -136,6 +136,49 @@ describe("account management", () => {
     await ownerAgent.get(`/accounts/${accountB.id}`).expect(404);
   });
 
+  it("keeps inactive custom accounts reachable without an installed BAS catalog", async () => {
+    const inactive = await prisma.account.create({
+      data: {
+        organizationId: organizationA.id,
+        accountNumber: "1717",
+        name: "Synthetic inactive local account",
+        type: AccountType.ASSET,
+        normalBalance: "DEBIT",
+        isActive: false
+      }
+    });
+    const all = await ownerAgent
+      .get("/accounts/catalog")
+      .query({ organizationId: organizationA.id, tab: "all", q: "1717" })
+      .expect(200);
+    expect(all.body.catalog).toBeNull();
+    expect(all.body.items).toEqual([
+      expect.objectContaining({
+        accountId: inactive.id,
+        catalogAccountId: null,
+        active: false,
+        number: "1717"
+      })
+    ]);
+    const active = await ownerAgent
+      .get("/accounts/catalog")
+      .query({ organizationId: organizationA.id, tab: "active", q: "1717" })
+      .expect(200);
+    expect(active.body.items).toEqual([]);
+    await readOnlyAgent.patch(`/accounts/${inactive.id}`).send({ active: true }).expect(403);
+    await otherOwnerAgent.patch(`/accounts/${inactive.id}`).send({ active: true }).expect(404);
+    await ownerAgent.patch(`/accounts/${inactive.id}`).send({ active: true }).expect(200);
+    const after = await prisma.account.findUniqueOrThrow({ where: { id: inactive.id } });
+    expect({ ...after, isActive: inactive.isActive, updatedAt: inactive.updatedAt }).toEqual(
+      inactive
+    );
+    expect(
+      await prisma.auditEvent.count({
+        where: { entityId: inactive.id, action: AuditAction.UPDATE }
+      })
+    ).toBe(1);
+  });
+
   it("lets an owner create an account, resolves an organization-local VAT code, and audits it", async () => {
     const response = await ownerAgent
       .post("/accounts")

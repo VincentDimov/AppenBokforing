@@ -67,7 +67,7 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("active"),
+  const [tab, setTab] = useState("all"),
     [search, setSearch] = useState(""),
     [page, setPage] = useState(1),
     [revision, setRevision] = useState(0);
@@ -85,6 +85,7 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
     [preview, setPreview] = useState<ActivationPreview | null>(null),
     [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<{ account: Account | null } | null>(null),
+    [statusChange, setStatusChange] = useState<CatalogItem | null>(null),
     [frameworkDialog, setFrameworkDialog] = useState(false),
     [framework, setFramework] = useState("NOT_CONFIGURED"),
     [confirmation, setConfirmation] = useState("");
@@ -237,7 +238,7 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
                       type="button"
                       size="sm"
                       variant="outline"
-                      aria-label={`Lägg till konto ${row.number}`}
+                      aria-label={`Aktivera konto ${row.number}`}
                       disabled={busy || loading || !allowed(row)}
                       onClick={() =>
                         void act(async (signal) => {
@@ -256,7 +257,19 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
                         })
                       }
                     >
-                      Lägg till
+                      Aktivera
+                    </Button>
+                  ) : null}
+                  {row.accountId && (row.active || !row.catalogAccountId) ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || loading || (!row.active && row.isBookable === false)}
+                      aria-label={`${row.active ? "Avaktivera" : "Aktivera"} konto ${row.number}`}
+                      onClick={() => setStatusChange(row)}
+                    >
+                      {row.active ? "Avaktivera" : "Aktivera"}
                     </Button>
                   ) : null}
                   {row.accountId ? (
@@ -301,6 +314,16 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
           ) : undefined
         }
       />
+      {data && !data.catalog ? (
+        <div role="status" className="rounded border border-border bg-surface-muted p-4 text-sm">
+          <p className="font-medium">BAS-katalogen är inte installerad.</p>
+          <p>
+            Här visas företagets egna konton, inte hela BAS-kontoplanen. Med skrivbehörighet kan du
+            skapa, aktivera och avaktivera egna konton. BAS-konton blir tillgängliga efter en
+            granskad katalogimport.
+          </p>
+        </div>
+      ) : null}
       <p>
         {data?.catalog
           ? `${data.catalog.version} · källversion ${data.catalog.sourceVersion} · ${data.catalog.totalAccounts} BAS-konton`
@@ -360,12 +383,13 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
             type="button"
             aria-pressed={tab === value}
             variant={tab === value ? "default" : "outline"}
+            disabled={loading || (value === "available" && !data?.catalog)}
             onClick={() => {
               setTab(value!);
               invalidate();
             }}
           >
-            {label}
+            {value === "all" && data && !data.catalog ? "Alla företagskonton" : label}
           </Button>
         ))}
       </nav>
@@ -460,7 +484,7 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
               })
             }
           >
-            Lägg till markerade ({selection.length})
+            Aktivera markerade ({selection.length})
           </Button>
         </div>
       ) : null}
@@ -535,6 +559,59 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
           }}
         />
       ) : null}
+      <Dialog
+        open={!!statusChange}
+        onClose={() => setStatusChange(null)}
+        title={statusChange?.active ? "Avaktivera konto" : "Aktivera konto"}
+        busy={busy}
+      >
+        {statusChange ? (
+          <>
+            <div className="dialog-body space-y-3">
+              <p>
+                {statusChange.number} · {statusChange.name}
+              </p>
+              <p>
+                {statusChange.active
+                  ? "Kontot tas bort från nya kontoval. Utkast och mallar med kontot kan inte bokföras förrän det återaktiverats. Kontot raderas inte och bokförda verifikationer, rapporter och ingående balans bevaras."
+                  : "Kontot blir tillgängligt för nya kontoval. Befintliga namn, momsinställningar och bokföringshistorik bevaras. Servern kontrollerar att kontot får aktiveras."}
+              </p>
+              {error ? <p role="alert">{error}</p> : null}
+            </div>
+            <div className="dialog-actions">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setStatusChange(null)}
+              >
+                Avbryt
+              </Button>
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void act(async (signal) => {
+                    await workspaceRequest(`/accounts/${statusChange.accountId}`, {
+                      method: "PATCH",
+                      signal,
+                      body: JSON.stringify({ active: !statusChange.active })
+                    });
+                    if (signal.aborted) return;
+                    setNotice(
+                      `Konto ${statusChange.number} ${statusChange.active ? "avaktiverat" : "aktiverat"}.`
+                    );
+                    setStatusChange(null);
+                    reload();
+                  })
+                }
+              >
+                {statusChange.active ? "Bekräfta avaktivering" : "Bekräfta aktivering"}
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </Dialog>
       <Dialog
         open={!!preview}
         onClose={() => setPreview(null)}
