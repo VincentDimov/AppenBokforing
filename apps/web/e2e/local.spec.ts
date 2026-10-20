@@ -40,6 +40,30 @@ const date = new Date().toISOString().slice(0, 10);
 const year = date.slice(0, 4);
 const password = randomUUID() + "-Aa1!";
 
+test("voucher account balances show booked IB and movements for the date, not draft amounts", async ({
+  page
+}) => {
+  await open(page, goldenOrg, "bookkeeping/vouchers/new");
+  await page.getByLabel("Bokföringsdatum", { exact: true }).fill("2026-06-01");
+  const account = page.getByRole("combobox", { name: "Konto rad 1", exact: true });
+  await account.fill("1930");
+  await page.getByRole("option", { name: /^1930/ }).click();
+  await expect(page.getByLabel("Saldo rad 1", { exact: true })).toHaveText("13 500,00");
+  await expect(page.getByRole("columnheader", { name: "Moms", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("columnheader").last()).toHaveText("Saldo");
+  await page.getByLabel("Debet rad 1").fill("999,99");
+  await expect(page.getByLabel("Saldo rad 1", { exact: true })).toHaveText("13 500,00");
+  await page.getByLabel("Bokföringsdatum", { exact: true }).fill("2026-01-01");
+  await expect(page.getByLabel("Saldo rad 1", { exact: true })).toHaveText("12 000,00");
+  await page.getByRole("combobox", { name: "Konto rad 2", exact: true }).fill("2440");
+  await page.getByRole("option", { name: /^2440/ }).click();
+  await expect(page.getByLabel("Saldo rad 2", { exact: true })).toHaveText("−3 000,00");
+  await expect(page.getByLabel("Saldo rad 1", { exact: true })).toHaveText("12 000,00");
+  await page.screenshot({ path: test.info().outputPath("voucher-account-balances.png") });
+  await selectOrg(page, b);
+  await expect(page.getByLabel("Saldo rad 1", { exact: true })).toHaveText("—");
+});
+
 test("two browser contexts cannot overwrite or post a stale voucher", async ({ browser }) => {
   const entry = await draft(a);
   const contexts = await Promise.all([browser.newContext(), browser.newContext()]);
@@ -599,12 +623,17 @@ test("full-size synthetic BAS catalog loads one complete list at four widths", a
     await page.setViewportSize({ width, height: 1000 });
     await open(page, org, "registers/accounts");
     await page.getByRole("button", { name: "Alla BAS-konton", exact: true }).click();
-    await expect(page.getByText(`${total} konton visas i en sammanhängande lista.`)).toBeVisible();
+    await expect(
+      page.getByText(`${total} konton visas i en sammanhängande lista.`, { exact: true })
+    ).toBeVisible();
     await expect(page.locator("tbody tr")).toHaveCount(total);
     await expect(page.getByRole("button", { name: "Nästa", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Föregående", exact: true })).toHaveCount(0);
     await page.getByLabel("Sök kontonummer eller namn").fill("1120");
-    await expect(page.getByText("1 konton visas i en sammanhängande lista.")).toBeVisible();
+    await expect(
+      page.getByText("1 konton visas i en sammanhängande lista.", { exact: true })
+    ).toBeVisible();
+    await expect(page.locator("tbody tr")).toHaveCount(1);
     await expect(page.getByText("Ej bokföringsbart", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Aktivera konto 1120", exact: true })
@@ -1094,8 +1123,7 @@ test("explicit VAT roles → browser posting → frozen DB → base/tax report",
   expect(response.status()).toBe(201);
   const id = ((await response.json()) as { id: string }).id;
   await open(page, org, "bookkeeping/vouchers/" + id);
-  await page.getByLabel("Momsmetadata rad 1").click();
-  await page.getByLabel("Momsmetadata rad 2").click();
+  await page.getByText("Momsuppgifter (valfritt)", { exact: true }).click();
   await page.getByLabel("Momsroll rad 1").selectOption("BASE");
   await page.getByLabel("Momsroll rad 2").selectOption("TAX");
   const posting = page.waitForResponse((r) => r.url().endsWith(`/journal-entries/${id}/post`));

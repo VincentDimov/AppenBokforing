@@ -130,6 +130,131 @@ describe("Golden accounting truth (real PostgreSQL / HTTP)", () => {
     await app?.close();
   });
 
+  const balanceQuery = (date = "2026-06-01") => ({
+    organizationId: fixture.organizationId,
+    fiscalYearId: fixture.fiscalYear,
+    date,
+    accountIds: [fixture.accounts["1930"], fixture.accounts["2440"], fixture.accounts["3010"]].join(
+      ","
+    )
+  });
+  it("voucher balances include exact IB and only posted movements through the inclusive date", async () => {
+    const result = await owner.get("/accounts/balances").query(balanceQuery()).expect(200);
+    expect(result.body.accounts).toEqual(
+      expect.arrayContaining([
+        { accountId: fixture.accounts["1930"], balance: "13500.00" },
+        { accountId: fixture.accounts["2440"], balance: "-1500.00" },
+        { accountId: fixture.accounts["3010"], balance: "-4500.00" }
+      ])
+    );
+    const first = await owner
+      .get("/accounts/balances")
+      .query(balanceQuery("2026-01-01"))
+      .expect(200);
+    expect(first.body.accounts).toContainEqual({
+      accountId: fixture.accounts["1930"],
+      balance: "12000.00"
+    });
+    const last = await owner
+      .get("/accounts/balances")
+      .query(balanceQuery("2026-12-31"))
+      .expect(200);
+    expect(last.body.accounts).toContainEqual({
+      accountId: fixture.accounts["1930"],
+      balance: "11000.00"
+    });
+    expect(last.body.accounts).toContainEqual({
+      accountId: fixture.accounts["2440"],
+      balance: "0.00"
+    });
+  });
+  it("voucher balances reject unauthenticated, foreign tenant, mixed-account and foreign-year reads", async () => {
+    await request(app.getHttpServer()).get("/accounts/balances").query(balanceQuery()).expect(401);
+    await foreign.get("/accounts/balances").query(balanceQuery()).expect(404);
+    await owner
+      .get("/accounts/balances")
+      .query({
+        ...balanceQuery(),
+        accountIds: [fixture.accounts["1930"], empty.accounts["1930"]].join(",")
+      })
+      .expect(404);
+    await owner
+      .get("/accounts/balances")
+      .query({ ...balanceQuery(), fiscalYearId: empty.fiscalYear })
+      .expect(404);
+  });
+  it("voucher balances validate dates and bounded unique IDs instead of inventing zero", async () => {
+    for (const date of ["2026-02-30", "2025-12-31", "2027-01-01", "2026-06-01T12:00:00Z"])
+      await owner.get("/accounts/balances").query(balanceQuery(date)).expect(400);
+    for (const accountIds of [
+      "",
+      "not-a-uuid",
+      `${fixture.accounts["1930"]},${fixture.accounts["1930"]}`,
+      Array.from({ length: 101 }, () => randomUUID()).join(",")
+    ])
+      await owner
+        .get("/accounts/balances")
+        .query({ ...balanceQuery(), accountIds })
+        .expect(400);
+    const blank = await owner
+      .get("/accounts/balances")
+      .query({
+        organizationId: empty.organizationId,
+        fiscalYearId: empty.fiscalYear,
+        date: "2026-06-01",
+        accountIds: empty.accounts["1930"]
+      })
+      .expect(200);
+    expect(blank.body.accounts).toEqual([{ accountId: empty.accounts["1930"], balance: "0.00" }]);
+  });
+  it("read-only members may read voucher balances", async () => {
+    const reader = request.agent(app.getHttpServer());
+    const registration = await reader
+      .post("/auth/register")
+      .send({
+        displayName: "Balance reader",
+        email: randomUUID() + "@example.test",
+        password: "Fixed-golden-test-password-2026!"
+      })
+      .expect(201);
+    await prisma.organizationMember.create({
+      data: {
+        organizationId: fixture.organizationId,
+        userId: registration.body.user.id,
+        role: "READ_ONLY"
+      }
+    });
+    await reader.get("/accounts/balances").query(balanceQuery()).expect(200);
+  });
+
+  it("voucher balances keep cents beyond JavaScript's safe integer range", async () => {
+    const precise = await provision(owner, false);
+    await entry(precise, {
+      date: "2026-02-01",
+      text: "Exact cents",
+      debit: "1930",
+      credit: "3010",
+      amount: "9007199254740993.99"
+    });
+    const response = await owner
+      .get("/accounts/balances")
+      .query({
+        organizationId: precise.organizationId,
+        fiscalYearId: precise.fiscalYear,
+        date: "2026-02-01",
+        accountIds: [precise.accounts["1930"], precise.accounts["3010"]].join(",")
+      })
+      .expect(200);
+    expect(response.body.accounts).toContainEqual({
+      accountId: precise.accounts["1930"],
+      balance: "9007199254740993.99"
+    });
+    expect(response.body.accounts).toContainEqual({
+      accountId: precise.accounts["3010"],
+      balance: "-9007199254740993.99"
+    });
+  });
+
   it("dashboard matches Golden statement totals and exact month groups, never draft amounts", async () => {
     const dashboard = (await owner.get("/dashboard").query(interval(fixture)).expect(200)).body;
     expect(dashboard.kpis).toMatchObject({
@@ -456,6 +581,16 @@ describe("Golden accounting truth (real PostgreSQL / HTTP)", () => {
         debitAmount: "100.00"
       }
     });
+    const balances = await owner
+      .get("/accounts/balances")
+      .query({
+        organizationId: f.organizationId,
+        fiscalYearId: f.fiscalYear,
+        date: "2026-12-31",
+        accountIds: f.accounts["1930"]
+      })
+      .expect(422);
+    expect(balances.body.code).toBe("UNBALANCED_OPENING_BALANCE");
     for (const endpoint of ["general-ledger", "trial-balance"]) {
       const response = await owner
         .get("/reports/" + endpoint)

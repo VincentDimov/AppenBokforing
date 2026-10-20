@@ -24,6 +24,18 @@ beforeEach(() => {
   fetchMock.mockImplementation(async (url, init) => {
     const path = String(url);
     if (path.includes("/options?")) return jsonResponse(demoOptions);
+    if (path.includes("/accounts/balances?")) {
+      const query = new URL(path, "http://local.test").searchParams;
+      return jsonResponse({
+        organizationId: query.get("organizationId"),
+        fiscalYearId: query.get("fiscalYearId"),
+        date: query.get("date"),
+        accounts: query
+          .get("accountIds")!
+          .split(",")
+          .map((accountId) => ({ accountId, balance: "12000.25" }))
+      });
+    }
     if (path.includes("/attachments")) return jsonResponse([]);
     if (path.includes("/posting-templates")) return jsonResponse([]);
     if (path.includes("/projects?") || path.includes("/cost-centers?")) return jsonResponse([]);
@@ -62,6 +74,20 @@ async function editExisting() {
   fireEvent.change(screen.getByLabelText("Kredit rad 2"), { target: { value: "5000,00" } });
 }
 describe("canonical posting flow", () => {
+  it("replaces the VAT column with booked balance after the remove action, without including draft edits", async () => {
+    render(<VoucherEditor entryId={demoEntry.id} />);
+    await editExisting();
+    expect(screen.queryByRole("columnheader", { name: /^Moms$/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").at(-1)).toHaveTextContent("Saldo");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Saldo rad 1")).toHaveTextContent("12 000,25")
+    );
+    fireEvent.change(screen.getByLabelText("Debet rad 1"), { target: { value: "999,99" } });
+    expect(screen.getByLabelText("Saldo rad 1")).toHaveTextContent("12 000,25");
+    expect(screen.getByText("Momsuppgifter (valfritt)").closest("details")).not.toHaveAttribute(
+      "open"
+    );
+  });
   it("never saves or posts before explicit confirmation, and cancellation retains exact visible values", async () => {
     render(<VoucherEditor entryId={demoEntry.id} />);
     await editExisting();

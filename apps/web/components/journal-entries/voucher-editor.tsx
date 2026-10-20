@@ -39,6 +39,7 @@ import {
   type JournalEntryOptions
 } from "@/lib/api/journal-entries";
 import { calculateVoucherAmounts, formatOre, isValidJournalAmountLine } from "@/lib/vouchers";
+import { useAccountBalances } from "@/lib/use-account-balances";
 
 interface EditableLine {
   account: AccountChoice | null;
@@ -107,6 +108,13 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
   }, []);
 
   const canWrite = activeOrganization ? writeRoles.has(activeOrganization.role) : false;
+  const balances = useAccountBalances(
+    activeOrganizationId,
+    options?.fiscalYear.id,
+    transactionDate,
+    lines.flatMap((line) => (line.account ? [line.account.id] : [])),
+    `${entry?.id ?? "new"}:${entry?.version ?? 0}:${entry?.status ?? "DRAFT"}`
+  );
   const isDraft = !entry || entry.status === "DRAFT";
   const contextMatches = !entry || entry.organizationId === activeOrganizationId;
   const isEditable =
@@ -851,23 +859,28 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
           role="region"
           aria-label="Konteringsrader"
         >
-          <table className="w-full min-w-[1100px] text-left text-sm">
+          <table className="w-full min-w-[1100px] table-fixed text-left text-sm">
             <thead className="border-b border-border bg-surface-muted text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
               <tr>
-                <th className="w-[16rem] px-4 py-3.5 font-semibold md:px-6">Konto</th>
-                <th className="min-w-[13rem] px-3 py-3.5 font-semibold">Beskrivning</th>
-                <th className="w-[8rem] px-3 py-3.5 font-semibold">Kostnadsställe</th>
-                <th className="w-[8rem] px-3 py-3.5 font-semibold">Projekt</th>
-                <th className="w-[8rem] px-3 py-3.5 font-semibold">Moms</th>
+                <th className="w-[13rem] px-4 py-3.5 font-semibold md:px-6">Konto</th>
+                <th className="px-3 py-3.5 font-semibold">Beskrivning</th>
+                <th className="w-[7.5rem] px-3 py-3.5 font-semibold">Kostnadsställe</th>
+                <th className="w-[7.5rem] px-3 py-3.5 font-semibold">Projekt</th>
                 <th className="w-[8.5rem] px-3 py-3.5 text-right font-semibold">Debet</th>
                 <th className="w-[8.5rem] px-3 py-3.5 text-right font-semibold">Kredit</th>
                 <th className="w-12 px-3 py-3.5" />
+                <th
+                  className="w-[8.5rem] px-3 py-3.5 text-right font-semibold"
+                  aria-describedby="voucher-balance-help"
+                >
+                  Saldo
+                </th>
               </tr>
             </thead>
             <tbody>
               {lines.map((line, index) => (
                 <tr className="border-b border-border last:border-b-0" key={line.clientId}>
-                  <td className="px-4 py-2 md:px-6">
+                  <td className="px-4 py-2 md:px-6 [&>div]:min-w-0">
                     <AccountTypeahead
                       account={line.account}
                       disabled={!isEditable}
@@ -890,7 +903,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                       value={line.description}
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 [&>div]:min-w-0">
                     <DimensionTypeahead
                       org={activeOrganizationId}
                       kind="cost-centers"
@@ -903,7 +916,7 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                       value={line.costCenterCode}
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 [&>div]:min-w-0">
                     <DimensionTypeahead
                       org={activeOrganizationId}
                       kind="projects"
@@ -915,50 +928,6 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                       }
                       value={line.projectCode}
                     />
-                  </td>
-                  <td className="px-3 py-2">
-                    <TableInput
-                      ariaLabel={`Momskod rad ${index + 1}`}
-                      disabled={!isEditable}
-                      onChange={(value) =>
-                        updateLine(line.clientId, "vatCode", value.toUpperCase())
-                      }
-                      placeholder="Kod"
-                      value={line.vatCode}
-                    />
-                    <details className="mt-1 text-xs">
-                      <summary
-                        aria-label={`Momsmetadata rad ${index + 1}`}
-                        className="text-secondary"
-                      >
-                        Metadata
-                      </summary>
-                      <select
-                        aria-label={`Momsroll rad ${index + 1}`}
-                        disabled={!isEditable}
-                        value={line.vatRole}
-                        onChange={(event) =>
-                          updateLine(line.clientId, "vatRole", event.target.value)
-                        }
-                        className="mt-1 w-full rounded border p-1"
-                      >
-                        <option value="NONE">Ingen momsroll</option>
-                        <option value="BASE">Underlag</option>
-                        <option value="TAX">Momsbelopp</option>
-                        <option value="UNCLASSIFIED">Ej klassificerad</option>
-                      </select>
-                      <input
-                        aria-label={`Momsgrupp rad ${index + 1}`}
-                        disabled={!isEditable}
-                        maxLength={64}
-                        placeholder="Grupp (valfri)"
-                        value={line.vatGroup}
-                        onChange={(event) =>
-                          updateLine(line.clientId, "vatGroup", event.target.value)
-                        }
-                        className="mt-1 w-full rounded border p-1"
-                      />
-                    </details>
                   </td>
                   <td className="px-3 py-2">
                     <TableInput
@@ -1002,12 +971,39 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
                       <Trash2 aria-hidden="true" className="size-3.5" />
                     </button>
                   </td>
+                  <td
+                    className="px-3 py-2 text-right whitespace-nowrap tabular-nums"
+                    aria-label={`Saldo rad ${index + 1}`}
+                  >
+                    {line.account
+                      ? balances.loading
+                        ? "Hämtar…"
+                        : (balances.values.get(line.account.id) ?? "—")
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-xs text-muted md:px-6">
+          <p id="voucher-balance-help">
+            Bokfört saldo till och med {transactionDate}, inklusive ingående balans. Utkastets
+            belopp ingår inte. Debetsaldo är positivt, kreditsaldo negativt.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={balances.loading}
+            onClick={balances.refresh}
+          >
+            Uppdatera saldon
+          </Button>
+          {balances.error && <p role="alert">{balances.error}</p>}
+        </div>
+        <VoucherVatDetails lines={lines} isEditable={isEditable} onChange={updateLine} />
         <div className="voucher-actions flex flex-col gap-5 border-t border-border bg-surface p-5 md:flex-row md:items-end md:justify-between md:px-6">
           <div>
             {isDraft ? (
@@ -1086,6 +1082,70 @@ function OrganizationVoucherEditor({ entryId }: Readonly<VoucherEditorProps>) {
         </section>
       )}
     </div>
+  );
+}
+
+function VoucherVatDetails({
+  lines,
+  isEditable,
+  onChange
+}: {
+  lines: EditableLine[];
+  isEditable: boolean;
+  onChange: (id: string, field: "vatCode" | "vatRole" | "vatGroup", value: string) => void;
+}) {
+  return (
+    <details className="border-t border-border px-5 py-3 text-sm md:px-6">
+      <summary className="text-secondary">Momsuppgifter (valfritt)</summary>
+      <p className="mt-2 text-xs text-muted">
+        Sparade momsuppgifter bevaras. Ingen automatisk momsberäkning görs.
+      </p>
+      {lines.map((line, index) => (
+        <fieldset className="mt-3 grid gap-3 sm:grid-cols-3" key={line.clientId}>
+          <legend className="text-xs font-semibold">
+            Rad {index + 1}
+            {line.account ? ` · ${line.account.number}` : ""}
+          </legend>
+          <label>
+            Momskod
+            <TableInput
+              ariaLabel={`Momskod rad ${index + 1}`}
+              disabled={!isEditable}
+              placeholder="Kod"
+              value={line.vatCode}
+              onChange={(value) => onChange(line.clientId, "vatCode", value.toUpperCase())}
+            />
+          </label>
+          <label>
+            Momsroll
+            <select
+              aria-label={`Momsroll rad ${index + 1}`}
+              disabled={!isEditable}
+              value={line.vatRole}
+              onChange={(event) => onChange(line.clientId, "vatRole", event.target.value)}
+              className="block w-full rounded border p-2"
+            >
+              <option value="NONE">Ingen momsroll</option>
+              <option value="BASE">Underlag</option>
+              <option value="TAX">Momsbelopp</option>
+              <option value="UNCLASSIFIED">Ej klassificerad</option>
+            </select>
+          </label>
+          <label>
+            Momsgrupp
+            <input
+              aria-label={`Momsgrupp rad ${index + 1}`}
+              disabled={!isEditable}
+              maxLength={64}
+              placeholder="Grupp (valfri)"
+              value={line.vatGroup}
+              onChange={(event) => onChange(line.clientId, "vatGroup", event.target.value)}
+              className="block w-full rounded border p-2"
+            />
+          </label>
+        </fieldset>
+      ))}
+    </details>
   );
 }
 

@@ -6,6 +6,7 @@ import { AccountsAccessService } from "./accounts-access.service";
 import { AccountsController } from "./accounts.controller";
 import { AccountsOrganizationGuard } from "./accounts-organization.guard";
 import { AccountsService } from "./accounts.service";
+import { AccountBalancesService } from "./account-balances.service";
 import { LicensedChartOfAccountsImportService } from "./imports/licensed-chart-of-accounts";
 import { BasCatalogService } from "./bas/catalog.service";
 
@@ -17,6 +18,7 @@ import { BasCatalogService } from "./bas/catalog.service";
     AccountsAccessService,
     AccountsOrganizationGuard,
     AccountsService,
+    AccountBalancesService,
     BasCatalogService,
     LicensedChartOfAccountsImportService
   ],

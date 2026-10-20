@@ -7,6 +7,8 @@ import { RequireOrganizationPermission } from "../organizations/decorators/requi
 import { AccountResourceGuard } from "./account-resource.guard";
 import { AccountsOrganizationGuard } from "./accounts-organization.guard";
 import { AccountsService } from "./accounts.service";
+import { AccountBalancesService } from "./account-balances.service";
+import { AccountBalancesQueryDto } from "./dto/account-balances-query.dto";
 import { CreateAccountDto } from "./dto/create-account.dto";
 import { ListAccountsQueryDto } from "./dto/list-accounts-query.dto";
 import { UpdateAccountDto } from "./dto/update-account.dto";
@@ -25,7 +27,8 @@ import {
 export class AccountsController {
   constructor(
     private readonly accountsService: AccountsService,
-    private readonly bas: BasCatalogService
+    private readonly bas: BasCatalogService,
+    private readonly balances: AccountBalancesService
   ) {}
 
   @Get("catalog")
@@ -98,6 +101,17 @@ export class AccountsController {
   @ApiQuery({ name: "q", required: false })
   list(@Query() query: ListAccountsQueryDto, @Req() request: AuthenticatedRequest) {
     return this.accountsService.list(this.getOrganizationId(request), query);
+  }
+
+  @Get("balances")
+  @UseGuards(AccountsOrganizationGuard)
+  @RequireOrganizationPermission("READ_BOOKKEEPING")
+  @ApiOperation({
+    summary:
+      "Booked debit-minus-credit balances through a fiscal-year date, including opening balances"
+  })
+  accountBalances(@Query() query: AccountBalancesQueryDto, @Req() request: AuthenticatedRequest) {
+    return this.balances.read(this.getOrganizationId(request), query);
   }
 
   @Get(":id")
