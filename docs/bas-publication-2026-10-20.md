@@ -92,16 +92,40 @@ Efterföljande separat SELECT bekräftade standardversion, innehållshash,
 1 282 konton, 462 standardaktiva, två organisationskopplingar och oförändrat
 antal verifikationer/rader.
 
-## Verifieringsgräns
+## Verifiering och avslutad driftkontroll
 
 Denna körning klarade 209 API-integrationstester i 23 sviter, 17 Python-tester
 för källayout/förberedelse och 13 tester för klassificeringsförslag.
 Syntetiska fixtures är inte officiella BAS-konton eller professionella attesteringar.
+Lint och typkontroll passerade; 118 frontendtester passerade också lokalt.
+[CI för kodcommiten eedcb0b](https://github.com/VincentDimov/AppenBokforing/actions/runs/39389563509)
+är avslutad med success: verify, browser-e2e, recovery-runtime-gate och
+Migrate Neon production. Vercels publicering för samma commit är success.
+Den efterföljande dokumentationscommiten registrerar bara dessa verifieringsresultat.
 
-Den publicerade Konton-sidan stannade vid sessionsåterställning under den första
-webbkontrollen. Backendens hälsoanrop och Vercels sessionsanrop gav timeout utan
-HTTP-svar, medan Render rapporterade senaste deploy som `live` och inga nya
-felloggar. **Databaspubliceringen är verifierad, men detta är inte ett godkänt
-autentiserat produktions-UI-test.** Drift-/sessionskontrollen måste skiljas från
-den genomförda katalogimporten; ingen omstart eller ny kod krävs för att databasen
-ska innehålla katalogen.
+Den första webbkontrollen stannade vid sessionsåterställning. Backendens
+hälsoanrop och Vercels sessionsanrop gav timeout utan HTTP-svar, trots deploystatus
+`live`. Användaren godkände en omstart utan ändrade miljövariabler eller databas.
+Dashboardens **Restart service** användes; Render registrerade `server_restarted`
+2026-10-20 07:56:57 UTC. Samma API-commit och miljö behölls. Nest startade korrekt
+på `0.0.0.0:10000`, och efteråt gav `/health` HTTP 200 på cirka 0,23 sekunder.
+Det anonyma sessionsanropet genom Vercel gav korrekt HTTP 401 i stället för timeout.
+Den verkliga readiness-routen `/ready` gav HTTP 200 och `{"status":"ready"}`;
+den kontrollerar både PostgreSQL och privat S3/R2-bucket.
+
+Den autentiserade produktionssidan verifierades därefter i användarens
+befintliga arbetsyta. Inga konton aktiverades/avaktiverades som del av UI-testet
+och ingen ny bokföring skapades.
+
+| Gräns                     | Verifierat resultat                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| Vercel-sida → session/API | Arbetsytan och organisationen laddas efter omstart                                           |
+| API → produktionsdatabas  | Kataloghash, alla 1 282 konton och organisationskopplingar kontrollerade                     |
+| Svar → Konton-sida        | BAS-2026-v1.1, 1 282 BAS-konton, 463 aktiva, 819 tillgängliga                                |
+| Visning/åtgärder          | Alla BAS-konton vald; aktiverings-/avaktiveringsknappar, kategorier och sidindelning synliga |
+| Skydd för historik        | Samtliga 60 tidigare rader bevarade i publiceringstransaktionen                              |
+
+Efter användarens uttryckliga städgodkännande togs testgrenen bort.
+Återställningsgrenen behålls utan egen compute. Lokala, separata testcontainrar
+stoppades; användarens vanliga utvecklingstjänster och ändringar i `faser.md`
+lämnades orörda. Den publicerade katalogen finns i databasen, inte i frontendpaketet.
