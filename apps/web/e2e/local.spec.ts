@@ -568,6 +568,8 @@ test("BAS reconciliation and browser deactivation preserve posted lines and snap
   await page.getByRole("button", { name: "Bokför verifikation", exact: true }).click();
   await page.getByRole("button", { name: "Bekräfta bokföring" }).click();
   await expect(page.getByText("Bokförda belopp är låsta.", { exact: false })).toBeVisible();
+  // Posted state renders before the asynchronous Next navigation completes.
+  await expect(page).toHaveURL(/\/app\/bookkeeping\/vouchers\/[0-9a-f-]{36}$/);
   const id = page.url().split("/").at(-1)!;
   const original = await storedEntry(id);
   expect(
