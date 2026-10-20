@@ -1,5 +1,11 @@
 # BAS 2026 — integration och källgräns
 
+Aktuell status 2026-10-20: **1 282 konton publicerade som standard i Neon** efter
+uttryckligt användargodkännande av den kompletta kandidaten. Se
+[publiceringsrapporten](bas-publication-2026-10-20.md) för källa, omfattning,
+interna klassificeringar, historikbevarande och separat webbverifieringsstatus.
+Nedanstående daterade blockerare beskriver tidigare tillstånd, inte dagens databas.
+
 Status 2026-10-09: katalogarkitektur och verkliga bokföringsflöden är implementerade.
 Release av den fullständiga officiella kontoplanen är **BLOCKED**, inte COMPLETE.
 Ingen fullständig BAS-dataset har importerats eller lagts i Git/seed/produktionsassets.
@@ -28,7 +34,10 @@ Fri PDF/XLS-nedladdning är inte bevis på rätt att integrera och kommersiellt
 vidaredistribuera hela kontoplanen. BAS har en separat
 [maskinläsbar produkt](https://www.bas.se/kontoplaner/kontoplanen-i-maskinlasbart-format/)
 och [integrationsvillkor](https://www.bas.se/wp-content/uploads/2024/04/Allmanna-Villkor-atkomstnyckel.pdf).
-Operatörens rättigheter för just denna SaaS och avsedd distribution är **NOT_ESTABLISHED**.
+Vid kontrollen 2026-10-09 var operatörens rättigheter för just denna SaaS och
+avsedd distribution **NOT_ESTABLISHED**. Användarens senare uttryckliga
+rättighetsattestering och publiceringsgodkännande dokumenteras i rapporten ovan;
+de är inte en oberoende juridisk prövning.
 En konvertering från PDF till JSON får inte användas för att kringgå villkoren.
 
 Importeraren kräver en skyddad operatörsauktorisering, oberoende godkänd SHA-256,

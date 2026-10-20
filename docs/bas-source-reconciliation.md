@@ -1,5 +1,9 @@
 # BAS 2026 — full källavstämning, inte importgodkännande
 
+Uppdatering 2026-10-20: den efterföljande kompletta kandidaten är uttryckligen
+användargodkänd och publicerad. Se [publiceringsrapporten](bas-publication-2026-10-20.md).
+Siffer-/gate-status nedan är den historiska källkontrollen, inte aktuell databasstatus.
+
 Kontrollerad 2026-10-11 med officiell PDF **BAS 2026 v1.1**, 39 sidor,
 och den officiella XLSX-utgåvan. Källor/hash finns i [integrationskontraktet](bas-2026-integration.md).
 Filerna finns utanför Git. Ingen officiell hel kontoplan distribueras som fixture.
@@ -32,10 +36,15 @@ maskinell korsjämförelse, inte 1282 oberoende professionella namn-/semantikgod
 2120 och 2130 har samma fullständiga namn och markering i sina återkommande
 källpositioner: **IDENTICAL_OCCURRENCES_SINGLE_IDENTITY**. De ska ge en rad per
 nummer efter godkänd normalisering, aldrig dubbla saldon.
-2087 har olika namn i källan: **BLOCKED_EXTERNAL / SOURCE_CLARIFICATION_REQUIRED**.
-Ingen sista-raden-vinner, rättning från föregående års kontoplan eller egen tolkning.
-Alla 1285 förekomstnamn kan matcha mellan PDF och XLSX samtidigt som denna
-interna källkonflikt hindrar ett entydigt manifest med 1282 namn.
+2087 har två namn i källan. Kontroll 2026-10-19 mot
+[BAS egen förklaring](https://www.bas.se/2021/02/03/bokforingsboken-och-bokslutsboken-2021-fardigtryckta/)
+visar att detta är avsiktlig användning för olika associationsformer:
+bunden överkursfond i aktiebolag och insatsemission i ekonomiska föreningar.
+Det är alltså inte belagt att källan är felaktig. Ingen sista-raden-vinner,
+rättning från föregående års kontoplan eller uppfunnet sammanslaget namn används.
+Den nuvarande katalogmodellen har ett namn per nummer. Beslutet om hur båda
+källvarianterna ska representeras måste därför finnas i det granskade manifestet.
+Alla 1285 förekomstnamn kan matcha PDF/XLSX utan att det tekniska namnvalet är godkänt.
 
 ## Hierarki
 
@@ -51,7 +60,7 @@ restorefixtures testar denna struktur med egna syntetiska namn. Teknisk förmåg
 `python scripts/verify-bas-sources.py --pdf <PDF> --xlsx <XLSX> --manifest <privat-json>`
 jämför alla nummer, fulla namn, dubbletter, K2-markeringar och källhash och
 rapporterar saknade/extra poster. Ingen ekonomisk klassificering härleds från
-detta resultat. Nu finns inget godkänt officiellt manifest att godkänna/importera.
+detta resultat. Vid denna tidigare kontroll fanns inget godkänt manifest att importera.
 
 ## Rättigheter
 
@@ -60,4 +69,30 @@ detta resultat. Nu finns inget godkänt officiellt manifest att godkänna/import
 särskilt 2.1 och 4.3–4.5, beskriver tillåten integration inom ett relevant avtal.
 Detta är inte ett generellt förbud mot all kommersiell integration och inte
 bevis för att just LedgerApp har sådant avtal. Rättigheter för den avsedda
-användningen är **NOT_ESTABLISHED**. Ingen AI-bedömning markeras som juridiskt godkännande.
+användningen var **NOT_ESTABLISHED** vid den tidigare kontrollen. Användaren
+bekräftade 2026-10-19 uttryckligen sin rätt att integrera och visa hela BAS 2026
+i den publicerade LedgerApp-tjänsten. Detta dokumenteras som användarens
+attestering, inte som en självständig juridisk prövning eller ett påhittat avtalsnummer.
+Rättighetsattestering är separat från godkännande av ekonomiska klassificeringar.
+
+## Reproducerbart privat granskningsunderlag, 2026-10-19
+
+`scripts/prepare-bas-review.py` läser hela den lokala XLSX-filen utan att ändra
+den eller ansluta till någon databas. Output tillåts bara under Git-ignorerade
+`.local-artifacts/`, och existerande filer skrivs aldrig över. Inga källnamn
+loggas. Verktyget behåller alla förekomster, båda kontokolumnerna, fullständiga
+namn, cellpositioner, rubrikkontext och K2-markeringar. Identiska dubbletter får
+en kontoidentitet men alla källpositioner. Namn-/markeringskonflikter bevaras,
+inte sista-raden-vinner. Förslag till parents innehåller bara verkliga källkonton.
+
+XLSX-rubrikerna omfattar ibland flera numeriska kontogrupper och saknar
+klassrubriker. Saknade rubriknamn lämnas därför tomma för källgranskning, inte
+ärvda från fel grupp. Ekonomisk typ, normalbalans, bokföringsbarhet och faktisk
+parent lämnas uttryckligen ogranskade. En explicit `--rights-reference` kan
+dokumentera en befintlig attestering, men godkänner aldrig klassificeringarna.
+Underlaget är **REVIEW_REQUIRED_NOT_IMPORTABLE**, inte ett produktionsmanifest.
+Den befintliga importörens samtliga spärrar är oförändrade.
+
+Verifierad helfil: 1285 förekomster, 1282 unika konton, 45 gruppkonton,
+427 huvudkonton och 810 underkonton. Detta är källinventering, inte godkända
+ekonomiska klassificeringar och inte en genomförd katalogimport.

@@ -65,7 +65,8 @@ jobs:
       - name: Sanitized diagnostics and original source-layout fixtures
         run: |
           node --test tests/safe-diagnostics.test.cjs
-          python3 -m unittest discover -s tests -p verify_bas_sources_test.py
+          python3 -m unittest discover -s tests -p '*bas*_test.py'
+          node --test tests/bas-classification-proposals.test.cjs
       - name: Neon production migration safety contract
         run: node --test tests/neon-production-migrate.test.cjs
       - name: Private local artifact preservation contract
