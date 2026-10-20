@@ -21,7 +21,7 @@ function fixture(Page: typeof AccountsPage, marker: string) {
         blockedReason: null,
         total: 1,
         page: 1,
-        pageSize: 50,
+        pageSize: 100,
         counts: { active: 1, available: 0, main: 0, sub: 0 },
         items: [
           {

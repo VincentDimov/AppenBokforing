@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, LoadingState, PageHeader } from "@/components/ui/workspace";
 import { accountTypeLabels, type Account } from "@/lib/api/accounts";
-import type { ActivationPreview, CatalogItem, CatalogResult } from "@/lib/api/bas-catalog";
+import type { ActivationPreview, CatalogItem } from "@/lib/api/bas-catalog";
+import { loadCatalogList, type CatalogListResult } from "@/lib/api/catalog-list";
 import { workspaceRequest } from "@/lib/workspace-api";
 
 const tabs = [
@@ -63,14 +64,14 @@ export function BasAccountsPage() {
   );
 }
 function Workspace({ org, name, role }: { org: string; name: string; role: string }) {
-  const [data, setData] = useState<CatalogResult | null>(null),
+  const [data, setData] = useState<CatalogListResult | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("all"),
     [search, setSearch] = useState(""),
-    [page, setPage] = useState(1),
     [revision, setRevision] = useState(0);
+  const [progress, setProgress] = useState({ loaded: 0, total: 0 });
   const [filters, setFilters] = useState({
       accountClass: "",
       group: "",
@@ -99,16 +100,16 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
     const controller = new AbortController();
     setLoading(true);
     setError("");
+    setData(null);
+    setProgress({ loaded: 0, total: 0 });
     const params = new URLSearchParams({
       organizationId: org,
-      tab,
-      page: String(page),
-      pageSize: "50"
+      tab
     });
     if (deferredSearch.trim()) params.set("q", deferredSearch.trim());
     for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
-    void workspaceRequest<CatalogResult>(`/accounts/catalog?${params}`, {
-      signal: controller.signal
+    void loadCatalogList(params, controller.signal, (loaded, total) => {
+      if (!controller.signal.aborted) setProgress({ loaded, total });
     })
       .then((result) => {
         if (!controller.signal.aborted) setData(result);
@@ -123,11 +124,10 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [org, tab, page, deferredSearch, filters, revision]);
+  }, [org, tab, deferredSearch, filters, revision]);
   function invalidate() {
     setSelection([]);
     setPreview(null);
-    setPage(1);
   }
   function reload() {
     setSelection([]);
@@ -163,8 +163,11 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
   const groups = new Map<string, CatalogItem[]>();
   for (const row of data?.items ?? []) {
     const key = row.accountGroup ?? row.number.slice(0, 2);
-    groups.set(key, [...(groups.get(key) ?? []), row]);
+    const rows = groups.get(key);
+    if (rows) rows.push(row);
+    else groups.set(key, [row]);
   }
+  const selectedIds = new Set(selection);
   const table = (items: CatalogItem[]) => (
     <div className="table-frame" tabIndex={0}>
       <table className="w-full min-w-[52rem] text-left text-sm">
@@ -191,8 +194,13 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
                     <input
                       type="checkbox"
                       aria-label={`Markera konto ${row.number}`}
-                      checked={selection.includes(row.catalogAccountId)}
-                      disabled={busy || loading || !allowed(row)}
+                      checked={selectedIds.has(row.catalogAccountId)}
+                      disabled={
+                        busy ||
+                        loading ||
+                        !allowed(row) ||
+                        (selection.length >= 100 && !selectedIds.has(row.catalogAccountId))
+                      }
                       onChange={() =>
                         setSelection((current) =>
                           current.includes(row.catalogAccountId!)
@@ -462,10 +470,15 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
             variant="outline"
             disabled={loading || busy || !data?.items.some(allowed)}
             onClick={() =>
-              setSelection((data?.items ?? []).filter(allowed).map((row) => row.catalogAccountId!))
+              setSelection(
+                (data?.items ?? [])
+                  .filter(allowed)
+                  .slice(0, 100)
+                  .map((row) => row.catalogAccountId!)
+              )
             }
           >
-            Välj tillåtna på sidan
+            Välj upp till 100 konton
           </Button>
           <Button
             type="button"
@@ -486,10 +499,19 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
           >
             Aktivera markerade ({selection.length})
           </Button>
+          <p className="self-center text-sm text-muted">
+            Högst 100 konton kan aktiveras åt gången.
+          </p>
         </div>
       ) : null}
       {loading ? (
-        <LoadingState label="Hämtar kontoplan…" />
+        <LoadingState
+          label={
+            progress.total
+              ? `Hämtar kontoplan… ${progress.loaded} av ${progress.total} konton`
+              : "Hämtar kontoplan…"
+          }
+        />
       ) : !error && data?.items.length ? (
         grouped ? (
           <div>
@@ -497,7 +519,7 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
               <details key={group} open className="border border-border">
                 <summary className="p-3">
                   Kontoklass {group.slice(0, 1)} · {items[0]?.className ?? "Egna konton"} / {group}{" "}
-                  · {items[0]?.groupName ?? "Egna konton"} · {items.length} på denna sida
+                  · {items[0]?.groupName ?? "Egna konton"} · {items.length} konton
                 </summary>
                 {table(items)}
               </details>
@@ -512,35 +534,7 @@ function Workspace({ org, name, role }: { org: string; name: string; role: strin
           description={data?.blockedReason ?? "Prova ett annat filter."}
         />
       ) : null}
-      {data ? (
-        <div className="flex items-center gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={page <= 1 || loading}
-            onClick={() => {
-              setPage((v) => v - 1);
-              setSelection([]);
-            }}
-          >
-            Föregående
-          </Button>
-          <span>
-            Sida {page} · {data.total} träffar
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={page * data.pageSize >= data.total || loading}
-            onClick={() => {
-              setPage((v) => v + 1);
-              setSelection([]);
-            }}
-          >
-            Nästa
-          </Button>
-        </div>
-      ) : null}
+      {data ? <p role="status">{data.total} konton visas i en sammanhängande lista.</p> : null}
       {!canManage ? <p>Du har läsbehörighet till kontoplanen.</p> : null}
       <p className="text-xs text-muted">
         Konton delas mellan företagets räkenskapsår. BAS anger inte dina momsinställningar. Endast

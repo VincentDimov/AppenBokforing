@@ -81,7 +81,7 @@ function setAuthenticatedFetchResponses(role: "OWNER" | "READ_ONLY") {
         ],
         total: 1,
         page: 1,
-        pageSize: 50,
+        pageSize: 100,
         counts: { active: 1, available: 0, main: 0, sub: 0 }
       });
     }
@@ -128,7 +128,7 @@ describe("AccountsPage", () => {
     expect(screen.getByRole("button", { name: "Nytt konto" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Redigera konto 1930" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/accounts/catalog?organizationId=organization-a&tab=all&page=1&pageSize=50&sort=number",
+      "/api/accounts/catalog?organizationId=organization-a&tab=all&sort=number&page=1&pageSize=100",
       expect.objectContaining({
         cache: "no-store",
         credentials: "include"
@@ -141,7 +141,7 @@ describe("AccountsPage", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenLastCalledWith(
-        "/api/accounts/catalog?organizationId=organization-a&tab=all&page=1&pageSize=50&q=F%C3%B6retag&sort=number",
+        "/api/accounts/catalog?organizationId=organization-a&tab=all&q=F%C3%B6retag&sort=number&page=1&pageSize=100",
         expect.objectContaining({
           cache: "no-store",
           credentials: "include"

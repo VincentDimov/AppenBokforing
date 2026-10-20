@@ -48,6 +48,19 @@ tidigare strikt inverteringskontrakt; detta ger inte fria nya bokföringsvärden
 
 ## UI
 
+Uppdatering 2026-10-20: alla matchande konton laddas automatiskt och visas i en
+sammanhängande, rullbar lista utan Nästa/Föregående. Sökning, filter, sortering
+och gruppvy gäller hela resultatet. API:t behåller sina validerade sidor om
+högst 100 poster; webben hämtar högst tre omgångar parallellt och visar framsteg.
+Listan visas först när hela resultatet är laddat. Avbrutna, ofullständiga eller
+dubblerade resultat visas inte som kompletta. Ändrade katalogversioner, regelverk
+eller totaler mellan omgångarna ger ett tydligt fel och möjlighet att läsa om.
+Anropen delar inte en gemensam databassnapshot; samtidiga ändringar av t.ex.
+kontonamn kan kräva omladdning.
+Organisationsbyte/filterbyte avbryter den gamla hämtningen. Massaktivering
+behåller servergränsen på 100 konton och kräver fortsatt preview/bekräftelse.
+Inga API-, behörighets-, katalogdata- eller databasändringar behövs för listvyn.
+
 Uppdatering 2026-10-13: kontoplanen öppnas i hela den installerade BAS-katalogen,
 inte bara redan aktiva konton. Finns ingen installerad katalog visas i stället
 **Alla företagskonton**, inklusive inaktiva egna konton, med en tydlig varning
@@ -68,17 +81,18 @@ FAS 37.1 visar tydligt **Aktivt**, **Tillgängligt**, **Ej bokföringsbart** och
 **Begränsat enligt K2 · K3 krävs**. Tillgängligt betyder katalogpost som ännu
 inte är aktiv, inte ett löfte om aktiveringsbehörighet. Serverns eligibility
 och previewbeslut avgör; icke-bokföringsbara rader har inaktiverade kontroller.
-Fullskaliga syntetiska browserfixtures använder över 1282 poster med serverpaging.
+Fullskaliga syntetiska browserfixtures använder över 1282 poster med begränsade
+API-omgångar och verifierar att alla rader visas samtidigt utan sidknappar.
 
 Konton/Kontoplan behåller FAS 35-designsystemet: fyra flikar, verkliga counts,
-sökning, klass/grupp/kategori/status/K2-filter, A–Ö/Ö–A/nummersortering, sidstorlek 50,
-listvy och expanderbar gruppvy med parents. Gruppvy gäller den laddade sidan, inte
-en påhittad fullständig trädlista. Namn visas utan tyst trunkering. Inga data laddas
+sökning, klass/grupp/kategori/status/K2-filter, A–Ö/Ö–A/nummersortering,
+listvy och expanderbar gruppvy med parents. Gruppvyn innehåller hela det matchande
+resultatet. Namn visas utan tyst trunkering. Inga data laddas
 för alla valfria konton i varje verifikationsrad.
 
 Individuellt “Lägg till” och multiselect öppnar verklig preview-dialog; konton skapas
 först efter bekräftelsen. K-regelverksdialog kräver företagsnamnet. Rollstyrda åtgärder,
-debouncerad aktiv typeahead, serverpagination, AbortController och företagsnycklad
+debouncerad aktiv typeahead, begränsade API-anrop, AbortController och företagsnycklad
 state skyddar tangentbordsarbete och företagsskifte. Ingen automatisk quick-add via
 enbart inmatat kontonummer. Kontoredigering visar avaktiveringens konsekvenser.
 

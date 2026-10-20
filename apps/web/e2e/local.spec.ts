@@ -253,19 +253,26 @@ test.beforeEach(async ({ context, page }, testInfo) => {
   // Linux CI is faster than human use/Windows, and all contexts share an IP.
   // Reserve enough real GET slots for the largest case BEFORE starting it.
   // A full TTL is needed: the reset header expires individual hits, not all hits.
-  const probe = await api.get(`/api/fiscal-years?organizationId=${a.id}`);
-  if (probe.status() === 429 || Number(probe.headers()["x-ratelimit-remaining"]) < 35) {
+  // Limits are per handler: the fiscal-year probe cannot measure catalog reads.
+  // Whole-list BAS cases may read several full views in one rapid scenario.
+  const probePath = testInfo.title.includes("BAS")
+    ? `/api/accounts/catalog?organizationId=${a.id}&page=1&pageSize=100`
+    : `/api/fiscal-years?organizationId=${a.id}`;
+  const requiredSlots = testInfo.title.includes("BAS") ? 90 : 35;
+  const probe = await api.get(probePath);
+  if (probe.status() === 429 || Number(probe.headers()["x-ratelimit-remaining"]) < requiredSlots) {
     testInfo.setTimeout(testInfo.timeout + 61_000); // only the deliberate budget wait
     console.log(
       JSON.stringify({
         readBudget: "WAIT_REAL_TTL",
         status: probe.status(),
         remaining: probe.headers()["x-ratelimit-remaining"],
+        requiredSlots,
         seconds: 61
       })
     );
     await new Promise((resolve) => setTimeout(resolve, 61_000));
-    expect((await api.get(`/api/fiscal-years?organizationId=${a.id}`)).status()).toBe(200);
+    expect((await api.get(probePath)).status()).toBe(200);
   } else expect(probe.status()).toBe(200);
   page.on("response", (response) => {
     if (response.status() === 429)
@@ -581,10 +588,8 @@ test("BAS reconciliation and browser deactivation preserve posted lines and snap
   await expect(page.getByLabel("Debet rad 1")).toBeDisabled();
 });
 
-test("full-size synthetic BAS catalog stays bounded and accessible at four widths", async ({
-  page
-}) => {
-  test.setTimeout(120_000);
+test("full-size synthetic BAS catalog loads one complete list at four widths", async ({ page }) => {
+  test.setTimeout(test.info().timeout + 60_000);
   const org = await basWorkspace();
   const total = await db.basAccountCatalog.count({
     where: { catalogVersionId: org.catalogVersionId }
@@ -594,11 +599,12 @@ test("full-size synthetic BAS catalog stays bounded and accessible at four width
     await page.setViewportSize({ width, height: 1000 });
     await open(page, org, "registers/accounts");
     await page.getByRole("button", { name: "Alla BAS-konton", exact: true }).click();
-    await expect(page.getByText(`Sida 1 · ${total} träffar`)).toBeVisible();
-    expect(await page.locator("tbody tr").count()).toBeLessThanOrEqual(50);
-    await page.getByRole("button", { name: "Nästa", exact: true }).click();
-    await expect(page.getByText(`Sida 2 · ${total} träffar`)).toBeVisible();
+    await expect(page.getByText(`${total} konton visas i en sammanhängande lista.`)).toBeVisible();
+    await expect(page.locator("tbody tr")).toHaveCount(total);
+    await expect(page.getByRole("button", { name: "Nästa", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Föregående", exact: true })).toHaveCount(0);
     await page.getByLabel("Sök kontonummer eller namn").fill("1120");
+    await expect(page.getByText("1 konton visas i en sammanhängande lista.")).toBeVisible();
     await expect(page.getByText("Ej bokföringsbart", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Aktivera konto 1120", exact: true })

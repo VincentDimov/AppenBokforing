@@ -70,6 +70,11 @@ beforeEach(() => {
     if (String(url).startsWith("/api/accounts/catalog?")) {
       const params = new URL(String(url), "http://localhost").searchParams;
       const tab = params.get("tab");
+      const filtered = items.filter((row) =>
+        tab === "active" ? row.active : tab === "available" ? !row.active : true
+      );
+      const page = Number(params.get("page"));
+      const pageSize = Number(params.get("pageSize"));
       return response({
         framework,
         catalog: {
@@ -79,12 +84,10 @@ beforeEach(() => {
           totalAccounts: 3
         },
         blockedReason: null,
-        items: items.filter((row) =>
-          tab === "active" ? row.active : tab === "available" ? !row.active : true
-        ),
-        total: 3,
-        page: 1,
-        pageSize: 50,
+        items: filtered.slice((page - 1) * pageSize, page * pageSize),
+        total: filtered.length,
+        page,
+        pageSize,
         counts: {
           active: items.filter((row) => row.active).length,
           available: items.filter((row) => !row.active).length,
@@ -196,6 +199,25 @@ it("opens the entire installed catalog, including optional accounts, by default"
     "true"
   );
   expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("tab=all"), expect.anything());
+  expect(screen.queryByRole("button", { name: "Nästa" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Föregående" })).not.toBeInTheDocument();
+});
+
+it("renders every batch in one list and keeps bulk selection within the API limit", async () => {
+  items = Array.from({ length: 205 }, (_, i) => ({
+    ...items[1]!,
+    number: String(1100 + i),
+    name: `Synthetic list account ${i}`,
+    catalogAccountId: `catalog-list-${i}`
+  }));
+  render(<AccountsPage />);
+  await screen.findByText("205 konton visas i en sammanhängande lista.");
+  expect(screen.getAllByRole("row")).toHaveLength(206);
+  expect(screen.getByText("Synthetic list account 204")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Välj upp till 100 konton" }));
+  expect(screen.getByRole("button", { name: "Aktivera markerade (100)" })).toBeEnabled();
+  expect(screen.getByRole("checkbox", { name: "Markera konto 1200" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "Markera konto 1100" })).toBeEnabled();
 });
 
 it("requires confirmation, preserves identity, and can reactivate a catalog account", async () => {
