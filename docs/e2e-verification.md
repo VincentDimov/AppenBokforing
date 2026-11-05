@@ -116,8 +116,10 @@ slumpade lokala sessionshemligheter. Befintligt integrationsjobb är separat.
 Ingen publik produktionsmutation eller produktionscredential används i PR-CI.
 CI-definitionen är tillagd; en faktisk GitHub Actions-run är inte verifierad lokalt.
 
-Lokala `apps/web/playwright-report` och `apps/web/test-results` ignoreras av
-Git/lint. Failure traces kan innehålla disponibla sessionscookies/testdata:
+Lokala `apps/web/playwright-report`, `apps/web/test-results` och
+`apps/web/test-results-smoke` ignoreras av Git/lint/formatteraren. Smoke har
+en separat resultatmapp så dess uppstart inte rensar en pågående lokal
+E2E-körnings traces. Failure traces kan innehålla disponibla sessionscookies/testdata:
 dela dem inte publikt; CI laddar inte upp dem.
 
 ## Bekräftade fynd 2026-10-06

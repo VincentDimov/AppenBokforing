@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 type BadgeVariant = "default" | "outline" | "success" | "warning";
 
-export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
+interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
 }
 

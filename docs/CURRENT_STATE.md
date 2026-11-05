@@ -1,5 +1,14 @@
 # LedgerApp — faktiskt nuläge
 
+## Lokal kodrensning — 2026-10-20
+
+Aktiva workspaces: `apps/web`, `apps/api`, `packages/db` och `packages/sie`.
+De tre oanvända foundation-paketen `config`, `shared` och `ui` har tagits bort;
+ingen applikation, test, operatörsscript eller deployment konsumerade dem.
+Webbens verkliga UI och `cn` behålls i `apps/web`.
+Se [rensningsrapporten](project-cleanup-2026-10-20.md) för kontroller och gränser.
+Äldre datum, testantal och releasebeslut nedan är historiska ögonblicksbilder.
+
 ## Aktuellt: sammanfogning och driftkoppling, 2026-10-12
 
 FAS 37.1 och mastergrenen med Neon-migrationsautomatiken sammanförs. Backuper

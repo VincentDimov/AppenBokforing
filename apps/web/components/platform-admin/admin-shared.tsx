@@ -2,7 +2,6 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Feedback, LoadingState, EmptyState, TableFrame } from "@/components/ui/workspace";
-import { Dialog } from "@/components/ui/dialog";
 
 export function AdminResult({
   loading,
@@ -106,58 +105,5 @@ export function AdminTable({
         <tbody>{children}</tbody>
       </table>
     </TableFrame>
-  );
-}
-export function AdminConfirmDialog({
-  open,
-  onClose,
-  title,
-  target,
-  consequence,
-  confirmation,
-  setConfirmation,
-  busy,
-  error,
-  onConfirm,
-  children
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  target: string;
-  consequence: string;
-  confirmation: string;
-  setConfirmation: (value: string) => void;
-  busy: boolean;
-  error: string;
-  onConfirm: () => void;
-  children?: ReactNode;
-}) {
-  return (
-    <Dialog open={open} onClose={busy ? () => {} : onClose} title={title}>
-      <div className="space-y-4">
-        <p className="text-sm">{consequence}</p>
-        <p className="text-sm font-medium break-words">Mål: {target}</p>
-        {children}
-        <label className="block text-sm">
-          Skriv målidentifieraren för att bekräfta
-          <input
-            className="mt-2 w-full rounded border p-3"
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-            autoComplete="off"
-          />
-        </label>
-        {error && <Feedback kind="error">{error}</Feedback>}
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" disabled={busy} onClick={onClose}>
-            Avbryt
-          </Button>
-          <Button disabled={busy || confirmation !== target} onClick={onConfirm}>
-            {busy ? "Sparar…" : "Bekräfta åtgärd"}
-          </Button>
-        </div>
-      </div>
-    </Dialog>
   );
 }

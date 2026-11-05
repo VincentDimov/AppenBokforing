@@ -10,6 +10,7 @@ export default tseslint.config(
       "**/coverage/**",
       "**/playwright-report/**",
       "**/test-results/**",
+      "**/test-results-smoke/**",
       "**/dist/**",
       "**/next-env.d.ts",
       "**/node_modules/**",

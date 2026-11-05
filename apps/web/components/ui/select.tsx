@@ -2,13 +2,12 @@
 
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
-import type { ComponentPropsWithoutRef, ElementRef, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ElementRef } from "react";
 import { forwardRef } from "react";
 
 import { cn } from "@/lib/utils";
 
 const Select = SelectPrimitive.Root;
-const SelectGroup = SelectPrimitive.Group;
 const SelectValue = SelectPrimitive.Value;
 
 const SelectTrigger = forwardRef<
@@ -81,24 +80,4 @@ const SelectItem = forwardRef<
 ));
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
-function SelectLabel({
-  children,
-  className,
-  ...props
-}: ComponentPropsWithoutRef<typeof SelectPrimitive.Label>) {
-  return (
-    <SelectPrimitive.Label
-      className={cn(
-        "px-2 py-1.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase",
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </SelectPrimitive.Label>
-  );
-}
-
-export { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue };
-
-export type SelectContentProps = { children: ReactNode };
+export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };

@@ -3,5 +3,10 @@
 coverage
 dist
 node_modules
+.local-artifacts/
+playwright-report/
+test-results/
+test-results-smoke/
+**/__pycache__/
 pnpm-lock.yaml
 **/prisma/generated

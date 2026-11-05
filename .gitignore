@@ -8,6 +8,7 @@ node_modules/
 coverage/
 playwright-report/
 test-results/
+test-results-smoke/
 dist/
 *.tsbuildinfo
 __pycache__/
@@ -15,8 +16,7 @@ __pycache__/
 
 # Environment files
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 
 # Local infrastructure data

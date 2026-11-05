@@ -36,27 +36,10 @@ FAS 33 Verifikationsrapport + förbättrade rapportexporter
 FAS 34 Riktig dashboard
 FAS 35 Full PREMIUM UI/UX-polish
 FAS 36 Master Admin & Platform Administration
-FAS 36 Master Admin & Platform Administration
 FAS 37 COMPLETE BAS 2026 CHART OF ACCOUNTS INTEGRATION
 FAS 37.1 – Fix CI, Complete BAS Catalog & Release Validation
+FAS 37.2 - Deep Project Cleanup, Dead Code Removal & Production Optimization
 
-FAS 37.1: [aktuell 56-punktsrapport och evidens](docs/fas37-1-release-gate.md).
-Tekniska kontroller skiljs från BLOCKED_EXTERNAL för officiell BAS-data.
-Ingen FAS 38 eller automatisk produktionsrelease.
-
-Aktuell FAS 37-status: katalog-/bokföringsarkitektur implementerad; full officiell
-BAS-release BLOCKED av rättigheter och slutlig käll-/klassificeringsgranskning.
-Se [full 37-punktsrapport](docs/fas37-release-gate.md). Migration 25; historik bevarad.
-Ingen FAS 38, ingen automatisk full kontoplansimport eller cloud-release.
-
-Följande stycke är historik från FAS 36:
-
-Integrerad global metadataadministration med separata persistenta roller,
-första lösenordsbyte/MFA, användare/företag/medlemskap, sessioner, säkerhetscenter
-och oföränderlig audit. Se [full rapport och faktisk releasegate](docs/fas36-release-gate.md).
-Migration 24; ingen implicit bokföringsåtkomst, ingen produktionsbootstrap eller
-cloud-deployment. Operatörs-/mail-/nyckel-/tidigare P0-gränser dokumenteras uttryckligen.
-FAS 37 startas inte automatiskt. Infrastrukturdiagrammet nedan bevaras.
 
 Användare
 │
@@ -66,10 +49,26 @@ Next.js frontend
 │
 │ HTTPS
 ▼
-Northflank
+Render (Northflank)
 NestJS API
 │
 ├──────────────► Neon PostgreSQL
+Set up this Neon project in the current working directory.
+
+1. `npm i -g neon@latest && neon login`
+2. `neon skills -y`
+3. `neon mcp -y`
+4. `neon link --project-id plain-boat-63257376 --branch production -y`
+5. `neon config init`
+6. Update `neon.ts`:
+
+```ts
+import { defineConfig } from "@neon/config/v1";
+
+export default defineConfig({});
+```
+
+7. `neon deploy`
 │
 └──────────────► Cloudflare R2
 bilagor / filer

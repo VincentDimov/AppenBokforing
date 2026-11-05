@@ -1,5 +1,14 @@
 # LedgerApp
 
+## Lokal kodrensning — 2026-10-20
+
+Oanvända foundation-paket (`config`, `shared`, `ui`) och ersatta UI-delar har
+tagits bort. Aktiva workspaces är `apps/web`, `apps/api`, `packages/db` och
+`packages/sie`; webbens gemensamma komponenter finns i `apps/web/components/ui`.
+Rutter, API-kontrakt, databas och deployment-konfiguration är oförändrade.
+Se [rensningsrapport och verifieringsresultat](docs/project-cleanup-2026-10-20.md).
+Äldre fasbeskrivningar nedan är historik. Ingen commit/push/deployment ingår.
+
 ## Samlad huvudgren — 2026-10-12
 
 Huvudmappen är `AppenBokforing` och huvudgrenen `master`. FAS 37.1-fixarna
@@ -233,8 +242,8 @@ förberedda arbetsytor är placeholders, inte implementerade funktioner.
 ## Struktur och rutter
 
 `apps/web` och `apps/api` driftsätts separat. `packages/db` äger schema/SQL,
-`packages/sie` formatlogiken. `shared`, `ui` och `config` innehåller ännu små
-hjälpare; de är inte färdiga gemensamma domänpaket.
+`packages/sie` formatlogiken. De oanvända foundation-paketen `shared`, `ui` och
+`config` är borttagna; gemensam frontendkod ligger i `apps/web`.
 
 Webben proxar `/api/*` till API_INTERNAL_URL. Riktiga vyer finns på
 `/registers/accounts`, `/bookkeeping/vouchers`, `/bookkeeping/vouchers/new`,
