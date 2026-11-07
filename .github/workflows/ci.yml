@@ -53,7 +53,9 @@ jobs:
       - name: Lint
         run: pnpm lint
       - name: Production dependency advisory gate (expiring scoped exceptions)
-        run: node scripts/security-audit.cjs
+        run: |
+          node --test tests/security-dependencies.test.cjs
+          node scripts/security-audit.cjs
 
       - name: Typecheck
         run: pnpm typecheck

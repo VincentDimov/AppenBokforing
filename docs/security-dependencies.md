@@ -1,6 +1,56 @@
-# Dependency triage — 2026-10-07
+# Dependency security triage
 
-## FAS 24 remediation — current
+## Security refresh — 2026-11-07
+
+The production audit reproduced five blocked advisories: one critical, three
+high and one moderate. Remediation updates the affected packages, not the
+audit policy. `scripts/security-audit.cjs` is unchanged and the exception
+allowlist remains empty.
+
+| Dependency  | Before  | Patched target | Advisory                                                                                                                                           |
+| ----------- | ------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Next.js     | 15.5.27 | 15.5.28        | [GHSA-2464-fhr4-w9xw](https://github.com/advisories/GHSA-2464-fhr4-w9xw), [GHSA-p3m5-59mp-jv5r](https://github.com/advisories/GHSA-p3m5-59mp-jv5r) |
+| body-parser | 2.3.0   | 2.4.0          | [GHSA-27r3-jxmh-p828](https://github.com/advisories/GHSA-27r3-jxmh-p828)                                                                           |
+| multer      | 2.4.0   | 2.5.0          | [GHSA-q7qp-rjg7-q26m](https://github.com/advisories/GHSA-q7qp-rjg7-q26m)                                                                           |
+| qs          | 6.16.0  | 6.16.1         | [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw)                                                                           |
+
+Next's ESLint plugin is aligned to 15.5.28. Next stays on the 15.5 release
+line; Nest, Express, React, Prisma and pnpm are not upgraded. The existing
+multer override is updated. body-parser and qs overrides target only their
+previously resolved vulnerable versions; they do not force unrelated major
+versions into the dependency graph. The lockfile includes the corresponding
+Next platform compiler packages and all affected production dependency paths.
+The existing sharp 0.35.5 mitigation is retained.
+
+CI now checks the installed dependency paths and the audit gate's fail-closed
+behavior before running the live production audit. Synthetic advisories prove
+that low, moderate, high and critical findings still fail without a matching
+exception, unavailable/malformed advisory responses fail, and exception
+matching remains restricted by advisory, package, version and expiration.
+No severity is hidden and no `continue-on-error`, audit disabling or new
+exception is introduced.
+
+The live audit after lockfile regeneration reports zero advisories and
+`gate: PASS`. This is a dated result, not a guarantee against future security
+reports or proof that every application deployment is unexploitable.
+Previously failed GitHub runs retain their historical failure status; a new
+run against the updated commit must pass the gate.
+
+### Verification
+
+- Frozen-lockfile installation passed both in the main checkout and in a
+  fresh isolated source copy without private environment files.
+- Lint, typecheck and production builds passed for the active workspaces.
+- All 340 workspace unit tests and 44 script/safety contracts passed.
+  The eight new security contracts were also rerun in the main checkout,
+  including the qs comma-encoding regression with a non-callable toString.
+- The production audit reports zero advisories and `gate: PASS`.
+- Local database integration and browser E2E were not run: Docker was not
+  running. Their existing GitHub CI jobs remain enabled and unchanged.
+- Remote CI results are pending at commit time; no earlier phase's green
+  result is reused as evidence for this update.
+
+## FAS 24 remediation — historical (2026-10-07)
 
 Before this phase: 1 HIGH, deepmerge-ts 7.1.5. After: 0 advisories in raw
 production audit and fail-closed gate. Scoped @prisma/config@6.17.1 override
